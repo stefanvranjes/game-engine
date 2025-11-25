@@ -103,3 +103,7 @@ extern PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
 extern PFNGLGENERATEMIPMAPPROC glGenerateMipmap;
 extern PFNGLACTIVETEXTUREPROC glActiveTexture;
 
+
+// Function to load OpenGL extensions
+bool LoadGLExtensions();
+

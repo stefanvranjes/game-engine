@@ -16,9 +16,26 @@ Texture::~Texture() {
 bool Texture::LoadFromFile(const std::string& path) {
     // Load image data using stb_image
     unsigned char* data = stbi_load(path.c_str(), &m_Width, &m_Height, &m_Channels, 0);
+    bool usedStbImage = (data != nullptr);
+    
+    // If loading fails, create a procedural checkerboard texture
     if (!data) {
-        std::cerr << "Failed to load texture: " << path << std::endl;
-        return false;
+        std::cerr << "Failed to load texture: " << path << ", using procedural texture" << std::endl;
+        m_Width = 64;
+        m_Height = 64;
+        m_Channels = 3;
+        data = new unsigned char[m_Width * m_Height * m_Channels];
+        
+        // Create red/blue checkerboard pattern
+        for (int y = 0; y < m_Height; ++y) {
+            for (int x = 0; x < m_Width; ++x) {
+                int index = (y * m_Width + x) * m_Channels;
+                bool isRed = ((x / 8) + (y / 8)) % 2 == 0;
+                data[index + 0] = isRed ? 255 : 0;   // R
+                data[index + 1] = 0;                  // G
+                data[index + 2] = isRed ? 0 : 255;   // B
+            }
+        }
     }
 
     // Determine format
@@ -39,7 +56,14 @@ bool Texture::LoadFromFile(const std::string& path) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     glBindTexture(GL_TEXTURE_2D, 0);
-    stbi_image_free(data);
+    
+    // Free data based on how it was allocated
+    if (usedStbImage) {
+        stbi_image_free(data);
+    } else {
+        delete[] data;
+    }
+    
     return true;
 }
 

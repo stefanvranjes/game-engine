@@ -10,6 +10,7 @@ public:
     Application();
     ~Application();
 
+    bool Init();
     void Run();
 
 private:
