@@ -1,0 +1,128 @@
+#pragma once
+
+#include "Vec3.h"
+#include <cmath>
+#include <cstring>
+
+class Mat4 {
+public:
+    float m[16]; // Column-major order (OpenGL convention)
+
+    Mat4() {
+        Identity();
+    }
+
+    void Identity() {
+        std::memset(m, 0, sizeof(m));
+        m[0] = m[5] = m[10] = m[15] = 1.0f;
+    }
+
+    // Matrix multiplication
+    Mat4 operator*(const Mat4& other) const {
+        Mat4 result;
+        for (int row = 0; row < 4; ++row) {
+            for (int col = 0; col < 4; ++col) {
+                float sum = 0.0f;
+                for (int k = 0; k < 4; ++k) {
+                    sum += m[k * 4 + row] * other.m[col * 4 + k];
+                }
+                result.m[col * 4 + row] = sum;
+            }
+        }
+        return result;
+    }
+
+    // Static factory methods
+    static Mat4 Translate(const Vec3& v) {
+        Mat4 result;
+        result.m[12] = v.x;
+        result.m[13] = v.y;
+        result.m[14] = v.z;
+        return result;
+    }
+
+    static Mat4 Scale(const Vec3& v) {
+        Mat4 result;
+        result.m[0] = v.x;
+        result.m[5] = v.y;
+        result.m[10] = v.z;
+        return result;
+    }
+
+    static Mat4 RotateX(float angle) {
+        Mat4 result;
+        float c = std::cos(angle);
+        float s = std::sin(angle);
+        result.m[5] = c;
+        result.m[6] = s;
+        result.m[9] = -s;
+        result.m[10] = c;
+        return result;
+    }
+
+    static Mat4 RotateY(float angle) {
+        Mat4 result;
+        float c = std::cos(angle);
+        float s = std::sin(angle);
+        result.m[0] = c;
+        result.m[2] = -s;
+        result.m[8] = s;
+        result.m[10] = c;
+        return result;
+    }
+
+    static Mat4 RotateZ(float angle) {
+        Mat4 result;
+        float c = std::cos(angle);
+        float s = std::sin(angle);
+        result.m[0] = c;
+        result.m[1] = s;
+        result.m[4] = -s;
+        result.m[5] = c;
+        return result;
+    }
+
+    static Mat4 Perspective(float fov, float aspect, float near, float far) {
+        Mat4 result;
+        std::memset(result.m, 0, sizeof(result.m));
+        
+        float tanHalfFov = std::tan(fov / 2.0f);
+        
+        result.m[0] = 1.0f / (aspect * tanHalfFov);
+        result.m[5] = 1.0f / tanHalfFov;
+        result.m[10] = -(far + near) / (far - near);
+        result.m[11] = -1.0f;
+        result.m[14] = -(2.0f * far * near) / (far - near);
+        
+        return result;
+    }
+
+    static Mat4 LookAt(const Vec3& eye, const Vec3& target, const Vec3& up) {
+        Vec3 zAxis = (eye - target).Normalized();
+        Vec3 xAxis = up.Cross(zAxis).Normalized();
+        Vec3 yAxis = zAxis.Cross(xAxis);
+
+        Mat4 result;
+        result.m[0] = xAxis.x;
+        result.m[4] = xAxis.y;
+        result.m[8] = xAxis.z;
+        result.m[12] = -xAxis.Dot(eye);
+
+        result.m[1] = yAxis.x;
+        result.m[5] = yAxis.y;
+        result.m[9] = yAxis.z;
+        result.m[13] = -yAxis.Dot(eye);
+
+        result.m[2] = zAxis.x;
+        result.m[6] = zAxis.y;
+        result.m[10] = zAxis.z;
+        result.m[14] = -zAxis.Dot(eye);
+
+        result.m[3] = 0.0f;
+        result.m[7] = 0.0f;
+        result.m[11] = 0.0f;
+        result.m[15] = 1.0f;
+
+        return result;
+    }
+};

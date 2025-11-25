@@ -2,7 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 
-Application::Application() : m_Running(false) {
+Application::Application() : m_Running(false), m_LastFrameTime(0.0f) {
 }
 
 Application::~Application() {
@@ -24,6 +24,10 @@ bool Application::Init() {
         return false;
     }
 
+    // Create camera
+    m_Camera = std::make_unique<Camera>(Vec3(0, 0, 3), 45.0f, 800.0f / 600.0f);
+    m_Renderer->SetCamera(m_Camera.get());
+
     m_Running = true;
     return true;
 }
@@ -34,10 +38,15 @@ void Application::Run() {
     }
 
     std::cout << "Game Engine Running..." << std::endl;
+    std::cout << "Controls: WASD to move, Arrow keys to rotate, Space/Shift for up/down" << std::endl;
 
     // Main game loop
     while (m_Running && !m_Window->ShouldClose()) {
-        Update();
+        float currentTime = static_cast<float>(glfwGetTime());
+        float deltaTime = currentTime - m_LastFrameTime;
+        m_LastFrameTime = currentTime;
+
+        Update(deltaTime);
         Render();
         
         m_Window->SwapBuffers();
@@ -47,15 +56,18 @@ void Application::Run() {
     std::cout << "Game Engine Shutting Down..." << std::endl;
 }
 
-void Application::Update() {
-    // Update game logic here
+void Application::Update(float deltaTime) {
+    // Update camera
+    if (m_Camera) {
+        m_Camera->ProcessInput(m_Window->GetGLFWWindow(), deltaTime);
+    }
 }
 
 void Application::Render() {
     // Clear the screen
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Render triangle
+    // Render scene
     m_Renderer->Render();
 }

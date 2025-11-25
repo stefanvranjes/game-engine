@@ -4,6 +4,8 @@
 #include "Texture.h"
 #include <memory>
 
+class Camera;
+
 class Renderer {
 public:
     Renderer();
@@ -12,6 +14,8 @@ public:
     bool Init();
     void Render();
     void Shutdown();
+    
+    void SetCamera(Camera* camera) { m_Camera = camera; }
 
 private:
     void SetupQuad();
@@ -21,4 +25,5 @@ private:
     unsigned int m_EBO;
     std::unique_ptr<Shader> m_Shader;
     std::unique_ptr<Texture> m_Texture;
+    Camera* m_Camera;
 };

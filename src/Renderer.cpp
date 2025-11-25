@@ -1,9 +1,10 @@
 #include "Renderer.h"
+#include "Camera.h"
 #include "GLExtensions.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 
-Renderer::Renderer() : m_VAO(0), m_VBO(0), m_EBO(0) {
+Renderer::Renderer() : m_VAO(0), m_VBO(0), m_EBO(0), m_Camera(nullptr) {
 }
 
 Renderer::~Renderer() {
@@ -73,6 +74,16 @@ bool Renderer::Init() {
 
 void Renderer::Render() {
     m_Shader->Use();
+    
+    // Calculate MVP matrix
+    if (m_Camera) {
+        Mat4 model; // Identity - quad at origin
+        Mat4 view = m_Camera->GetViewMatrix();
+        Mat4 projection = m_Camera->GetProjectionMatrix();
+        Mat4 mvp = projection * view * model;
+        
+        m_Shader->SetMat4("u_MVP", mvp.m);
+    }
     
     // Bind texture
     if (m_Texture) {
