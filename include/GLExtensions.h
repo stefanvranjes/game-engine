@@ -2,6 +2,7 @@
 
 // Windows OpenGL headers
 #include <windows.h>
+#include <wingdi.h>
 #include <gl/GL.h>
 
 // OpenGL 3.3 constants
@@ -11,6 +12,19 @@
 #define GL_VERTEX_SHADER 0x8B31
 #define GL_COMPILE_STATUS 0x8B81
 #define GL_LINK_STATUS 0x8B82
+#define GL_TEXTURE0 0x84C0
+#define GL_TEXTURE_2D 0x0DE1
+#define GL_TEXTURE_WRAP_S 0x2802
+#define GL_TEXTURE_WRAP_T 0x2803
+#define GL_TEXTURE_MIN_FILTER 0x2800
+#define GL_TEXTURE_MAG_FILTER 0x2801
+#define GL_LINEAR 0x2601
+#define GL_LINEAR_MIPMAP_LINEAR 0x2703
+#define GL_REPEAT 0x2901
+#define GL_RGB 0x1907
+#define GL_RGBA 0x1908
+#define GL_RED 0x1903
+#define GL_UNSIGNED_BYTE 0x1401
 
 // OpenGL 3.3 types
 typedef char GLchar;
@@ -50,6 +64,8 @@ typedef void (APIENTRYP PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, con
 typedef void (APIENTRYP PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint *buffers);
 typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
+typedef void (APIENTRYP PFNGLGENERATEMIPMAPPROC)(GLenum target);
+typedef void (APIENTRYP PFNGLACTIVETEXTUREPROC)(GLenum texture);
 
 // OpenGL 3.3 Core function pointers
 extern PFNGLCREATESHADERPROC glCreateShader;
@@ -81,9 +97,6 @@ extern PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 extern PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 extern PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
 
-extern PFNGLGENTEXTURESPROC glGenTextures;
-extern PFNGLDELETETEXTURESPROC glDeleteTextures;
-extern PFNGLBINDTEXTUREPROC glBindTexture;
-extern PFNGLTEXPARAMETERIPROC glTexParameteri;
-extern PFNGLTEXIMAGE2DPROC glTexImage2D;
+extern PFNGLGENERATEMIPMAPPROC glGenerateMipmap;
+extern PFNGLACTIVETEXTUREPROC glActiveTexture;
 

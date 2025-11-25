@@ -1,5 +1,3 @@
-#include <windows.h>
-#include <gl/GL.h>
 #include "GLExtensions.h"
 #include <iostream>
 
@@ -32,6 +30,8 @@ PFNGLBUFFERDATAPROC glBufferData = nullptr;
 PFNGLDELETEBUFFERSPROC glDeleteBuffers = nullptr;
 PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = nullptr;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = nullptr;
+PFNGLGENERATEMIPMAPPROC glGenerateMipmap = nullptr;
+PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
 
 bool LoadGLExtensions() {
     glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
@@ -61,11 +61,9 @@ bool LoadGLExtensions() {
     glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress("glBufferData");
     glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
     glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
-    glGenTextures = (PFNGLGENTEXTURESPROC)wglGetProcAddress("glGenTextures");
-    glDeleteTextures = (PFNGLDELETETEXTURESPROC)wglGetProcAddress("glDeleteTextures");
-    glBindTexture = (PFNGLBINDTEXTUREPROC)wglGetProcAddress("glBindTexture");
-    glTexParameteri = (PFNGLTEXPARAMETERIPROC)wglGetProcAddress("glTexParameteri");
-    glTexImage2D = (PFNGLTEXIMAGE2DPROC)wglGetProcAddress("glTexImage2D");
+    glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
+    glGenerateMipmap = (PFNGLGENERATEMIPMAPPROC)wglGetProcAddress("glGenerateMipmap");
+    glActiveTexture = (PFNGLACTIVETEXTUREPROC)wglGetProcAddress("glActiveTexture");
 
     // Check if all functions were loaded
     if (!glCreateShader || !glShaderSource || !glCompileShader || !glGetShaderiv ||
@@ -74,7 +72,8 @@ bool LoadGLExtensions() {
         !glUseProgram || !glGetUniformLocation || !glUniform1i || !glUniform1f ||
         !glUniform3f || !glUniform4f || !glUniformMatrix4fv || !glGenVertexArrays ||
         !glBindVertexArray || !glDeleteVertexArrays || !glGenBuffers || !glBindBuffer ||
-        !glBufferData || !glDeleteBuffers || !glVertexAttribPointer || !glEnableVertexAttribArray) {
+        !glBufferData || !glDeleteBuffers || !glVertexAttribPointer || !glEnableVertexAttribArray ||
+        !glGenerateMipmap || !glActiveTexture) {
         std::cerr << "Failed to load OpenGL extensions" << std::endl;
         return false;
     }

@@ -27,8 +27,16 @@ add_executable(GameEngine
     src/Shader.cpp
     src/Renderer.cpp
     src/GLExtensions.cpp
+    src/Texture.cpp
 )
 
 target_include_directories(GameEngine PUBLIC include)
 
 target_link_libraries(GameEngine PRIVATE glfw opengl32)
+
+# Copy assets to build directory
+add_custom_command(TARGET GameEngine POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/assets
+    $<TARGET_FILE_DIR:GameEngine>/assets
+)
