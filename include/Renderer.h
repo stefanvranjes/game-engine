@@ -2,7 +2,10 @@
 
 #include "Shader.h"
 #include "Texture.h"
+#include "Mesh.h"
+#include "Transform.h"
 #include <memory>
+#include <vector>
 
 class Camera;
 
@@ -18,12 +21,12 @@ public:
     void SetCamera(Camera* camera) { m_Camera = camera; }
 
 private:
-    void SetupQuad();
+    void SetupScene();
 
-    unsigned int m_VAO;
-    unsigned int m_VBO;
-    unsigned int m_EBO;
     std::unique_ptr<Shader> m_Shader;
     std::unique_ptr<Texture> m_Texture;
     Camera* m_Camera;
+    
+    std::vector<Mesh> m_Meshes;
+    std::vector<Transform> m_Transforms;
 };

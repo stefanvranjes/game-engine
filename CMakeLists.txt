@@ -29,6 +29,7 @@ add_executable(GameEngine
     src/GLExtensions.cpp
     src/Texture.cpp
     src/Camera.cpp
+    src/Mesh.cpp
 )
 
 target_include_directories(GameEngine PUBLIC include)

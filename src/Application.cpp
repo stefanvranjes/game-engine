@@ -25,8 +25,11 @@ bool Application::Init() {
     }
 
     // Create camera
-    m_Camera = std::make_unique<Camera>(Vec3(0, 0, 3), 45.0f, 800.0f / 600.0f);
+    m_Camera = std::make_unique<Camera>(Vec3(0, 0, 5), 45.0f, 800.0f / 600.0f);
     m_Renderer->SetCamera(m_Camera.get());
+
+    // Enable depth testing
+    glEnable(GL_DEPTH_TEST);
 
     m_Running = true;
     return true;
@@ -64,7 +67,7 @@ void Application::Update(float deltaTime) {
 }
 
 void Application::Render() {
-    // Clear the screen
+    // Clear the screen and depth buffer
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
