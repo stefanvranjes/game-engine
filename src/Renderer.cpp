@@ -30,7 +30,11 @@ void Renderer::SetupScene() {
     m_Transforms.push_back(Transform(Vec3(1.5, 1.5, -1), Vec3(30, 30, 0)));
     m_Transforms.push_back(Transform(Vec3(-1.5, -1.5, 1), Vec3(-30, -30, 0)));
 
-    std::cout << "Scene setup complete with " << m_Meshes.size() << " cubes" << std::endl;
+    // Load pyramid from OBJ
+    m_Meshes.push_back(Mesh::LoadFromOBJ("assets/pyramid.obj"));
+    m_Transforms.push_back(Transform(Vec3(0, 2, 0), Vec3(0, 0, 0), Vec3(2, 2, 2)));
+
+    std::cout << "Scene setup complete with " << m_Meshes.size() << " objects" << std::endl;
 }
 
 bool Renderer::Init() {
@@ -43,7 +47,7 @@ bool Renderer::Init() {
 
     // Load texture
     m_Texture = std::make_unique<Texture>();
-    if (!m_Texture->LoadFromFile("assets/brick.ppm")) {
+    if (!m_Texture->LoadFromFile("assets/brick.png")) {
         std::cerr << "Failed to load texture" << std::endl;
         return false;
     }

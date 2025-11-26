@@ -2,6 +2,11 @@
 #include "GLExtensions.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include "Math/Vec3.h"
+#include "Math/Vec2.h"
 
 Mesh::Mesh(const std::vector<float>& vertices, const std::vector<unsigned int>& indices)
     : m_VAO(0), m_VBO(0), m_EBO(0), m_IndexCount(0)
@@ -140,5 +145,93 @@ Mesh Mesh::CreateCube() {
         20, 21, 22,  22, 23, 20   // Bottom
     };
 
+    return Mesh(vertices, indices);
+}
+
+Mesh Mesh::LoadFromOBJ(const std::string& filename) {
+    std::vector<Vec3> temp_vertices;
+    std::vector<Vec2> temp_uvs;
+    std::vector<Vec3> temp_normals;
+
+    std::vector<float> vertices;
+    std::vector<unsigned int> indices;
+    unsigned int indexOffset = 0;
+
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open OBJ file: " << filename << std::endl;
+        return CreateCube(); // Fallback
+    }
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        std::string prefix;
+        ss >> prefix;
+
+        if (prefix == "v") {
+            Vec3 v;
+            ss >> v.x >> v.y >> v.z;
+            temp_vertices.push_back(v);
+        } else if (prefix == "vt") {
+            Vec2 vt;
+            ss >> vt.x >> vt.y;
+            temp_uvs.push_back(vt);
+        } else if (prefix == "vn") {
+            Vec3 vn;
+            ss >> vn.x >> vn.y >> vn.z;
+            temp_normals.push_back(vn);
+        } else if (prefix == "f") {
+            std::string vertexStr;
+            for (int i = 0; i < 3; ++i) { // Assume triangles
+                ss >> vertexStr;
+                
+                std::stringstream vss(vertexStr);
+                std::string segment;
+                std::vector<std::string> segments;
+                
+                while (std::getline(vss, segment, '/')) {
+                    segments.push_back(segment);
+                }
+
+                // Parse indices (1-based)
+                int vIdx = std::stoi(segments[0]) - 1;
+                int vtIdx = (segments.size() > 1 && !segments[1].empty()) ? std::stoi(segments[1]) - 1 : 0;
+                int vnIdx = (segments.size() > 2) ? std::stoi(segments[2]) - 1 : 0;
+
+                // Position
+                Vec3 p = temp_vertices[vIdx];
+                vertices.push_back(p.x);
+                vertices.push_back(p.y);
+                vertices.push_back(p.z);
+
+                // Normal
+                if (vnIdx >= 0 && vnIdx < temp_normals.size()) {
+                    Vec3 n = temp_normals[vnIdx];
+                    vertices.push_back(n.x);
+                    vertices.push_back(n.y);
+                    vertices.push_back(n.z);
+                } else {
+                    vertices.push_back(0.0f);
+                    vertices.push_back(1.0f);
+                    vertices.push_back(0.0f);
+                }
+
+                // UV
+                if (vtIdx >= 0 && vtIdx < temp_uvs.size()) {
+                    Vec2 uv = temp_uvs[vtIdx];
+                    vertices.push_back(uv.x);
+                    vertices.push_back(uv.y);
+                } else {
+                    vertices.push_back(0.0f);
+                    vertices.push_back(0.0f);
+                }
+
+                indices.push_back(indexOffset++);
+            }
+        }
+    }
+
+    std::cout << "Loaded OBJ: " << filename << " with " << vertices.size() / 8 << " vertices" << std::endl;
     return Mesh(vertices, indices);
 }

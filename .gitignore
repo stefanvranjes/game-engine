@@ -46,3 +46,6 @@ Makefile
 
 # VS Code
 .vscode/
+
+# Allow OBJ models in assets
+!assets/*.obj

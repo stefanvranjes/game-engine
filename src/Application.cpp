@@ -2,7 +2,13 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 
-Application::Application() : m_Running(false), m_LastFrameTime(0.0f) {
+Application::Application() 
+    : m_Running(false)
+    , m_LastFrameTime(0.0f)
+    , m_FPS(0.0f)
+    , m_FrameCount(0.0f)
+    , m_FPSTimer(0.0f)
+{
 }
 
 Application::~Application() {
@@ -30,6 +36,13 @@ bool Application::Init() {
 
     // Enable depth testing
     glEnable(GL_DEPTH_TEST);
+
+    // Initialize text rendering
+    m_Text = std::make_unique<Text>();
+    if (!m_Text->Init("assets/font_atlas.png", 800, 600)) {
+        std::cerr << "Failed to initialize text system" << std::endl;
+        return false;
+    }
 
     m_Running = true;
     return true;
@@ -60,6 +73,15 @@ void Application::Run() {
 }
 
 void Application::Update(float deltaTime) {
+    // Calculate FPS
+    m_FrameCount++;
+    m_FPSTimer += deltaTime;
+    if (m_FPSTimer >= 1.0f) {
+        m_FPS = m_FrameCount / m_FPSTimer;
+        m_FrameCount = 0.0f;
+        m_FPSTimer = 0.0f;
+    }
+
     // Update camera
     if (m_Camera) {
         m_Camera->ProcessInput(m_Window->GetGLFWWindow(), deltaTime);
@@ -73,4 +95,19 @@ void Application::Render() {
 
     // Render scene
     m_Renderer->Render();
+
+    // Render UI (HUD)
+    if (m_Text && m_Camera) {
+        // FPS counter
+        std::string fpsText = "FPS: " + std::to_string(static_cast<int>(m_FPS));
+        m_Text->RenderText(fpsText, 10.0f, 10.0f, 1.0f, Vec3(0.0f, 1.0f, 0.0f));
+
+        // Camera position
+        Vec3 camPos = m_Camera->GetPosition();
+        std::string posText = "Pos: (" + 
+            std::to_string(static_cast<int>(camPos.x)) + ", " +
+            std::to_string(static_cast<int>(camPos.y)) + ", " +
+            std::to_string(static_cast<int>(camPos.z)) + ")";
+        m_Text->RenderText(posText, 10.0f, 30.0f, 1.0f, Vec3(1.0f, 1.0f, 1.0f));
+    }
 }

@@ -18,6 +18,7 @@ public:
     void Draw() const;
     
     static Mesh CreateCube();
+    static Mesh LoadFromOBJ(const std::string& filename);
 
     unsigned int GetIndexCount() const { return m_IndexCount; }
 
