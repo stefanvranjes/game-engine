@@ -54,6 +54,18 @@ bool Renderer::Init() {
     return true;
 }
 
+void CheckOpenGLError(const char* stmt, const char* fname, int line) {
+    GLenum err = glGetError();
+    if (err != GL_NO_ERROR) {
+        std::cerr << "OpenGL error " << err << ", at " << fname << ":" << line << " - for " << stmt << std::endl;
+    }
+}
+
+#define GL_CHECK(stmt) do { \
+        stmt; \
+        CheckOpenGLError(#stmt, __FILE__, __LINE__); \
+    } while (0)
+
 void Renderer::Render() {
     m_Shader->Use();
     
@@ -61,6 +73,17 @@ void Renderer::Render() {
     if (m_Texture) {
         m_Texture->Bind(0);
         m_Shader->SetInt("u_Texture", 0);
+    }
+
+    // Light setup
+    Vec3 lightPos(2.0f, 2.0f, 2.0f);
+    Vec3 lightColor(1.0f, 1.0f, 1.0f);
+    m_Shader->SetVec3("u_LightPos", lightPos.x, lightPos.y, lightPos.z);
+    m_Shader->SetVec3("u_LightColor", lightColor.x, lightColor.y, lightColor.z);
+    
+    if (m_Camera) {
+        Vec3 camPos = m_Camera->GetPosition();
+        m_Shader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
     }
 
     // Render each mesh with its transform
@@ -73,11 +96,13 @@ void Renderer::Render() {
             Mat4 mvp = projection * view * model;
             
             m_Shader->SetMat4("u_MVP", mvp.m);
+            m_Shader->SetMat4("u_Model", model.m); // Pass model matrix for world space calculations
         }
 
         // Draw the mesh
         m_Meshes[i].Draw();
     }
+
 }
 
 void Renderer::Shutdown() {
