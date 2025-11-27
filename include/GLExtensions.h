@@ -32,6 +32,19 @@
 #define GL_RGBA 0x1908
 #define GL_RED 0x1903
 #define GL_UNSIGNED_BYTE 0x1401
+#define GL_TEXTURE_CUBE_MAP 0x8513
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X 0x8515
+#define GL_CLAMP_TO_EDGE 0x812F
+#define GL_TEXTURE_WRAP_R 0x8072
+#define GL_LEQUAL 0x0203
+#define GL_LESS 0x0201
+#define GL_FRAMEBUFFER 0x8D40
+#define GL_DEPTH_ATTACHMENT 0x8D00
+#define GL_FRAMEBUFFER_COMPLETE 0x8CD5
+#define GL_DEPTH_COMPONENT 0x1902
+#define GL_FLOAT 0x1406
+#define GL_NONE 0
+#define GL_NEAREST 0x2600
 
 // OpenGL 3.3 types
 typedef char GLchar;
@@ -74,8 +87,15 @@ typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, 
 typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
 typedef void (APIENTRYP PFNGLGENERATEMIPMAPPROC)(GLenum target);
 typedef void (APIENTRYP PFNGLACTIVETEXTUREPROC)(GLenum texture);
+typedef void (APIENTRYP PFNGLGENFRAMEBUFFERSPROC)(GLsizei n, GLuint *framebuffers);
+typedef void (APIENTRYP PFNGLBINDFRAMEBUFFERPROC)(GLenum target, GLuint framebuffer);
+typedef void (APIENTRYP PFNGLFRAMEBUFFERTEXTURE2DPROC)(GLenum target, GLenum attachment, GLenum textarget, GLuint texture, GLint level);
+typedef void (APIENTRYP PFNGLDRAWBUFFERPROC)(GLenum mode);
+typedef void (APIENTRYP PFNGLREADBUFFERPROC)(GLenum mode);
+typedef GLenum (APIENTRYP PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
+typedef void (APIENTRYP PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint *framebuffers);
 
-// OpenGL 3.3 Core function pointers
+// OpenGL 3.3 function pointers
 extern PFNGLCREATESHADERPROC glCreateShader;
 extern PFNGLSHADERSOURCEPROC glShaderSource;
 extern PFNGLCOMPILESHADERPROC glCompileShader;
@@ -105,9 +125,13 @@ extern PFNGLBUFFERSUBDATAPROC glBufferSubData;
 extern PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 extern PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 extern PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
-
 extern PFNGLGENERATEMIPMAPPROC glGenerateMipmap;
 extern PFNGLACTIVETEXTUREPROC glActiveTexture;
+extern PFNGLGENFRAMEBUFFERSPROC glGenFramebuffers;
+extern PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
+extern PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
+extern PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
+extern PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
 
 // Function to load OpenGL extensions
 bool LoadGLExtensions();

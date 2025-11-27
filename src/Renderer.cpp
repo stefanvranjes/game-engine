@@ -1,6 +1,7 @@
 #include "Renderer.h"
 #include "Camera.h"
 #include "GLExtensions.h"
+#include "Material.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <fstream>
@@ -32,11 +33,33 @@ void Renderer::SetupScene() {
     m_Transforms.push_back(Transform(Vec3(1.5, 1.5, -1), Vec3(30, 30, 0)));
     m_Transforms.push_back(Transform(Vec3(-1.5, -1.5, 1), Vec3(-30, -30, 0)));
 
+    // Create materials for each cube
+    for (int i = 0; i < 7; ++i) {
+        auto mat = std::make_shared<Material>();
+        // Vary colors slightly
+        if (i % 2 == 0) mat->diffuse = Vec3(1.0f, 0.5f, 0.5f); // Reddish
+        else if (i % 3 == 0) mat->diffuse = Vec3(0.5f, 1.0f, 0.5f); // Greenish
+        else mat->diffuse = Vec3(0.5f, 0.5f, 1.0f); // Blueish
+        
+        mat->texture = m_Texture; // Use default texture
+        m_Materials.push_back(mat);
+    }
+
     // Load pyramid from OBJ
     m_Meshes.push_back(Mesh::LoadFromOBJ("assets/pyramid.obj"));
     m_Transforms.push_back(Transform(Vec3(0, 2, 0), Vec3(0, 0, 0), Vec3(2, 2, 2)));
+    
+    auto pyramidMat = std::make_shared<Material>();
+    pyramidMat->diffuse = Vec3(1.0f, 1.0f, 0.0f); // Yellow
+    pyramidMat->texture = m_Texture;
+    m_Materials.push_back(pyramidMat);
 
-    std::cout << "Scene setup complete with " << m_Meshes.size() << " objects" << std::endl;
+    // Add initial lights
+    m_Lights.push_back(Light(Vec3(2.0f, 2.0f, 2.0f), Vec3(1.0f, 1.0f, 1.0f), 1.0f, true)); // White light with shadows
+    m_Lights.push_back(Light(Vec3(-2.0f, 2.0f, -2.0f), Vec3(1.0f, 0.0f, 0.0f), 1.0f, false)); // Red light
+    m_Lights.push_back(Light(Vec3(0.0f, 4.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f), 0.8f, false)); // Blue light
+
+    std::cout << "Scene setup complete with " << m_Meshes.size() << " objects and " << m_Lights.size() << " lights" << std::endl;
 }
 
 bool Renderer::CheckCollision(const AABB& bounds) {
@@ -105,6 +128,8 @@ void Renderer::LoadScene(const std::string& filename) {
     // Clear current scene
     m_Meshes.clear();
     m_Transforms.clear();
+    m_Materials.clear();
+    // Keep lights for now, or clear if we save them too (future task)
 
     std::string line;
     while (std::getline(file, line)) {
@@ -124,6 +149,11 @@ void Renderer::LoadScene(const std::string& filename) {
         }
         
         m_Transforms.push_back(Transform(pos, rot, scale));
+        
+        // Create default material for loaded object
+        auto mat = std::make_shared<Material>();
+        mat->texture = m_Texture;
+        m_Materials.push_back(mat);
     }
 
     std::cout << "Scene loaded from " << filename << " with " << m_Meshes.size() << " objects" << std::endl;
@@ -132,12 +162,23 @@ void Renderer::LoadScene(const std::string& filename) {
 void Renderer::AddCube(const Transform& transform) {
     m_Meshes.push_back(Mesh::CreateCube());
     m_Transforms.push_back(transform);
+    
+    auto mat = std::make_shared<Material>();
+    mat->texture = m_Texture;
+    m_Materials.push_back(mat);
+    
     std::cout << "Added cube at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
 void Renderer::AddPyramid(const Transform& transform) {
     m_Meshes.push_back(Mesh::LoadFromOBJ("assets/pyramid.obj"));
     m_Transforms.push_back(transform);
+    
+    auto mat = std::make_shared<Material>();
+    mat->diffuse = Vec3(1.0f, 1.0f, 0.0f);
+    mat->texture = m_Texture;
+    m_Materials.push_back(mat);
+    
     std::cout << "Added pyramid at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
@@ -145,6 +186,9 @@ void Renderer::RemoveObject(size_t index) {
     if (index < m_Meshes.size()) {
         m_Meshes.erase(m_Meshes.begin() + index);
         m_Transforms.erase(m_Transforms.begin() + index);
+        if (index < m_Materials.size()) {
+            m_Materials.erase(m_Materials.begin() + index);
+        }
         std::cout << "Removed object at index " << index << std::endl;
     }
 }
@@ -158,7 +202,7 @@ bool Renderer::Init() {
     }
 
     // Load texture
-    m_Texture = std::make_unique<Texture>();
+    m_Texture = std::make_shared<Texture>();
     if (!m_Texture->LoadFromFile("assets/brick.png")) {
         std::cerr << "Failed to load texture" << std::endl;
         return false;
@@ -167,58 +211,120 @@ bool Renderer::Init() {
     // Setup scene with multiple cubes
     SetupScene();
 
+    // Initialize Skybox
+    m_Skybox = std::make_unique<Skybox>();
+    std::vector<std::string> faces;
+    // Use the same texture for all faces for now
+    for(int i=0; i<6; i++) faces.push_back("assets/brick.png");
+    
+    if (!m_Skybox->Init(faces)) {
+        std::cerr << "Failed to initialize skybox" << std::endl;
+        // Don't return false, just continue without skybox
+    }
+
+    // Initialize Shadow Mapping
+    m_DepthShader = std::make_unique<Shader>();
+    if (!m_DepthShader->LoadFromFiles("shaders/depth.vert", "shaders/depth.frag")) {
+        std::cerr << "Failed to load depth shaders" << std::endl;
+        return false;
+    }
+
+    m_ShadowMap = std::make_unique<ShadowMap>();
+    if (!m_ShadowMap->Init(1024, 1024)) {
+        std::cerr << "Failed to initialize shadow map" << std::endl;
+        return false;
+    }
+
     return true;
 }
 
-void CheckOpenGLError(const char* stmt, const char* fname, int line) {
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        std::cerr << "OpenGL error " << err << ", at " << fname << ":" << line << " - for " << stmt << std::endl;
-    }
-}
-
-#define GL_CHECK(stmt) do { \
-        stmt; \
-        CheckOpenGLError(#stmt, __FILE__, __LINE__); \
-    } while (0)
-
 void Renderer::Render() {
+    if (!m_Camera) return;
+
+    // Calculate light space matrix for shadow mapping (first light only)
+    Mat4 lightSpaceMatrix;
+    if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
+        // Simple orthographic projection from light's perspective
+        float near_plane = 1.0f, far_plane = 15.0f;
+        Mat4 lightProjection = Mat4::Orthographic(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
+        Mat4 lightView = Mat4::LookAt(m_Lights[0].position, Vec3(0, 0, 0), Vec3(0, 1, 0));
+        lightSpaceMatrix = lightProjection * lightView;
+
+        // ===== PASS 1: Render depth map from light's perspective =====
+        m_DepthShader->Use();
+        m_DepthShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
+
+        glViewport(0, 0, m_ShadowMap->GetWidth(), m_ShadowMap->GetHeight());
+        m_ShadowMap->BindForWriting();
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        for (size_t i = 0; i < m_Meshes.size() && i < m_Transforms.size(); ++i) {
+            Mat4 model = m_Transforms[i].GetModelMatrix();
+            m_DepthShader->SetMat4("u_Model", model.m);
+            m_Meshes[i].Draw();
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    // ===== PASS 2: Render scene normally with shadows =====
+    int width, height;
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    glViewport(0, 0, width, height);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
     m_Shader->Use();
     
-    // Bind texture once for all objects
+    // Bind shadow map
+    m_ShadowMap->BindForReading(1);
+    m_Shader->SetInt("shadowMap", 1);
+    m_Shader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
+
+    // Bind texture
     if (m_Texture) {
         m_Texture->Bind(0);
         m_Shader->SetInt("u_Texture", 0);
     }
 
     // Light setup
-    Vec3 lightPos(2.0f, 2.0f, 2.0f);
-    Vec3 lightColor(1.0f, 1.0f, 1.0f);
-    m_Shader->SetVec3("u_LightPos", lightPos.x, lightPos.y, lightPos.z);
-    m_Shader->SetVec3("u_LightColor", lightColor.x, lightColor.y, lightColor.z);
+    m_Shader->SetInt("u_LightCount", static_cast<int>(m_Lights.size()));
     
-    if (m_Camera) {
-        Vec3 camPos = m_Camera->GetPosition();
-        m_Shader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
+    for (size_t i = 0; i < m_Lights.size(); ++i) {
+        std::string base = "u_Lights[" + std::to_string(i) + "]";
+        m_Shader->SetVec3(base + ".position", m_Lights[i].position.x, m_Lights[i].position.y, m_Lights[i].position.z);
+        m_Shader->SetVec3(base + ".color", m_Lights[i].color.x, m_Lights[i].color.y, m_Lights[i].color.z);
+        m_Shader->SetFloat(base + ".intensity", m_Lights[i].intensity);
     }
+    
+    Vec3 camPos = m_Camera->GetPosition();
+    m_Shader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
 
-    // Render each mesh with its transform
+    // Render each mesh
     for (size_t i = 0; i < m_Meshes.size() && i < m_Transforms.size(); ++i) {
-        // Calculate MVP matrix for this object
-        if (m_Camera) {
-            Mat4 model = m_Transforms[i].GetModelMatrix();
-            Mat4 view = m_Camera->GetViewMatrix();
-            Mat4 projection = m_Camera->GetProjectionMatrix();
-            Mat4 mvp = projection * view * model;
-            
-            m_Shader->SetMat4("u_MVP", mvp.m);
-            m_Shader->SetMat4("u_Model", model.m); // Pass model matrix for world space calculations
+        Mat4 model = m_Transforms[i].GetModelMatrix();
+        Mat4 view = m_Camera->GetViewMatrix();
+        Mat4 projection = m_Camera->GetProjectionMatrix();
+        Mat4 mvp = projection * view * model;
+        
+        m_Shader->SetMat4("u_MVP", mvp.m);
+        m_Shader->SetMat4("u_Model", model.m);
+
+        // Bind material
+        if (i < m_Materials.size() && m_Materials[i]) {
+            m_Materials[i]->Bind(m_Shader.get());
+        } else {
+            Material defaultMat;
+            defaultMat.texture = m_Texture;
+            defaultMat.Bind(m_Shader.get());
         }
 
-        // Draw the mesh
         m_Meshes[i].Draw();
     }
 
+    // Draw Skybox last
+    if (m_Skybox) {
+        m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+    }
 }
 
 void Renderer::Shutdown() {

@@ -3,6 +3,8 @@
 #include <iostream>
 #include "Math/AABB.h"
 #include "imgui/imgui.h"
+#include "Material.h"
+#include "Light.h"
 
 Application::Application() 
     : m_Running(false)
@@ -217,6 +219,56 @@ void Application::RenderEditorUI() {
         ImGui::DragFloat("Y##scl", &transform.scale.y, 0.1f, 0.1f, 10.0f);
         ImGui::DragFloat("Z##scl", &transform.scale.z, 0.1f, 0.1f, 10.0f);
         
+        ImGui::Separator();
+
+        // Material Inspector
+        auto& materials = m_Renderer->GetMaterials();
+        if (m_SelectedObjectIndex < static_cast<int>(materials.size()) && materials[m_SelectedObjectIndex]) {
+            ImGui::Text("Material");
+            auto& mat = materials[m_SelectedObjectIndex];
+            
+            ImGui::ColorEdit3("Ambient", &mat->ambient.x);
+            ImGui::ColorEdit3("Diffuse", &mat->diffuse.x);
+            ImGui::ColorEdit3("Specular", &mat->specular.x);
+            ImGui::DragFloat("Shininess", &mat->shininess, 1.0f, 1.0f, 256.0f);
+        }
+
         ImGui::End();
     }
+
+    // Light Inspector Panel
+    ImGui::Begin("Light Inspector");
+    
+    auto& lights = m_Renderer->GetLights();
+    static int selectedLightIndex = -1;
+
+    if (ImGui::Button("Add Light")) {
+        m_Renderer->AddLight(Light(Vec3(0, 5, 0)));
+    }
+    
+    ImGui::Separator();
+
+    for (size_t i = 0; i < lights.size(); ++i) {
+        std::string label = "Light " + std::to_string(i);
+        if (ImGui::Selectable(label.c_str(), selectedLightIndex == static_cast<int>(i))) {
+            selectedLightIndex = static_cast<int>(i);
+        }
+    }
+
+    if (selectedLightIndex >= 0 && selectedLightIndex < static_cast<int>(lights.size())) {
+        ImGui::Separator();
+        Light& light = lights[selectedLightIndex];
+        
+        ImGui::Text("Light Properties");
+        ImGui::DragFloat3("Position", &light.position.x, 0.1f);
+        ImGui::ColorEdit3("Color", &light.color.x);
+        ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 10.0f);
+        
+        if (ImGui::Button("Delete Light")) {
+            m_Renderer->RemoveLight(selectedLightIndex);
+            selectedLightIndex = -1;
+        }
+    }
+
+    ImGui::End();
 }

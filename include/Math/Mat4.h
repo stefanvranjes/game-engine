@@ -112,6 +112,21 @@ public:
         return result;
     }
 
+    static Mat4 Orthographic(float left, float right, float bottom, float top, float near, float far) {
+        Mat4 result;
+        std::memset(result.m, 0, sizeof(result.m));
+        
+        result.m[0] = 2.0f / (right - left);
+        result.m[5] = 2.0f / (top - bottom);
+        result.m[10] = -2.0f / (far - near);
+        result.m[12] = -(right + left) / (right - left);
+        result.m[13] = -(top + bottom) / (top - bottom);
+        result.m[14] = -(far + near) / (far - near);
+        result.m[15] = 1.0f;
+        
+        return result;
+    }
+
     static Mat4 LookAt(const Vec3& eye, const Vec3& target, const Vec3& up) {
         Vec3 zAxis = (eye - target).Normalized();
         Vec3 xAxis = up.Cross(zAxis).Normalized();

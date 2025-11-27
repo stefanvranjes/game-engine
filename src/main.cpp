@@ -2,7 +2,9 @@
 
 int main() {
     Application app;
-    app.Run();
+    if (app.Init()) {
+        app.Run();
+    }
     return 0;
 }
 

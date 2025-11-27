@@ -20,6 +20,16 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(glfw)
 
+# ImGui sources
+set(IMGUI_SOURCES
+    src/imgui/imgui.cpp
+    src/imgui/imgui_draw.cpp
+    src/imgui/imgui_tables.cpp
+    src/imgui/imgui_widgets.cpp
+    src/imgui/imgui_impl_glfw.cpp
+    src/imgui/imgui_impl_opengl3.cpp
+)
+
 add_executable(GameEngine 
     src/main.cpp
     src/Window.cpp
@@ -32,12 +42,9 @@ add_executable(GameEngine
     src/Text.cpp
     src/GLExtensions.cpp
     src/ImGuiManager.cpp
-    src/imgui/imgui.cpp
-    src/imgui/imgui_draw.cpp
-    src/imgui/imgui_tables.cpp
-    src/imgui/imgui_widgets.cpp
-    src/imgui/imgui_impl_glfw.cpp
-    src/imgui/imgui_impl_opengl3.cpp
+    src/Skybox.cpp
+    src/ShadowMap.cpp
+    ${IMGUI_SOURCES}
 )
 
 target_include_directories(GameEngine PUBLIC include include/imgui)
