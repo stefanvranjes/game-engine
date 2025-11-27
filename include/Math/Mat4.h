@@ -32,6 +32,21 @@ public:
         return result;
     }
 
+    // Matrix-Vector multiplication (assuming w=1)
+    Vec3 operator*(const Vec3& v) const {
+        float x = m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12];
+        float y = m[1] * v.x + m[5] * v.y + m[9] * v.z + m[13];
+        float z = m[2] * v.x + m[6] * v.y + m[10] * v.z + m[14];
+        float w = m[3] * v.x + m[7] * v.y + m[11] * v.z + m[15];
+
+        if (w != 0.0f && w != 1.0f) {
+            x /= w;
+            y /= w;
+            z /= w;
+        }
+        return Vec3(x, y, z);
+    }
+
     // Static factory methods
     static Mat4 Translate(const Vec3& v) {
         Mat4 result;

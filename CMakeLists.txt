@@ -25,15 +25,22 @@ add_executable(GameEngine
     src/Window.cpp
     src/Application.cpp
     src/Shader.cpp
-    src/Renderer.cpp
-    src/GLExtensions.cpp
     src/Texture.cpp
-    src/Camera.cpp
     src/Mesh.cpp
+    src/Renderer.cpp
+    src/Camera.cpp
     src/Text.cpp
+    src/GLExtensions.cpp
+    src/ImGuiManager.cpp
+    src/imgui/imgui.cpp
+    src/imgui/imgui_draw.cpp
+    src/imgui/imgui_tables.cpp
+    src/imgui/imgui_widgets.cpp
+    src/imgui/imgui_impl_glfw.cpp
+    src/imgui/imgui_impl_opengl3.cpp
 )
 
-target_include_directories(GameEngine PUBLIC include)
+target_include_directories(GameEngine PUBLIC include include/imgui)
 
 target_link_libraries(GameEngine PRIVATE glfw opengl32)
 
@@ -46,4 +53,3 @@ add_custom_command(TARGET GameEngine POST_BUILD
     ${CMAKE_SOURCE_DIR}/shaders
     $<TARGET_FILE_DIR:GameEngine>/shaders
 )
-

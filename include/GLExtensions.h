@@ -9,12 +9,16 @@
 #define GL_ARRAY_BUFFER 0x8892
 #define GL_ELEMENT_ARRAY_BUFFER 0x8893
 #define GL_STATIC_DRAW 0x88E4
+#define GL_DYNAMIC_DRAW 0x88E8
 #define GL_FRAGMENT_SHADER 0x8B30
 #define GL_VERTEX_SHADER 0x8B31
 #define GL_COMPILE_STATUS 0x8B81
 #define GL_LINK_STATUS 0x8B82
 #define GL_DEPTH_TEST 0x0B71
 #define GL_DEPTH_BUFFER_BIT 0x00000100
+#define GL_BLEND 0x0BE2
+#define GL_SRC_ALPHA 0x0302
+#define GL_ONE_MINUS_SRC_ALPHA 0x0303
 #define GL_TEXTURE0 0x84C0
 #define GL_TEXTURE_2D 0x0DE1
 #define GL_TEXTURE_WRAP_S 0x2802
@@ -64,6 +68,7 @@ typedef void (APIENTRYP PFNGLDELETEVERTEXARRAYSPROC)(GLsizei n, const GLuint *ar
 typedef void (APIENTRYP PFNGLGENBUFFERSPROC)(GLsizei n, GLuint *buffers);
 typedef void (APIENTRYP PFNGLBINDBUFFERPROC)(GLenum target, GLuint buffer);
 typedef void (APIENTRYP PFNGLBUFFERDATAPROC)(GLenum target, GLsizeiptr size, const void *data, GLenum usage);
+typedef void (APIENTRYP PFNGLBUFFERSUBDATAPROC)(GLenum target, GLintptr offset, GLsizeiptr size, const void *data);
 typedef void (APIENTRYP PFNGLDELETEBUFFERSPROC)(GLsizei n, const GLuint *buffers);
 typedef void (APIENTRYP PFNGLVERTEXATTRIBPOINTERPROC)(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer);
 typedef void (APIENTRYP PFNGLENABLEVERTEXATTRIBARRAYPROC)(GLuint index);
@@ -96,6 +101,7 @@ extern PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays;
 extern PFNGLGENBUFFERSPROC glGenBuffers;
 extern PFNGLBINDBUFFERPROC glBindBuffer;
 extern PFNGLBUFFERDATAPROC glBufferData;
+extern PFNGLBUFFERSUBDATAPROC glBufferSubData;
 extern PFNGLDELETEBUFFERSPROC glDeleteBuffers;
 extern PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer;
 extern PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
@@ -103,7 +109,5 @@ extern PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray;
 extern PFNGLGENERATEMIPMAPPROC glGenerateMipmap;
 extern PFNGLACTIVETEXTUREPROC glActiveTexture;
 
-
 // Function to load OpenGL extensions
 bool LoadGLExtensions();
-

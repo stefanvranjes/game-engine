@@ -3,6 +3,8 @@
 #include "GLExtensions.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <fstream>
+#include <sstream>
 
 Renderer::Renderer() : m_Camera(nullptr) {
 }
@@ -35,6 +37,116 @@ void Renderer::SetupScene() {
     m_Transforms.push_back(Transform(Vec3(0, 2, 0), Vec3(0, 0, 0), Vec3(2, 2, 2)));
 
     std::cout << "Scene setup complete with " << m_Meshes.size() << " objects" << std::endl;
+}
+
+bool Renderer::CheckCollision(const AABB& bounds) {
+    for (size_t i = 0; i < m_Meshes.size(); ++i) {
+        const AABB& localBounds = m_Meshes[i].GetBounds();
+        Mat4 model = m_Transforms[i].GetModelMatrix();
+
+        // Transform all 8 corners of the AABB
+        Vec3 corners[8];
+        corners[0] = model * Vec3(localBounds.min.x, localBounds.min.y, localBounds.min.z);
+        corners[1] = model * Vec3(localBounds.max.x, localBounds.min.y, localBounds.min.z);
+        corners[2] = model * Vec3(localBounds.min.x, localBounds.max.y, localBounds.min.z);
+        corners[3] = model * Vec3(localBounds.min.x, localBounds.min.y, localBounds.max.z);
+        corners[4] = model * Vec3(localBounds.max.x, localBounds.max.y, localBounds.min.z);
+        corners[5] = model * Vec3(localBounds.max.x, localBounds.min.y, localBounds.max.z);
+        corners[6] = model * Vec3(localBounds.min.x, localBounds.max.y, localBounds.max.z);
+        corners[7] = model * Vec3(localBounds.max.x, localBounds.max.y, localBounds.max.z);
+
+        // Calculate new world AABB
+        Vec3 minBounds = corners[0];
+        Vec3 maxBounds = corners[0];
+
+        for (int j = 1; j < 8; ++j) {
+            if (corners[j].x < minBounds.x) minBounds.x = corners[j].x;
+            if (corners[j].y < minBounds.y) minBounds.y = corners[j].y;
+            if (corners[j].z < minBounds.z) minBounds.z = corners[j].z;
+
+            if (corners[j].x > maxBounds.x) maxBounds.x = corners[j].x;
+            if (corners[j].y > maxBounds.y) maxBounds.y = corners[j].y;
+            if (corners[j].z > maxBounds.z) maxBounds.z = corners[j].z;
+        }
+
+        AABB worldBounds(minBounds, maxBounds);
+        if (bounds.Intersects(worldBounds)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void Renderer::SaveScene(const std::string& filename) {
+    std::ofstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open scene file for saving: " << filename << std::endl;
+        return;
+    }
+
+    for (size_t i = 0; i < m_Meshes.size(); ++i) {
+        const Transform& t = m_Transforms[i];
+        file << m_Meshes[i].GetSource() << " "
+             << t.position.x << " " << t.position.y << " " << t.position.z << " "
+             << t.rotation.x << " " << t.rotation.y << " " << t.rotation.z << " "
+             << t.scale.x << " " << t.scale.y << " " << t.scale.z << "\n";
+    }
+    
+    std::cout << "Scene saved to " << filename << std::endl;
+}
+
+void Renderer::LoadScene(const std::string& filename) {
+    std::ifstream file(filename);
+    if (!file.is_open()) {
+        std::cerr << "Failed to open scene file for loading: " << filename << std::endl;
+        return;
+    }
+
+    // Clear current scene
+    m_Meshes.clear();
+    m_Transforms.clear();
+
+    std::string line;
+    while (std::getline(file, line)) {
+        std::stringstream ss(line);
+        std::string source;
+        Vec3 pos, rot, scale;
+
+        ss >> source 
+           >> pos.x >> pos.y >> pos.z 
+           >> rot.x >> rot.y >> rot.z 
+           >> scale.x >> scale.y >> scale.z;
+
+        if (source == "cube") {
+            m_Meshes.push_back(Mesh::CreateCube());
+        } else {
+            m_Meshes.push_back(Mesh::LoadFromOBJ(source));
+        }
+        
+        m_Transforms.push_back(Transform(pos, rot, scale));
+    }
+
+    std::cout << "Scene loaded from " << filename << " with " << m_Meshes.size() << " objects" << std::endl;
+}
+
+void Renderer::AddCube(const Transform& transform) {
+    m_Meshes.push_back(Mesh::CreateCube());
+    m_Transforms.push_back(transform);
+    std::cout << "Added cube at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
+}
+
+void Renderer::AddPyramid(const Transform& transform) {
+    m_Meshes.push_back(Mesh::LoadFromOBJ("assets/pyramid.obj"));
+    m_Transforms.push_back(transform);
+    std::cout << "Added pyramid at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
+}
+
+void Renderer::RemoveObject(size_t index) {
+    if (index < m_Meshes.size()) {
+        m_Meshes.erase(m_Meshes.begin() + index);
+        m_Transforms.erase(m_Transforms.begin() + index);
+        std::cout << "Removed object at index " << index << std::endl;
+    }
 }
 
 bool Renderer::Init() {

@@ -27,6 +27,7 @@ PFNGLDELETEVERTEXARRAYSPROC glDeleteVertexArrays = nullptr;
 PFNGLGENBUFFERSPROC glGenBuffers = nullptr;
 PFNGLBINDBUFFERPROC glBindBuffer = nullptr;
 PFNGLBUFFERDATAPROC glBufferData = nullptr;
+PFNGLBUFFERSUBDATAPROC glBufferSubData = nullptr;
 PFNGLDELETEBUFFERSPROC glDeleteBuffers = nullptr;
 PFNGLVERTEXATTRIBPOINTERPROC glVertexAttribPointer = nullptr;
 PFNGLENABLEVERTEXATTRIBARRAYPROC glEnableVertexAttribArray = nullptr;
@@ -59,6 +60,7 @@ bool LoadGLExtensions() {
     glGenBuffers = (PFNGLGENBUFFERSPROC)wglGetProcAddress("glGenBuffers");
     glBindBuffer = (PFNGLBINDBUFFERPROC)wglGetProcAddress("glBindBuffer");
     glBufferData = (PFNGLBUFFERDATAPROC)wglGetProcAddress("glBufferData");
+    glBufferSubData = (PFNGLBUFFERSUBDATAPROC)wglGetProcAddress("glBufferSubData");
     glDeleteBuffers = (PFNGLDELETEBUFFERSPROC)wglGetProcAddress("glDeleteBuffers");
     glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)wglGetProcAddress("glVertexAttribPointer");
     glEnableVertexAttribArray = (PFNGLENABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glEnableVertexAttribArray");
@@ -72,7 +74,7 @@ bool LoadGLExtensions() {
         !glUseProgram || !glGetUniformLocation || !glUniform1i || !glUniform1f ||
         !glUniform3f || !glUniform4f || !glUniformMatrix4fv || !glGenVertexArrays ||
         !glBindVertexArray || !glDeleteVertexArrays || !glGenBuffers || !glBindBuffer ||
-        !glBufferData || !glDeleteBuffers || !glVertexAttribPointer || !glEnableVertexAttribArray ||
+        !glBufferData || !glBufferSubData || !glDeleteBuffers || !glVertexAttribPointer || !glEnableVertexAttribArray ||
         !glGenerateMipmap || !glActiveTexture) {
         std::cerr << "Failed to load OpenGL extensions" << std::endl;
         return false;

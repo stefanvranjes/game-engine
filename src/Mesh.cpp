@@ -8,8 +8,8 @@
 #include "Math/Vec3.h"
 #include "Math/Vec2.h"
 
-Mesh::Mesh(const std::vector<float>& vertices, const std::vector<unsigned int>& indices)
-    : m_VAO(0), m_VBO(0), m_EBO(0), m_IndexCount(0)
+Mesh::Mesh(const std::vector<float>& vertices, const std::vector<unsigned int>& indices, const std::string& source)
+    : m_VAO(0), m_VBO(0), m_EBO(0), m_IndexCount(0), m_Source(source)
 {
     SetupMesh(vertices, indices);
 }
@@ -26,6 +26,8 @@ Mesh::Mesh(Mesh&& other) noexcept
     , m_VBO(other.m_VBO)
     , m_EBO(other.m_EBO)
     , m_IndexCount(other.m_IndexCount)
+    , m_Bounds(other.m_Bounds)
+    , m_Source(std::move(other.m_Source))
 {
     // Invalidate the source object
     other.m_VAO = 0;
@@ -47,6 +49,8 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept {
         m_VBO = other.m_VBO;
         m_EBO = other.m_EBO;
         m_IndexCount = other.m_IndexCount;
+        m_Bounds = other.m_Bounds;
+        m_Source = std::move(other.m_Source);
 
         // Invalidate source
         other.m_VAO = 0;
@@ -63,6 +67,27 @@ void Mesh::SetupMesh(const std::vector<float>& vertices, const std::vector<unsig
     glGenVertexArrays(1, &m_VAO);
     glGenBuffers(1, &m_VBO);
     glGenBuffers(1, &m_EBO);
+
+    // Calculate AABB bounds
+    if (!vertices.empty()) {
+        Vec3 minBounds(vertices[0], vertices[1], vertices[2]);
+        Vec3 maxBounds(vertices[0], vertices[1], vertices[2]);
+
+        for (size_t i = 0; i < vertices.size(); i += 8) {
+            float x = vertices[i];
+            float y = vertices[i + 1];
+            float z = vertices[i + 2];
+
+            if (x < minBounds.x) minBounds.x = x;
+            if (y < minBounds.y) minBounds.y = y;
+            if (z < minBounds.z) minBounds.z = z;
+
+            if (x > maxBounds.x) maxBounds.x = x;
+            if (y > maxBounds.y) maxBounds.y = y;
+            if (z > maxBounds.z) maxBounds.z = z;
+        }
+        m_Bounds = AABB(minBounds, maxBounds);
+    }
 
     glBindVertexArray(m_VAO);
 
@@ -145,7 +170,7 @@ Mesh Mesh::CreateCube() {
         20, 21, 22,  22, 23, 20   // Bottom
     };
 
-    return Mesh(vertices, indices);
+    return Mesh(vertices, indices, "cube");
 }
 
 Mesh Mesh::LoadFromOBJ(const std::string& filename) {
@@ -233,5 +258,5 @@ Mesh Mesh::LoadFromOBJ(const std::string& filename) {
     }
 
     std::cout << "Loaded OBJ: " << filename << " with " << vertices.size() / 8 << " vertices" << std::endl;
-    return Mesh(vertices, indices);
+    return Mesh(vertices, indices, filename);
 }
