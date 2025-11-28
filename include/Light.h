@@ -25,6 +25,8 @@ struct Light {
     float outerCutOff;
     
     bool castsShadows;
+    float range;
+    float shadowSoftness;
 
     Light(Vec3 pos = Vec3(0,0,0), Vec3 col = Vec3(1,1,1), float inten = 1.0f, LightType t = LightType::Point)
         : type(t)
@@ -37,6 +39,8 @@ struct Light {
         , quadratic(0.032f)
         , cutOff(12.5f)
         , outerCutOff(17.5f)
-        , castsShadows(false) 
+        , castsShadows(false)
+        , range(20.0f)
+        , shadowSoftness(1.0f)
     {}
 };

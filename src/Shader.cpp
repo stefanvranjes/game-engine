@@ -58,40 +58,65 @@ bool Shader::LinkProgram() {
     return true;
 }
 
-bool Shader::LoadFromFiles(const std::string& vertexPath, const std::string& fragmentPath) {
+bool Shader::LoadFromFiles(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath) {
     // Read shader source code
     std::string vertexCode = ReadFile(vertexPath);
     std::string fragmentCode = ReadFile(fragmentPath);
+    std::string geometryCode;
+    
+    if (!geometryPath.empty()) {
+        geometryCode = ReadFile(geometryPath);
+    }
 
-    if (vertexCode.empty() || fragmentCode.empty()) {
+    if (vertexCode.empty() || fragmentCode.empty() || (!geometryPath.empty() && geometryCode.empty())) {
         return false;
     }
 
     // Create shaders
     unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
     unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    unsigned int geometryShader = 0;
+    
+    if (!geometryPath.empty()) {
+        geometryShader = glCreateShader(GL_GEOMETRY_SHADER);
+    }
 
     // Compile shaders
     if (!CompileShader(vertexShader, vertexCode, "VERTEX")) {
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
+        if (geometryShader) glDeleteShader(geometryShader);
         return false;
     }
 
     if (!CompileShader(fragmentShader, fragmentCode, "FRAGMENT")) {
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
+        if (geometryShader) glDeleteShader(geometryShader);
         return false;
+    }
+    
+    if (!geometryPath.empty()) {
+        if (!CompileShader(geometryShader, geometryCode, "GEOMETRY")) {
+            glDeleteShader(vertexShader);
+            glDeleteShader(fragmentShader);
+            glDeleteShader(geometryShader);
+            return false;
+        }
     }
 
     // Create program and link
     m_ProgramID = glCreateProgram();
     glAttachShader(m_ProgramID, vertexShader);
     glAttachShader(m_ProgramID, fragmentShader);
+    if (!geometryPath.empty()) {
+        glAttachShader(m_ProgramID, geometryShader);
+    }
 
     if (!LinkProgram()) {
         glDeleteShader(vertexShader);
         glDeleteShader(fragmentShader);
+        if (geometryShader) glDeleteShader(geometryShader);
         glDeleteProgram(m_ProgramID);
         m_ProgramID = 0;
         return false;
@@ -100,6 +125,7 @@ bool Shader::LoadFromFiles(const std::string& vertexPath, const std::string& fra
     // Clean up shaders (they're linked into the program now)
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);
+    if (geometryShader) glDeleteShader(geometryShader);
 
     std::cout << "Shader program created successfully" << std::endl;
     return true;

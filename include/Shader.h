@@ -8,7 +8,7 @@ public:
     Shader();
     ~Shader();
 
-    bool LoadFromFiles(const std::string& vertexPath, const std::string& fragmentPath);
+    bool LoadFromFiles(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath = "");
     void Use() const;
     
     // Uniform setters

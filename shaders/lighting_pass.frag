@@ -21,6 +21,9 @@ struct Light {
     
     float cutOff;
     float outerCutOff;
+    
+    float range;
+    float shadowSoftness;
 };
 
 #define MAX_LIGHTS 32
@@ -29,7 +32,42 @@ uniform int u_LightCount;
 uniform vec3 u_ViewPos;
 uniform mat4 u_LightSpaceMatrix;
 
-float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir)
+uniform samplerCube pointShadowMaps[4]; // Support up to 4 point lights with shadows
+
+// Array of offset direction for sampling
+vec3 gridSamplingDisk[20] = vec3[]
+(
+   vec3(1, 1,  1), vec3( 1, -1,  1), vec3(-1, -1,  1), vec3(-1, 1,  1), 
+   vec3(1, 1, -1), vec3( 1, -1, -1), vec3(-1, -1, -1), vec3(-1, 1, -1),
+   vec3(1, 1,  0), vec3( 1, -1,  0), vec3(-1, -1,  0), vec3(-1, 1,  0),
+   vec3(1, 0,  1), vec3(-1,  0,  1), vec3( 1,  0, -1), vec3(-1, 0, -1),
+   vec3(0, 1,  1), vec3( 0, -1,  1), vec3( 0, -1, -1), vec3( 0, 1, -1)
+);
+
+float PointShadowCalculation(vec3 fragPos, vec3 lightPos, float far_plane, samplerCube shadowMap, float softness)
+{
+    vec3 fragToLight = fragPos - lightPos;
+    float currentDepth = length(fragToLight);
+    
+    float shadow = 0.0;
+    float bias = 0.15;
+    int samples = 20;
+    float viewDistance = length(u_ViewPos - fragPos);
+    float diskRadius = (1.0 + (viewDistance / far_plane)) / 25.0 * softness;
+    
+    for(int i = 0; i < samples; ++i)
+    {
+        float closestDepth = texture(shadowMap, fragToLight + gridSamplingDisk[i] * diskRadius).r;
+        closestDepth *= far_plane;   // undo mapping [0;1]
+        if(currentDepth - bias > closestDepth)
+            shadow += 1.0;
+    }
+    shadow /= float(samples);
+        
+    return shadow;
+}
+
+float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir, float softness)
 {
     vec4 fragPosLightSpace = u_LightSpaceMatrix * vec4(fragPos, 1.0);
     
@@ -46,15 +84,20 @@ float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir)
     // PCF
     float shadow = 0.0;
     vec2 texelSize = 1.0 / textureSize(shadowMap, 0);
-    for(int x = -1; x <= 1; ++x)
+    
+    // Adjust kernel size based on softness
+    int kernelSize = int(softness);
+    if (kernelSize < 1) kernelSize = 1;
+    
+    for(int x = -kernelSize; x <= kernelSize; ++x)
     {
-        for(int y = -1; y <= 1; ++y)
+        for(int y = -kernelSize; y <= kernelSize; ++y)
         {
             float pcfDepth = texture(shadowMap, projCoords.xy + vec2(x, y) * texelSize).r; 
             shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
         }    
     }
-    shadow /= 9.0;
+    shadow /= float((2 * kernelSize + 1) * (2 * kernelSize + 1));
     
     // Keep the shadow at 0.0 when outside the far_plane region
     if(projCoords.z > 1.0)
@@ -96,6 +139,11 @@ vec3 CalcPointLight(Light light, vec3 fragPos, vec3 normal, vec3 viewDir, vec3 a
     // Attenuation
     float distance = length(light.position - fragPos);
     float attenuation = 1.0 / (light.constant + light.linear * distance + light.quadratic * (distance * distance));    
+    
+    // Range cutoff
+    if (light.range > 0.0) {
+        attenuation *= smoothstep(light.range, light.range * 0.75, distance);
+    }
     
     // Combine
     vec3 ambient = 0.1 * light.color * light.intensity * albedo;
@@ -152,23 +200,36 @@ void main()
     vec3 viewDir = normalize(u_ViewPos - FragPos);
     vec3 result = vec3(0.0);
     
+    int pointShadowIndex = 0;
+    
     for(int i = 0; i < u_LightCount && i < MAX_LIGHTS; ++i) {
-        // Calculate shadow (only for first light for now)
         float shadow = 0.0;
-        if(i == 0) {
-            // Only calculate shadow if it's a directional light or if we implement shadow maps for others
-            // For now, assume light 0 is the shadow caster
-             vec3 lightDir = normalize(u_Lights[i].position - FragPos); // Approximate for point/spot
-             if (u_Lights[i].type == 0) lightDir = normalize(-u_Lights[i].direction);
-             
-             shadow = ShadowCalculation(FragPos, Normal, lightDir);
-        }
         
-        if (u_Lights[i].type == 0) {
+        if (u_Lights[i].type == 0) { // Directional
+            // Only calculate directional shadow for first light (or if we had multiple shadow maps)
+            if(i == 0) {
+                 vec3 lightDir = normalize(-u_Lights[i].direction);
+                 shadow = ShadowCalculation(FragPos, Normal, lightDir, u_Lights[i].shadowSoftness);
+            }
             result += CalcDirLight(u_Lights[i], Normal, viewDir, Albedo, Specular, shadow);
-        } else if (u_Lights[i].type == 1) {
-             result += CalcPointLight(u_Lights[i], FragPos, Normal, viewDir, Albedo, Specular, shadow);
-        } else if (u_Lights[i].type == 2) {
+        } else if (u_Lights[i].type == 1) { // Point
+            // Calculate point shadow if enabled and we have slots
+            if (pointShadowIndex < 4) { // Assuming first few point lights cast shadows
+                 // Use static indexing to avoid GLSL 330 error
+                 if (pointShadowIndex == 0)
+                    shadow = PointShadowCalculation(FragPos, u_Lights[i].position, 25.0, pointShadowMaps[0], u_Lights[i].shadowSoftness);
+                 else if (pointShadowIndex == 1)
+                    shadow = PointShadowCalculation(FragPos, u_Lights[i].position, 25.0, pointShadowMaps[1], u_Lights[i].shadowSoftness);
+                 else if (pointShadowIndex == 2)
+                    shadow = PointShadowCalculation(FragPos, u_Lights[i].position, 25.0, pointShadowMaps[2], u_Lights[i].shadowSoftness);
+                 else if (pointShadowIndex == 3)
+                    shadow = PointShadowCalculation(FragPos, u_Lights[i].position, 25.0, pointShadowMaps[3], u_Lights[i].shadowSoftness);
+                 
+                 pointShadowIndex++;
+            }
+            result += CalcPointLight(u_Lights[i], FragPos, Normal, viewDir, Albedo, Specular, shadow);
+        } else if (u_Lights[i].type == 2) { // Spot
+             // Spot lights could use the same shadow map technique as directional lights
              result += CalcSpotLight(u_Lights[i], FragPos, Normal, viewDir, Albedo, Specular, shadow);
         }
     }

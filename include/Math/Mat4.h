@@ -103,7 +103,7 @@ public:
         return result;
     }
 
-    static Mat4 Perspective(float fov, float aspect, float near, float far) {
+    static Mat4 Perspective(float fov, float aspect, float nearPlane, float farPlane) {
         Mat4 result;
         std::memset(result.m, 0, sizeof(result.m));
         
@@ -111,23 +111,23 @@ public:
         
         result.m[0] = 1.0f / (aspect * tanHalfFov);
         result.m[5] = 1.0f / tanHalfFov;
-        result.m[10] = -(far + near) / (far - near);
+        result.m[10] = -(farPlane + nearPlane) / (farPlane - nearPlane);
         result.m[11] = -1.0f;
-        result.m[14] = -(2.0f * far * near) / (far - near);
+        result.m[14] = -(2.0f * farPlane * nearPlane) / (farPlane - nearPlane);
         
         return result;
     }
 
-    static Mat4 Orthographic(float left, float right, float bottom, float top, float near, float far) {
+    static Mat4 Orthographic(float left, float right, float bottom, float top, float nearPlane, float farPlane) {
         Mat4 result;
         std::memset(result.m, 0, sizeof(result.m));
         
         result.m[0] = 2.0f / (right - left);
         result.m[5] = 2.0f / (top - bottom);
-        result.m[10] = -2.0f / (far - near);
+        result.m[10] = -2.0f / (farPlane - nearPlane);
         result.m[12] = -(right + left) / (right - left);
         result.m[13] = -(top + bottom) / (top - bottom);
-        result.m[14] = -(far + near) / (far - near);
+        result.m[14] = -(farPlane + nearPlane) / (farPlane - nearPlane);
         result.m[15] = 1.0f;
         
         return result;

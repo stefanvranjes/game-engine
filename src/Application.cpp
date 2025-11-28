@@ -268,6 +268,15 @@ void Application::RenderEditorUI() {
         if (ImGui::Combo("Type", &currentType, lightTypes, IM_ARRAYSIZE(lightTypes))) {
             light.type = static_cast<LightType>(currentType);
         }
+
+        ImGui::Checkbox("Cast Shadows", &light.castsShadows);
+        if (light.castsShadows) {
+            ImGui::SliderFloat("Shadow Softness", &light.shadowSoftness, 1.0f, 5.0f);
+        }
+
+        if (light.type != LightType::Directional) {
+            ImGui::DragFloat("Range", &light.range, 0.5f, 1.0f, 100.0f);
+        }
         
         ImGui::DragFloat3("Position", &light.position.x, 0.1f);
         if (light.type != LightType::Point) {
@@ -278,7 +287,7 @@ void Application::RenderEditorUI() {
         ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 10.0f);
         
         if (light.type != LightType::Directional) {
-            ImGui::Text("Attenuation");
+            ImGui::Text("Attenuation (Advanced)");
             ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 1.0f);
             ImGui::DragFloat("Linear", &light.linear, 0.001f, 0.0f, 1.0f);
             ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);

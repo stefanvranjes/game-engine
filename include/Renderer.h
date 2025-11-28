@@ -13,6 +13,7 @@
 #include "GameObject.h"
 #include "GBuffer.h"
 #include "PostProcessing.h"
+#include "CubemapShadow.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -65,6 +66,8 @@ private:
     Camera* m_Camera;
     std::unique_ptr<Skybox> m_Skybox;
     std::unique_ptr<ShadowMap> m_ShadowMap;
+    std::unique_ptr<Shader> m_PointShadowShader;
+    std::vector<std::unique_ptr<CubemapShadow>> m_PointShadows;
     std::unique_ptr<TextureManager> m_TextureManager;
     std::unique_ptr<GBuffer> m_GBuffer;
     std::unique_ptr<PostProcessing> m_PostProcessing;

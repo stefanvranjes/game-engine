@@ -201,6 +201,23 @@ bool Renderer::Init() {
         return false;
     }
 
+    // Initialize Point Light Shadows
+    m_PointShadowShader = std::make_unique<Shader>();
+    if (!m_PointShadowShader->LoadFromFiles("shaders/point_shadow.vert", "shaders/point_shadow.frag", "shaders/point_shadow.geom")) {
+        std::cerr << "Failed to load point shadow shaders" << std::endl;
+        return false;
+    }
+
+    // Create 4 cubemap shadows
+    for (int i = 0; i < 4; ++i) {
+        auto shadow = std::make_unique<CubemapShadow>();
+        if (!shadow->Init(1024, 1024)) {
+            std::cerr << "Failed to initialize cubemap shadow " << i << std::endl;
+            return false;
+        }
+        m_PointShadows.push_back(std::move(shadow));
+    }
+
     // Initialize GBuffer for deferred rendering
     int width, height;
     glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
@@ -265,6 +282,36 @@ void Renderer::Render() {
         m_Root->Update(Mat4::Identity());
     }
 
+    // ===== PASS 0: Render point light shadows =====
+    m_PointShadowShader->Use();
+    int shadowIndex = 0;
+    for (const auto& light : m_Lights) {
+        if (light.type == LightType::Point && light.castsShadows && shadowIndex < m_PointShadows.size()) {
+            std::vector<Mat4> shadowTransforms;
+            float farPlane;
+            m_PointShadows[shadowIndex]->CalculateViewMatrices(light.position, shadowTransforms, farPlane);
+            
+            for (int i = 0; i < 6; ++i) {
+                m_PointShadowShader->SetMat4("shadowMatrices[" + std::to_string(i) + "]", shadowTransforms[i].m);
+            }
+            m_PointShadowShader->SetFloat("far_plane", farPlane);
+            m_PointShadowShader->SetVec3("lightPos", light.position.x, light.position.y, light.position.z);
+            m_PointShadowShader->SetMat4("u_Model", Mat4::Identity().m); // Simplified, should be per object
+            
+            m_PointShadows[shadowIndex]->BindForWriting();
+            
+            // Draw scene for shadow map
+            if (m_Root) {
+                // Note: We need a simpler Draw method that just sends model matrices
+                // For now, reusing standard Draw but ignoring view/proj since shader doesn't use them
+                m_Root->Draw(m_PointShadowShader.get(), Mat4::Identity(), Mat4::Identity());
+            }
+            
+            shadowIndex++;
+        }
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     // Calculate light space matrix for shadow mapping (first light only)
     Mat4 lightSpaceMatrix;
     if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
@@ -324,6 +371,16 @@ void Renderer::Render() {
     m_LightingShader->SetInt("shadowMap", 3);
     m_LightingShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
 
+    // Bind point shadow maps
+    int pointShadowIndex = 0;
+    for (size_t i = 0; i < m_Lights.size(); ++i) {
+        if (m_Lights[i].type == LightType::Point && m_Lights[i].castsShadows && pointShadowIndex < m_PointShadows.size()) {
+            m_PointShadows[pointShadowIndex]->BindForReading(4 + pointShadowIndex);
+            m_LightingShader->SetInt("pointShadowMaps[" + std::to_string(pointShadowIndex) + "]", 4 + pointShadowIndex);
+            pointShadowIndex++;
+        }
+    }
+
     // Light setup
     int lightCount = (std::min)(static_cast<int>(m_Lights.size()), MAX_LIGHTS);
     m_LightingShader->SetInt("u_LightCount", lightCount);
@@ -342,6 +399,9 @@ void Renderer::Render() {
         
         m_LightingShader->SetFloat(base + ".cutOff", std::cos(m_Lights[i].cutOff * 3.14159f / 180.0f));
         m_LightingShader->SetFloat(base + ".outerCutOff", std::cos(m_Lights[i].outerCutOff * 3.14159f / 180.0f));
+        
+        m_LightingShader->SetFloat(base + ".range", m_Lights[i].range);
+        m_LightingShader->SetFloat(base + ".shadowSoftness", m_Lights[i].shadowSoftness);
     }
     
     Vec3 camPos = m_Camera->GetPosition();
