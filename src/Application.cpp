@@ -297,4 +297,51 @@ void Application::RenderEditorUI() {
     }
 
     ImGui::End();
+    
+    // Post-Processing Panel
+    ImGui::Begin("Post-Processing");
+    
+    auto postProcessing = m_Renderer->GetPostProcessing();
+    if (postProcessing) {
+        // Bloom settings
+        ImGui::Text("Bloom");
+        bool bloomEnabled = postProcessing->IsBloomEnabled();
+        if (ImGui::Checkbox("Enable Bloom", &bloomEnabled)) {
+            postProcessing->SetBloomEnabled(bloomEnabled);
+        }
+        
+        if (bloomEnabled) {
+            float bloomIntensity = postProcessing->GetBloomIntensity();
+            if (ImGui::SliderFloat("Bloom Intensity", &bloomIntensity, 0.0f, 2.0f)) {
+                postProcessing->SetBloomIntensity(bloomIntensity);
+            }
+            
+            float bloomThreshold = postProcessing->GetBloomThreshold();
+            if (ImGui::SliderFloat("Bloom Threshold", &bloomThreshold, 0.0f, 5.0f)) {
+                postProcessing->SetBloomThreshold(bloomThreshold);
+            }
+        }
+        
+        ImGui::Separator();
+        
+        // Tone mapping settings
+        ImGui::Text("Tone Mapping");
+        const char* toneMappingModes[] = { "Reinhard", "ACES Filmic" };
+        int toneMappingMode = postProcessing->GetToneMappingMode();
+        if (ImGui::Combo("Mode", &toneMappingMode, toneMappingModes, IM_ARRAYSIZE(toneMappingModes))) {
+            postProcessing->SetToneMappingMode(toneMappingMode);
+        }
+        
+        float exposure = postProcessing->GetExposure();
+        if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f)) {
+            postProcessing->SetExposure(exposure);
+        }
+        
+        float gamma = postProcessing->GetGamma();
+        if (ImGui::SliderFloat("Gamma", &gamma, 1.8f, 2.4f)) {
+            postProcessing->SetGamma(gamma);
+        }
+    }
+    
+    ImGui::End();
 }

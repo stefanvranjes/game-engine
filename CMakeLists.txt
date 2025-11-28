@@ -48,6 +48,7 @@ add_executable(GameEngine
     src/GameObject.cpp
     src/Model.cpp
     src/GBuffer.cpp
+    src/PostProcessing.cpp
     ${IMGUI_SOURCES}
 )
 

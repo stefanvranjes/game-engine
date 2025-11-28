@@ -247,6 +247,13 @@ bool Renderer::Init() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glBindVertexArray(0);
 
+    // Initialize post-processing
+    m_PostProcessing = std::make_unique<PostProcessing>();
+    if (!m_PostProcessing->Init(width, height)) {
+        std::cerr << "Failed to initialize post-processing" << std::endl;
+        return false;
+    }
+
     return true;
 }
 
@@ -301,8 +308,8 @@ void Renderer::Render() {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ===== PASS 3: Lighting Pass - Render fullscreen quad with lighting =====
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // ===== PASS 3: Lighting Pass - Render to HDR framebuffer =====
+    m_PostProcessing->BeginHDR();
 
     m_LightingShader->Use();
 
@@ -318,7 +325,7 @@ void Renderer::Render() {
     m_LightingShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
 
     // Light setup
-    int lightCount = std::min(static_cast<int>(m_Lights.size()), MAX_LIGHTS);
+    int lightCount = (std::min)(static_cast<int>(m_Lights.size()), MAX_LIGHTS);
     m_LightingShader->SetInt("u_LightCount", lightCount);
     
     for (size_t i = 0; i < lightCount; ++i) {
@@ -343,17 +350,19 @@ void Renderer::Render() {
     // Render fullscreen quad
     RenderQuad();
 
-    // ===== PASS 4: Forward Pass for Skybox =====
-    // Copy depth buffer from G-Buffer to default framebuffer
+    // ===== PASS 4: Forward Pass for Skybox (still in HDR) =====
+    // Copy depth buffer from G-Buffer to HDR framebuffer
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetPositionTexture());
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-    // Draw Skybox last
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // Will be handled by post-processing
+    
+    // Draw Skybox to HDR framebuffer
     if (m_Skybox) {
         m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
     }
+    
+    // ===== PASS 5: Post-Processing =====
+    // Apply bloom, tone mapping, and other effects
+    m_PostProcessing->ApplyEffects();
 }
 
 void Renderer::RenderQuad() {

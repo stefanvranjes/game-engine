@@ -12,6 +12,7 @@
 #include "TextureManager.h"
 #include "GameObject.h"
 #include "GBuffer.h"
+#include "PostProcessing.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -41,6 +42,7 @@ public:
     std::vector<Light>& GetLights() { return m_Lights; }
 
     TextureManager* GetTextureManager() { return m_TextureManager.get(); }
+    PostProcessing* GetPostProcessing() { return m_PostProcessing.get(); }
     
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
@@ -65,6 +67,7 @@ private:
     std::unique_ptr<ShadowMap> m_ShadowMap;
     std::unique_ptr<TextureManager> m_TextureManager;
     std::unique_ptr<GBuffer> m_GBuffer;
+    std::unique_ptr<PostProcessing> m_PostProcessing;
     
     unsigned int m_QuadVAO, m_QuadVBO;
     

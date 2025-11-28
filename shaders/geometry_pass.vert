@@ -17,5 +17,5 @@ void main()
     Normal = mat3(transpose(inverse(u_Model))) * aNormal;
     TexCoord = aTexCoord;
     
-    gl_Position = u_MVP;
+    gl_Position = u_MVP * vec4(aPos, 1.0);
 }
