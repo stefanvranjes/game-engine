@@ -11,6 +11,8 @@ struct Material {
     Vec3 specular;
     float shininess;
     std::shared_ptr<Texture> texture;
+    std::shared_ptr<Texture> specularMap;
+    std::shared_ptr<Texture> normalMap;
 
     Material() 
         : ambient(1.0f, 1.0f, 1.0f)
@@ -33,6 +35,22 @@ struct Material {
                 shader->SetInt("u_HasTexture", 1);
             } else {
                 shader->SetInt("u_HasTexture", 0);
+            }
+
+            if (specularMap) {
+                specularMap->Bind(1);
+                shader->SetInt("material.specularMap", 1);
+                shader->SetInt("u_HasSpecularMap", 1);
+            } else {
+                shader->SetInt("u_HasSpecularMap", 0);
+            }
+
+            if (normalMap) {
+                normalMap->Bind(3);
+                shader->SetInt("material.normalMap", 3);
+                shader->SetInt("u_HasNormalMap", 1);
+            } else {
+                shader->SetInt("u_HasNormalMap", 0);
             }
         }
     }

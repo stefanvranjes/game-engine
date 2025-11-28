@@ -45,6 +45,14 @@
 #define GL_FLOAT 0x1406
 #define GL_NONE 0
 #define GL_NEAREST 0x2600
+#define GL_COLOR_ATTACHMENT0 0x8CE0
+#define GL_COLOR_ATTACHMENT1 0x8CE1
+#define GL_COLOR_ATTACHMENT2 0x8CE2
+#define GL_TEXTURE1 0x84C1
+#define GL_TEXTURE2 0x84C2
+#define GL_RGB16F 0x881B
+#define GL_READ_FRAMEBUFFER 0x8CA8
+#define GL_DRAW_FRAMEBUFFER 0x8CA9
 
 // OpenGL 3.3 types
 typedef char GLchar;
@@ -94,6 +102,8 @@ typedef void (APIENTRYP PFNGLDRAWBUFFERPROC)(GLenum mode);
 typedef void (APIENTRYP PFNGLREADBUFFERPROC)(GLenum mode);
 typedef GLenum (APIENTRYP PFNGLCHECKFRAMEBUFFERSTATUSPROC)(GLenum target);
 typedef void (APIENTRYP PFNGLDELETEFRAMEBUFFERSPROC)(GLsizei n, const GLuint *framebuffers);
+typedef void (APIENTRYP PFNGLDRAWBUFFERSPROC)(GLsizei n, const GLenum *bufs);
+typedef void (APIENTRYP PFNGLBLITFRAMEBUFFERPROC)(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1, GLint dstX0, GLint dstY0, GLint dstX1, GLint dstY1, GLbitfield mask, GLenum filter);
 
 // OpenGL 3.3 function pointers
 extern PFNGLCREATESHADERPROC glCreateShader;
@@ -132,6 +142,8 @@ extern PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer;
 extern PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D;
 extern PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus;
 extern PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers;
+extern PFNGLDRAWBUFFERSPROC glDrawBuffers;
+extern PFNGLBLITFRAMEBUFFERPROC glBlitFramebuffer;
 
 // Function to load OpenGL extensions
 bool LoadGLExtensions();

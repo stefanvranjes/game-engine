@@ -7,112 +7,44 @@
 #include <fstream>
 #include <sstream>
 
-Renderer::Renderer() : m_Camera(nullptr) {
+Renderer::Renderer() 
+    : m_Camera(nullptr)
+{
+    m_TextureManager = std::make_unique<TextureManager>();
+    m_Root = std::make_shared<GameObject>("Root");
 }
 
 Renderer::~Renderer() {
     Shutdown();
 }
 
-void Renderer::SetupScene() {
-    // Create multiple cubes at different positions
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Meshes.push_back(Mesh::CreateCube());
-
-    // Create transforms for each cube
-    m_Transforms.push_back(Transform(Vec3(0, 0, 0), Vec3(0, 0, 0)));
-    m_Transforms.push_back(Transform(Vec3(2, 0, 0), Vec3(0, 45, 0)));
-    m_Transforms.push_back(Transform(Vec3(-2, 0, 0), Vec3(0, -45, 0)));
-    m_Transforms.push_back(Transform(Vec3(0, 2, 0), Vec3(45, 0, 0)));
-    m_Transforms.push_back(Transform(Vec3(0, -2, 0), Vec3(-45, 0, 0)));
-    m_Transforms.push_back(Transform(Vec3(1.5, 1.5, -1), Vec3(30, 30, 0)));
-    m_Transforms.push_back(Transform(Vec3(-1.5, -1.5, 1), Vec3(-30, -30, 0)));
-
-    // Create materials for each cube
-    for (int i = 0; i < 7; ++i) {
-        auto mat = std::make_shared<Material>();
-        // Vary colors slightly
-        if (i % 2 == 0) mat->diffuse = Vec3(1.0f, 0.5f, 0.5f); // Reddish
-        else if (i % 3 == 0) mat->diffuse = Vec3(0.5f, 1.0f, 0.5f); // Greenish
-        else mat->diffuse = Vec3(0.5f, 0.5f, 1.0f); // Blueish
-        
-        mat->texture = m_Texture; // Use default texture
-        m_Materials.push_back(mat);
-    }
-
-    // Load pyramid from OBJ
-    m_Meshes.push_back(Mesh::LoadFromOBJ("assets/pyramid.obj"));
-    m_Transforms.push_back(Transform(Vec3(0, 2, 0), Vec3(0, 0, 0), Vec3(2, 2, 2)));
-    
-    auto pyramidMat = std::make_shared<Material>();
-    pyramidMat->diffuse = Vec3(1.0f, 1.0f, 0.0f); // Yellow
-    pyramidMat->texture = m_Texture;
-    m_Materials.push_back(pyramidMat);
-
-    // Add initial lights
-    m_Lights.push_back(Light(Vec3(2.0f, 2.0f, 2.0f), Vec3(1.0f, 1.0f, 1.0f), 1.0f, true)); // White light with shadows
-    m_Lights.push_back(Light(Vec3(-2.0f, 2.0f, -2.0f), Vec3(1.0f, 0.0f, 0.0f), 1.0f, false)); // Red light
-    m_Lights.push_back(Light(Vec3(0.0f, 4.0f, 0.0f), Vec3(0.0f, 0.0f, 1.0f), 0.8f, false)); // Blue light
-
-    std::cout << "Scene setup complete with " << m_Meshes.size() << " objects and " << m_Lights.size() << " lights" << std::endl;
-}
-
 bool Renderer::CheckCollision(const AABB& bounds) {
-    for (size_t i = 0; i < m_Meshes.size(); ++i) {
-        const AABB& localBounds = m_Meshes[i].GetBounds();
-        Mat4 model = m_Transforms[i].GetModelMatrix();
-
-        // Transform all 8 corners of the AABB
-        Vec3 corners[8];
-        corners[0] = model * Vec3(localBounds.min.x, localBounds.min.y, localBounds.min.z);
-        corners[1] = model * Vec3(localBounds.max.x, localBounds.min.y, localBounds.min.z);
-        corners[2] = model * Vec3(localBounds.min.x, localBounds.max.y, localBounds.min.z);
-        corners[3] = model * Vec3(localBounds.min.x, localBounds.min.y, localBounds.max.z);
-        corners[4] = model * Vec3(localBounds.max.x, localBounds.max.y, localBounds.min.z);
-        corners[5] = model * Vec3(localBounds.max.x, localBounds.min.y, localBounds.max.z);
-        corners[6] = model * Vec3(localBounds.min.x, localBounds.max.y, localBounds.max.z);
-        corners[7] = model * Vec3(localBounds.max.x, localBounds.max.y, localBounds.max.z);
-
-        // Calculate new world AABB
-        Vec3 minBounds = corners[0];
-        Vec3 maxBounds = corners[0];
-
-        for (int j = 1; j < 8; ++j) {
-            if (corners[j].x < minBounds.x) minBounds.x = corners[j].x;
-            if (corners[j].y < minBounds.y) minBounds.y = corners[j].y;
-            if (corners[j].z < minBounds.z) minBounds.z = corners[j].z;
-
-            if (corners[j].x > maxBounds.x) maxBounds.x = corners[j].x;
-            if (corners[j].y > maxBounds.y) maxBounds.y = corners[j].y;
-            if (corners[j].z > maxBounds.z) maxBounds.z = corners[j].z;
-        }
-
-        AABB worldBounds(minBounds, maxBounds);
-        if (bounds.Intersects(worldBounds)) {
-            return true;
-        }
+    if (m_Root) {
+        return m_Root->CheckCollision(bounds);
     }
     return false;
 }
 
 void Renderer::SaveScene(const std::string& filename) {
+    // Simplified save: only saves direct children of root
     std::ofstream file(filename);
     if (!file.is_open()) {
         std::cerr << "Failed to open scene file for saving: " << filename << std::endl;
         return;
     }
 
-    for (size_t i = 0; i < m_Meshes.size(); ++i) {
-        const Transform& t = m_Transforms[i];
-        file << m_Meshes[i].GetSource() << " "
-             << t.position.x << " " << t.position.y << " " << t.position.z << " "
-             << t.rotation.x << " " << t.rotation.y << " " << t.rotation.z << " "
-             << t.scale.x << " " << t.scale.y << " " << t.scale.z << "\n";
+    if (m_Root) {
+        for (auto& child : m_Root->GetChildren()) {
+            // Determine type based on name or mesh (simplified)
+            std::string source = "cube";
+            if (child->GetName() == "Pyramid") source = "assets/pyramid.obj";
+            
+            const Transform& t = child->GetTransform();
+            file << source << " "
+                 << t.position.x << " " << t.position.y << " " << t.position.z << " "
+                 << t.rotation.x << " " << t.rotation.y << " " << t.rotation.z << " "
+                 << t.scale.x << " " << t.scale.y << " " << t.scale.z << "\n";
+        }
     }
     
     std::cout << "Scene saved to " << filename << std::endl;
@@ -126,10 +58,11 @@ void Renderer::LoadScene(const std::string& filename) {
     }
 
     // Clear current scene
-    m_Meshes.clear();
-    m_Transforms.clear();
-    m_Materials.clear();
-    // Keep lights for now, or clear if we save them too (future task)
+    if (m_Root) {
+        m_Root->GetChildren().clear();
+    } else {
+        m_Root = std::make_shared<GameObject>("Root");
+    }
 
     std::string line;
     while (std::getline(file, line)) {
@@ -142,55 +75,88 @@ void Renderer::LoadScene(const std::string& filename) {
            >> rot.x >> rot.y >> rot.z 
            >> scale.x >> scale.y >> scale.z;
 
+        auto obj = std::make_shared<GameObject>(source == "cube" ? "Cube" : "Pyramid");
         if (source == "cube") {
-            m_Meshes.push_back(Mesh::CreateCube());
+            obj->SetMesh(Mesh::CreateCube());
         } else {
-            m_Meshes.push_back(Mesh::LoadFromOBJ(source));
+            obj->SetMesh(Mesh::LoadFromOBJ(source));
         }
         
-        m_Transforms.push_back(Transform(pos, rot, scale));
+        obj->GetTransform() = Transform(pos, rot, scale);
         
         // Create default material for loaded object
         auto mat = std::make_shared<Material>();
         mat->texture = m_Texture;
-        m_Materials.push_back(mat);
+        mat->specularMap = m_Texture;
+        if (source != "cube") mat->diffuse = Vec3(1.0f, 1.0f, 0.0f); // Yellow for pyramid
+        obj->SetMaterial(mat);
+        
+        m_Root->AddChild(obj);
     }
 
-    std::cout << "Scene loaded from " << filename << " with " << m_Meshes.size() << " objects" << std::endl;
+    std::cout << "Scene loaded from " << filename << std::endl;
 }
 
 void Renderer::AddCube(const Transform& transform) {
-    m_Meshes.push_back(Mesh::CreateCube());
-    m_Transforms.push_back(transform);
+    auto cube = std::make_shared<GameObject>("Cube");
+    cube->SetMesh(Mesh::CreateCube());
+    cube->GetTransform() = transform;
     
     auto mat = std::make_shared<Material>();
     mat->texture = m_Texture;
-    m_Materials.push_back(mat);
+    mat->specularMap = m_Texture;
+    cube->SetMaterial(mat);
+    
+    if (m_Root) m_Root->AddChild(cube);
     
     std::cout << "Added cube at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
 void Renderer::AddPyramid(const Transform& transform) {
-    m_Meshes.push_back(Mesh::LoadFromOBJ("assets/pyramid.obj"));
-    m_Transforms.push_back(transform);
+    auto pyramid = std::make_shared<GameObject>("Pyramid");
+    pyramid->SetMesh(Mesh::LoadFromOBJ("assets/pyramid.obj"));
+    pyramid->GetTransform() = transform;
     
     auto mat = std::make_shared<Material>();
     mat->diffuse = Vec3(1.0f, 1.0f, 0.0f);
     mat->texture = m_Texture;
-    m_Materials.push_back(mat);
+    mat->specularMap = m_Texture;
+    pyramid->SetMaterial(mat);
+    
+    if (m_Root) m_Root->AddChild(pyramid);
     
     std::cout << "Added pyramid at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
 void Renderer::RemoveObject(size_t index) {
-    if (index < m_Meshes.size()) {
-        m_Meshes.erase(m_Meshes.begin() + index);
-        m_Transforms.erase(m_Transforms.begin() + index);
-        if (index < m_Materials.size()) {
-            m_Materials.erase(m_Materials.begin() + index);
-        }
+    if (m_Root && index < m_Root->GetChildren().size()) {
+        auto child = m_Root->GetChildren()[index];
+        m_Root->RemoveChild(child);
         std::cout << "Removed object at index " << index << std::endl;
     }
+}
+
+void Renderer::SetupScene() {
+    // Add some default objects
+    AddCube(Transform(Vec3(0, 0, 0)));
+    AddCube(Transform(Vec3(2, 0, 0)));
+    AddPyramid(Transform(Vec3(-2, 0, 0)));
+    
+    // Add a floor
+    auto floor = std::make_shared<GameObject>("Floor");
+    floor->SetMesh(Mesh::CreateCube()); // Use cube as floor for now
+    floor->GetTransform() = Transform(Vec3(0, -2, 0), Vec3(0, 0, 0), Vec3(10, 0.1f, 10));
+    
+    auto mat = std::make_shared<Material>();
+    mat->texture = m_Texture;
+    mat->specularMap = m_Texture;
+    floor->SetMaterial(mat);
+    
+    if (m_Root) m_Root->AddChild(floor);
+    
+    // Add lights
+    AddLight(Light(Vec3(0, 5, 0), Vec3(1, 1, 1), 1.0f));
+    AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 1.0f)); // Red light
 }
 
 bool Renderer::Init() {
@@ -201,10 +167,10 @@ bool Renderer::Init() {
         return false;
     }
 
-    // Load texture
-    m_Texture = std::make_shared<Texture>();
-    if (!m_Texture->LoadFromFile("assets/brick.png")) {
-        std::cerr << "Failed to load texture" << std::endl;
+    // Load texture using manager
+    m_Texture = m_TextureManager->LoadTexture("assets/brick.png");
+    if (!m_Texture) {
+        std::cerr << "Failed to load default texture" << std::endl;
         return false;
     }
 
@@ -235,11 +201,62 @@ bool Renderer::Init() {
         return false;
     }
 
+    // Initialize GBuffer for deferred rendering
+    int width, height;
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    m_GBuffer = std::make_unique<GBuffer>();
+    if (!m_GBuffer->Init(width, height)) {
+        std::cerr << "Failed to initialize GBuffer" << std::endl;
+        return false;
+    }
+
+    // Load geometry pass shader
+    m_GeometryShader = std::make_unique<Shader>();
+    if (!m_GeometryShader->LoadFromFiles("shaders/geometry_pass.vert", "shaders/geometry_pass.frag")) {
+        std::cerr << "Failed to load geometry pass shaders" << std::endl;
+        return false;
+    }
+
+    // Load lighting pass shader
+    m_LightingShader = std::make_unique<Shader>();
+    if (!m_LightingShader->LoadFromFiles("shaders/lighting_pass.vert", "shaders/lighting_pass.frag")) {
+        std::cerr << "Failed to load lighting pass shaders" << std::endl;
+        return false;
+    }
+
+    // Setup fullscreen quad for lighting pass
+    float quadVertices[] = {
+        // positions   // texCoords
+        -1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f,  0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f
+    };
+    
+    glGenVertexArrays(1, &m_QuadVAO);
+    glGenBuffers(1, &m_QuadVBO);
+    glBindVertexArray(m_QuadVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_QuadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glBindVertexArray(0);
+
     return true;
 }
 
 void Renderer::Render() {
     if (!m_Camera) return;
+
+    // Update scene graph
+    if (m_Root) {
+        m_Root->Update(Mat4::Identity());
+    }
 
     // Calculate light space matrix for shadow mapping (first light only)
     Mat4 lightSpaceMatrix;
@@ -258,68 +275,80 @@ void Renderer::Render() {
         m_ShadowMap->BindForWriting();
         glClear(GL_DEPTH_BUFFER_BIT);
 
-        for (size_t i = 0; i < m_Meshes.size() && i < m_Transforms.size(); ++i) {
-            Mat4 model = m_Transforms[i].GetModelMatrix();
-            m_DepthShader->SetMat4("u_Model", model.m);
-            m_Meshes[i].Draw();
+        // Draw scene for shadow map
+        if (m_Root) {
+            m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), lightSpaceMatrix);
         }
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    // ===== PASS 2: Render scene normally with shadows =====
+    // Get framebuffer size
     int width, height;
     glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+
+    // ===== PASS 2: Geometry Pass - Render to G-Buffer =====
     glViewport(0, 0, width, height);
+    m_GBuffer->BindForWriting();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    m_Shader->Use();
-    
-    // Bind shadow map
-    m_ShadowMap->BindForReading(1);
-    m_Shader->SetInt("shadowMap", 1);
-    m_Shader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
+    m_GeometryShader->Use();
 
-    // Bind texture
-    if (m_Texture) {
-        m_Texture->Bind(0);
-        m_Shader->SetInt("u_Texture", 0);
+    // Render scene to G-Buffer
+    if (m_Root) {
+        m_Root->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
     }
 
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // ===== PASS 3: Lighting Pass - Render fullscreen quad with lighting =====
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    m_LightingShader->Use();
+
+    // Bind G-Buffer textures
+    m_GBuffer->BindForReading();
+    m_LightingShader->SetInt("gPosition", 0);
+    m_LightingShader->SetInt("gNormal", 1);
+    m_LightingShader->SetInt("gAlbedoSpec", 2);
+
+    // Bind shadow map
+    m_ShadowMap->BindForReading(3);
+    m_LightingShader->SetInt("shadowMap", 3);
+    m_LightingShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
+
     // Light setup
-    m_Shader->SetInt("u_LightCount", static_cast<int>(m_Lights.size()));
+    int lightCount = std::min(static_cast<int>(m_Lights.size()), MAX_LIGHTS);
+    m_LightingShader->SetInt("u_LightCount", lightCount);
     
-    for (size_t i = 0; i < m_Lights.size(); ++i) {
+    for (size_t i = 0; i < lightCount; ++i) {
         std::string base = "u_Lights[" + std::to_string(i) + "]";
-        m_Shader->SetVec3(base + ".position", m_Lights[i].position.x, m_Lights[i].position.y, m_Lights[i].position.z);
-        m_Shader->SetVec3(base + ".color", m_Lights[i].color.x, m_Lights[i].color.y, m_Lights[i].color.z);
-        m_Shader->SetFloat(base + ".intensity", m_Lights[i].intensity);
+        m_LightingShader->SetInt(base + ".type", static_cast<int>(m_Lights[i].type));
+        m_LightingShader->SetVec3(base + ".position", m_Lights[i].position.x, m_Lights[i].position.y, m_Lights[i].position.z);
+        m_LightingShader->SetVec3(base + ".direction", m_Lights[i].direction.x, m_Lights[i].direction.y, m_Lights[i].direction.z);
+        m_LightingShader->SetVec3(base + ".color", m_Lights[i].color.x, m_Lights[i].color.y, m_Lights[i].color.z);
+        m_LightingShader->SetFloat(base + ".intensity", m_Lights[i].intensity);
+        
+        m_LightingShader->SetFloat(base + ".constant", m_Lights[i].constant);
+        m_LightingShader->SetFloat(base + ".linear", m_Lights[i].linear);
+        m_LightingShader->SetFloat(base + ".quadratic", m_Lights[i].quadratic);
+        
+        m_LightingShader->SetFloat(base + ".cutOff", std::cos(m_Lights[i].cutOff * 3.14159f / 180.0f));
+        m_LightingShader->SetFloat(base + ".outerCutOff", std::cos(m_Lights[i].outerCutOff * 3.14159f / 180.0f));
     }
     
     Vec3 camPos = m_Camera->GetPosition();
-    m_Shader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
+    m_LightingShader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
 
-    // Render each mesh
-    for (size_t i = 0; i < m_Meshes.size() && i < m_Transforms.size(); ++i) {
-        Mat4 model = m_Transforms[i].GetModelMatrix();
-        Mat4 view = m_Camera->GetViewMatrix();
-        Mat4 projection = m_Camera->GetProjectionMatrix();
-        Mat4 mvp = projection * view * model;
-        
-        m_Shader->SetMat4("u_MVP", mvp.m);
-        m_Shader->SetMat4("u_Model", model.m);
+    // Render fullscreen quad
+    RenderQuad();
 
-        // Bind material
-        if (i < m_Materials.size() && m_Materials[i]) {
-            m_Materials[i]->Bind(m_Shader.get());
-        } else {
-            Material defaultMat;
-            defaultMat.texture = m_Texture;
-            defaultMat.Bind(m_Shader.get());
-        }
-
-        m_Meshes[i].Draw();
-    }
+    // ===== PASS 4: Forward Pass for Skybox =====
+    // Copy depth buffer from G-Buffer to default framebuffer
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetPositionTexture());
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // Draw Skybox last
     if (m_Skybox) {
@@ -327,7 +356,20 @@ void Renderer::Render() {
     }
 }
 
+void Renderer::RenderQuad() {
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
+}
+
 void Renderer::Shutdown() {
-    m_Meshes.clear();
-    m_Transforms.clear();
+    if (m_QuadVAO) {
+        glDeleteVertexArrays(1, &m_QuadVAO);
+        m_QuadVAO = 0;
+    }
+    if (m_QuadVBO) {
+        glDeleteBuffers(1, &m_QuadVBO);
+        m_QuadVBO = 0;
+    }
+    m_Root.reset();
 }

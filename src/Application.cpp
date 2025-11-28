@@ -149,30 +149,31 @@ void Application::RenderEditorUI() {
     // Scene Hierarchy Panel
     ImGui::Begin("Scene Hierarchy");
     
-    auto& meshes = m_Renderer->GetMeshes();
-    auto& transforms = m_Renderer->GetTransforms();
-    
-    for (size_t i = 0; i < meshes.size(); ++i) {
-        std::string label = meshes[i].GetSource() + " ##" + std::to_string(i);
-        if (ImGui::Selectable(label.c_str(), m_SelectedObjectIndex == static_cast<int>(i))) {
-            m_SelectedObjectIndex = static_cast<int>(i);
+    auto root = m_Renderer->GetRoot();
+    if (root) {
+        auto& children = root->GetChildren();
+        for (size_t i = 0; i < children.size(); ++i) {
+            std::string label = children[i]->GetName() + " ##" + std::to_string(i);
+            if (ImGui::Selectable(label.c_str(), m_SelectedObjectIndex == static_cast<int>(i))) {
+                m_SelectedObjectIndex = static_cast<int>(i);
+            }
         }
-    }
-    
-    ImGui::Separator();
-    
-    if (ImGui::Button("Add Cube")) {
-        m_Renderer->AddCube(Transform(Vec3(0, 0, 0)));
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Add Pyramid")) {
-        m_Renderer->AddPyramid(Transform(Vec3(0, 0, 0)));
-    }
-    
-    if (m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(meshes.size())) {
-        if (ImGui::Button("Delete Selected")) {
-            m_Renderer->RemoveObject(m_SelectedObjectIndex);
-            m_SelectedObjectIndex = -1;
+        
+        ImGui::Separator();
+        
+        if (ImGui::Button("Add Cube")) {
+            m_Renderer->AddCube(Transform(Vec3(0, 0, 0)));
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Add Pyramid")) {
+            m_Renderer->AddPyramid(Transform(Vec3(0, 0, 0)));
+        }
+        
+        if (m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(children.size())) {
+            if (ImGui::Button("Delete Selected")) {
+                m_Renderer->RemoveObject(m_SelectedObjectIndex);
+                m_SelectedObjectIndex = -1;
+            }
         }
     }
     
@@ -189,12 +190,13 @@ void Application::RenderEditorUI() {
     ImGui::End();
     
     // Object Inspector Panel
-    if (m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(transforms.size())) {
+    if (root && m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(root->GetChildren().size())) {
         ImGui::Begin("Object Inspector");
         
-        Transform& transform = transforms[m_SelectedObjectIndex];
+        auto object = root->GetChildren()[m_SelectedObjectIndex];
+        Transform& transform = object->GetTransform();
         
-        ImGui::Text("Object: %s", meshes[m_SelectedObjectIndex].GetSource().c_str());
+        ImGui::Text("Object: %s", object->GetName().c_str());
         ImGui::Separator();
         
         // Position
@@ -222,10 +224,9 @@ void Application::RenderEditorUI() {
         ImGui::Separator();
 
         // Material Inspector
-        auto& materials = m_Renderer->GetMaterials();
-        if (m_SelectedObjectIndex < static_cast<int>(materials.size()) && materials[m_SelectedObjectIndex]) {
+        auto mat = object->GetMaterial();
+        if (mat) {
             ImGui::Text("Material");
-            auto& mat = materials[m_SelectedObjectIndex];
             
             ImGui::ColorEdit3("Ambient", &mat->ambient.x);
             ImGui::ColorEdit3("Diffuse", &mat->diffuse.x);
@@ -260,9 +261,34 @@ void Application::RenderEditorUI() {
         Light& light = lights[selectedLightIndex];
         
         ImGui::Text("Light Properties");
+        
+        // Light Type
+        const char* lightTypes[] = { "Directional", "Point", "Spot" };
+        int currentType = static_cast<int>(light.type);
+        if (ImGui::Combo("Type", &currentType, lightTypes, IM_ARRAYSIZE(lightTypes))) {
+            light.type = static_cast<LightType>(currentType);
+        }
+        
         ImGui::DragFloat3("Position", &light.position.x, 0.1f);
+        if (light.type != LightType::Point) {
+            ImGui::DragFloat3("Direction", &light.direction.x, 0.1f);
+        }
+        
         ImGui::ColorEdit3("Color", &light.color.x);
         ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 10.0f);
+        
+        if (light.type != LightType::Directional) {
+            ImGui::Text("Attenuation");
+            ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 1.0f);
+            ImGui::DragFloat("Linear", &light.linear, 0.001f, 0.0f, 1.0f);
+            ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
+        }
+        
+        if (light.type == LightType::Spot) {
+            ImGui::Text("Spotlight");
+            ImGui::DragFloat("Cutoff", &light.cutOff, 0.1f, 0.0f, 90.0f);
+            ImGui::DragFloat("Outer Cutoff", &light.outerCutOff, 0.1f, 0.0f, 90.0f);
+        }
         
         if (ImGui::Button("Delete Light")) {
             m_Renderer->RemoveLight(selectedLightIndex);

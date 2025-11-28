@@ -44,6 +44,10 @@ add_executable(GameEngine
     src/ImGuiManager.cpp
     src/Skybox.cpp
     src/ShadowMap.cpp
+    src/TextureManager.cpp
+    src/GameObject.cpp
+    src/Model.cpp
+    src/GBuffer.cpp
     ${IMGUI_SOURCES}
 )
 

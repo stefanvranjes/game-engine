@@ -9,12 +9,18 @@ public:
     float m[16]; // Column-major order (OpenGL convention)
 
     Mat4() {
-        Identity();
+        SetIdentity();
     }
 
-    void Identity() {
+    void SetIdentity() {
         std::memset(m, 0, sizeof(m));
         m[0] = m[5] = m[10] = m[15] = 1.0f;
+    }
+
+    static Mat4 Identity() {
+        Mat4 result;
+        result.SetIdentity();
+        return result;
     }
 
     // Matrix multiplication

@@ -38,6 +38,8 @@ PFNGLBINDFRAMEBUFFERPROC glBindFramebuffer = nullptr;
 PFNGLFRAMEBUFFERTEXTURE2DPROC glFramebufferTexture2D = nullptr;
 PFNGLCHECKFRAMEBUFFERSTATUSPROC glCheckFramebufferStatus = nullptr;
 PFNGLDELETEFRAMEBUFFERSPROC glDeleteFramebuffers = nullptr;
+PFNGLDRAWBUFFERSPROC glDrawBuffers = nullptr;
+PFNGLBLITFRAMEBUFFERPROC glBlitFramebuffer = nullptr;
 
 bool LoadGLExtensions() {
     glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
@@ -76,6 +78,8 @@ bool LoadGLExtensions() {
     glFramebufferTexture2D = (PFNGLFRAMEBUFFERTEXTURE2DPROC)wglGetProcAddress("glFramebufferTexture2D");
     glCheckFramebufferStatus = (PFNGLCHECKFRAMEBUFFERSTATUSPROC)wglGetProcAddress("glCheckFramebufferStatus");
     glDeleteFramebuffers = (PFNGLDELETEFRAMEBUFFERSPROC)wglGetProcAddress("glDeleteFramebuffers");
+    glDrawBuffers = (PFNGLDRAWBUFFERSPROC)wglGetProcAddress("glDrawBuffers");
+    glBlitFramebuffer = (PFNGLBLITFRAMEBUFFERPROC)wglGetProcAddress("glBlitFramebuffer");
 
     // Check if all functions were loaded
     if (!glCreateShader || !glShaderSource || !glCompileShader || !glGetShaderiv ||
@@ -86,7 +90,8 @@ bool LoadGLExtensions() {
         !glBindVertexArray || !glDeleteVertexArrays || !glGenBuffers || !glBindBuffer ||
         !glBufferData || !glBufferSubData || !glDeleteBuffers || !glVertexAttribPointer || !glEnableVertexAttribArray ||
         !glGenerateMipmap || !glActiveTexture || !glGenFramebuffers || !glBindFramebuffer ||
-        !glFramebufferTexture2D || !glCheckFramebufferStatus || !glDeleteFramebuffers) {
+        !glFramebufferTexture2D || !glCheckFramebufferStatus || !glDeleteFramebuffers ||
+        !glDrawBuffers || !glBlitFramebuffer) {
         std::cerr << "Failed to load OpenGL extensions" << std::endl;
         return false;
     }
