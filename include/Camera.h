@@ -37,4 +37,10 @@ private:
     float m_RotationSpeed;
     
     void UpdateCameraVectors();
+
+public:
+    float GetFOV() const { return m_FOV; }
+    float GetNearPlane() const { return m_NearPlane; }
+    float GetFarPlane() const { return m_FarPlane; }
+    float GetAspectRatio() const { return m_AspectRatio; }
 };

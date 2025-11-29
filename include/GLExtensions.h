@@ -1,6 +1,7 @@
 #pragma once
 
 // Windows OpenGL headers
+#define NOMINMAX
 #include <windows.h>
 #include <wingdi.h>
 #include <gl/GL.h>
@@ -57,6 +58,8 @@
 #define GL_DRAW_FRAMEBUFFER 0x8CA9
 #define GL_RENDERBUFFER 0x8D41
 #define GL_TEXTURE3 0x84C3
+#define GL_TEXTURE_2D_ARRAY 0x8C1A
+
 
 // OpenGL 3.3 types
 typedef char GLchar;
@@ -114,6 +117,9 @@ typedef void (APIENTRYP PFNGLBINDRENDERBUFFERPROC)(GLenum target, GLuint renderb
 typedef void (APIENTRYP PFNGLRENDERBUFFERSTORAGEPROC)(GLenum target, GLenum internalformat, GLsizei width, GLsizei height);
 typedef void (APIENTRYP PFNGLFRAMEBUFFERRENDERBUFFERPROC)(GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
 typedef void (APIENTRYP PFNGLDELETERENDERBUFFERSPROC)(GLsizei n, const GLuint *renderbuffers);
+typedef void (APIENTRYP PFNGLTEXIMAGE3DPROC)(GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+typedef void (APIENTRYP PFNGLFRAMEBUFFERTEXTURELAYERPROC)(GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer);
+
 
 // OpenGL 3.3 function pointers
 extern PFNGLCREATESHADERPROC glCreateShader;
@@ -160,6 +166,9 @@ extern PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer;
 extern PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
 extern PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
 extern PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
+extern PFNGLTEXIMAGE3DPROC glTexImage3D;
+extern PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer;
+
 
 // Function to load OpenGL extensions
 bool LoadGLExtensions();

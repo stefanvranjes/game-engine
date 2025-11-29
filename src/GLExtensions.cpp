@@ -46,6 +46,9 @@ PFNGLBINDRENDERBUFFERPROC glBindRenderbuffer = nullptr;
 PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage = nullptr;
 PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer = nullptr;
 PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers = nullptr;
+PFNGLTEXIMAGE3DPROC glTexImage3D = nullptr;
+PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer = nullptr;
+
 
 bool LoadGLExtensions() {
     glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
@@ -92,6 +95,9 @@ bool LoadGLExtensions() {
     glRenderbufferStorage = (PFNGLRENDERBUFFERSTORAGEPROC)wglGetProcAddress("glRenderbufferStorage");
     glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)wglGetProcAddress("glFramebufferRenderbuffer");
     glDeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)wglGetProcAddress("glDeleteRenderbuffers");
+    glTexImage3D = (PFNGLTEXIMAGE3DPROC)wglGetProcAddress("glTexImage3D");
+    glFramebufferTextureLayer = (PFNGLFRAMEBUFFERTEXTURELAYERPROC)wglGetProcAddress("glFramebufferTextureLayer");
+
 
     // Check if all functions were loaded
     if (!glCreateShader || !glShaderSource || !glCompileShader || !glGetShaderiv ||
@@ -104,7 +110,9 @@ bool LoadGLExtensions() {
         !glGenerateMipmap || !glActiveTexture || !glGenFramebuffers || !glBindFramebuffer ||
         !glFramebufferTexture2D || !glCheckFramebufferStatus || !glDeleteFramebuffers ||
         !glDrawBuffers || !glBlitFramebuffer || !glFramebufferTexture || !glGenRenderbuffers || !glBindRenderbuffer ||
-        !glRenderbufferStorage || !glFramebufferRenderbuffer || !glDeleteRenderbuffers) {
+        !glRenderbufferStorage || !glFramebufferRenderbuffer || !glDeleteRenderbuffers ||
+        !glTexImage3D || !glFramebufferTextureLayer) {
+
         std::cerr << "Failed to load OpenGL extensions" << std::endl;
         return false;
     }

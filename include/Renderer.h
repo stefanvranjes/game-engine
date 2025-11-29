@@ -4,10 +4,13 @@
 #include "Texture.h"
 #include "Mesh.h"
 #include "Transform.h"
+#include "Transform.h"
 #include "Math/AABB.h"
+#include "Math/Vec4.h"
 #include "Material.h"
 #include "Light.h"
 #include "Skybox.h"
+#include "CascadedShadowMap.h"
 #include "ShadowMap.h"
 #include "TextureManager.h"
 #include "GameObject.h"
@@ -65,9 +68,10 @@ private:
     std::shared_ptr<Texture> m_Texture; // Default texture
     Camera* m_Camera;
     std::unique_ptr<Skybox> m_Skybox;
-    std::unique_ptr<ShadowMap> m_ShadowMap;
+    std::unique_ptr<CascadedShadowMap> m_CSM;
     std::unique_ptr<Shader> m_PointShadowShader;
     std::vector<std::unique_ptr<CubemapShadow>> m_PointShadows;
+    std::vector<std::unique_ptr<ShadowMap>> m_SpotShadows;
     std::unique_ptr<TextureManager> m_TextureManager;
     std::unique_ptr<GBuffer> m_GBuffer;
     std::unique_ptr<PostProcessing> m_PostProcessing;
@@ -76,4 +80,11 @@ private:
     
     std::shared_ptr<GameObject> m_Root;
     std::vector<Light> m_Lights;
+
+    // CSM Helpers
+    std::vector<float> m_CascadeSplits;
+    std::vector<Mat4> GetLightSpaceMatrices();
+    std::vector<Vec4> GetFrustumCornersWorldSpace(const Mat4& proj, const Mat4& view);
+    Mat4 GetLightSpaceMatrix(const float nearPlane, const float farPlane);
+    Mat4 GetSpotLightMatrix(const Light& light);
 };

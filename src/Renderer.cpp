@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include "Renderer.h"
 #include "Camera.h"
 #include "GLExtensions.h"
@@ -6,6 +7,8 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <limits>
+#include <algorithm>
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
@@ -195,11 +198,12 @@ bool Renderer::Init() {
         return false;
     }
 
-    m_ShadowMap = std::make_unique<ShadowMap>();
-    if (!m_ShadowMap->Init(1024, 1024)) {
-        std::cerr << "Failed to initialize shadow map" << std::endl;
+    m_CSM = std::make_unique<CascadedShadowMap>();
+    if (!m_CSM->Init(2048, 2048)) {
+        std::cerr << "Failed to initialize cascaded shadow map" << std::endl;
         return false;
     }
+    m_CascadeSplits = { 25.0f, 100.0f }; // Splits at 25m and 100m (plus far plane)
 
     // Initialize Point Light Shadows
     m_PointShadowShader = std::make_unique<Shader>();
@@ -216,6 +220,16 @@ bool Renderer::Init() {
             return false;
         }
         m_PointShadows.push_back(std::move(shadow));
+    }
+
+    // Create 4 spot light shadow maps
+    for (int i = 0; i < 4; ++i) {
+        auto shadow = std::make_unique<ShadowMap>();
+        if (!shadow->Init(1024, 1024)) {
+            std::cerr << "Failed to initialize spot shadow map " << i << std::endl;
+            return false;
+        }
+        m_SpotShadows.push_back(std::move(shadow));
     }
 
     // Initialize GBuffer for deferred rendering
@@ -312,28 +326,49 @@ void Renderer::Render() {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // Calculate light space matrix for shadow mapping (first light only)
-    Mat4 lightSpaceMatrix;
-    if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
-        // Simple orthographic projection from light's perspective
-        float near_plane = 1.0f, far_plane = 15.0f;
-        Mat4 lightProjection = Mat4::Orthographic(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
-        Mat4 lightView = Mat4::LookAt(m_Lights[0].position, Vec3(0, 0, 0), Vec3(0, 1, 0));
-        lightSpaceMatrix = lightProjection * lightView;
-
-        // ===== PASS 1: Render depth map from light's perspective =====
-        m_DepthShader->Use();
-        m_DepthShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
-
-        glViewport(0, 0, m_ShadowMap->GetWidth(), m_ShadowMap->GetHeight());
-        m_ShadowMap->BindForWriting();
-        glClear(GL_DEPTH_BUFFER_BIT);
-
-        // Draw scene for shadow map
-        if (m_Root) {
-            m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), lightSpaceMatrix);
+    // ===== PASS 1: Render spot light shadows =====
+    m_DepthShader->Use();
+    int spotShadowIndex = 0;
+    std::vector<Mat4> spotLightMatrices;
+    
+    for (size_t i = 0; i < m_Lights.size(); ++i) {
+        if (m_Lights[i].type == LightType::Spot && m_Lights[i].castsShadows && spotShadowIndex < m_SpotShadows.size()) {
+            Mat4 spotLightMatrix = GetSpotLightMatrix(m_Lights[i]);
+            spotLightMatrices.push_back(spotLightMatrix);
+            
+            m_DepthShader->SetMat4("u_LightSpaceMatrix", spotLightMatrix.m);
+            
+            glViewport(0, 0, m_SpotShadows[spotShadowIndex]->GetWidth(), m_SpotShadows[spotShadowIndex]->GetHeight());
+            m_SpotShadows[spotShadowIndex]->BindForWriting();
+            glClear(GL_DEPTH_BUFFER_BIT);
+            
+            if (m_Root) {
+                m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), spotLightMatrix);
+            }
+            
+            spotShadowIndex++;
         }
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    // ===== PASS 2: Calculate light space matrix for shadow mapping (first directional light only)
+    std::vector<Mat4> lightSpaceMatrices;
+    if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
+        lightSpaceMatrices = GetLightSpaceMatrices();
+        
+        m_DepthShader->Use();
+        glViewport(0, 0, m_CSM->GetWidth(), m_CSM->GetHeight());
+        
+        for (unsigned int i = 0; i < 3; ++i) {
+            m_DepthShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrices[i].m);
+            m_CSM->BindForWriting(i);
+            glClear(GL_DEPTH_BUFFER_BIT);
+            
+            if (m_Root) {
+                m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), lightSpaceMatrices[i]);
+            }
+        }
+        
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
@@ -367,9 +402,29 @@ void Renderer::Render() {
     m_LightingShader->SetInt("gAlbedoSpec", 2);
 
     // Bind shadow map
-    m_ShadowMap->BindForReading(3);
+    m_CSM->BindForReading(3);
     m_LightingShader->SetInt("shadowMap", 3);
-    m_LightingShader->SetMat4("u_LightSpaceMatrix", lightSpaceMatrix.m);
+    
+    // Upload cascade data
+    if (lightSpaceMatrices.size() == 3) {
+        for (int i = 0; i < 3; ++i) {
+            m_LightingShader->SetMat4("cascadeLightSpaceMatrices[" + std::to_string(i) + "]", lightSpaceMatrices[i].m);
+        }
+        m_LightingShader->SetFloat("cascadePlaneDistances[0]", m_CascadeSplits[0]);
+        m_LightingShader->SetFloat("cascadePlaneDistances[1]", m_CascadeSplits[1]);
+        m_LightingShader->SetFloat("cascadePlaneDistances[2]", m_Camera->GetFarPlane());
+    }
+
+    // Bind spot shadow maps
+    spotShadowIndex = 0;
+    for (size_t i = 0; i < m_Lights.size(); ++i) {
+        if (m_Lights[i].type == LightType::Spot && m_Lights[i].castsShadows && spotShadowIndex < m_SpotShadows.size()) {
+            m_SpotShadows[spotShadowIndex]->BindForReading(8 + spotShadowIndex);
+            m_LightingShader->SetInt("spotShadowMaps[" + std::to_string(spotShadowIndex) + "]", 8 + spotShadowIndex);
+            m_LightingShader->SetMat4("spotLightSpaceMatrices[" + std::to_string(spotShadowIndex) + "]", spotLightMatrices[spotShadowIndex].m);
+            spotShadowIndex++;
+        }
+    }
 
     // Bind point shadow maps
     int pointShadowIndex = 0;
@@ -402,10 +457,13 @@ void Renderer::Render() {
         
         m_LightingShader->SetFloat(base + ".range", m_Lights[i].range);
         m_LightingShader->SetFloat(base + ".shadowSoftness", m_Lights[i].shadowSoftness);
+        m_LightingShader->SetInt(base + ".castsShadows", m_Lights[i].castsShadows ? 1 : 0);
+        m_LightingShader->SetFloat(base + ".lightSize", m_Lights[i].lightSize);
     }
     
     Vec3 camPos = m_Camera->GetPosition();
     m_LightingShader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
+    m_LightingShader->SetMat4("view", m_Camera->GetViewMatrix().m);
 
     // Render fullscreen quad
     RenderQuad();
@@ -441,4 +499,108 @@ void Renderer::Shutdown() {
         m_QuadVBO = 0;
     }
     m_Root.reset();
+}
+
+std::vector<Vec4> Renderer::GetFrustumCornersWorldSpace(const Mat4& proj, const Mat4& view) {
+    const auto inv = (proj * view).Inverse();
+    
+    std::vector<Vec4> frustumCorners;
+    for (unsigned int x = 0; x < 2; ++x) {
+        for (unsigned int y = 0; y < 2; ++y) {
+            for (unsigned int z = 0; z < 2; ++z) {
+                const Vec4 pt = inv * Vec4(
+                    2.0f * x - 1.0f,
+                    2.0f * y - 1.0f,
+                    2.0f * z - 1.0f,
+                    1.0f);
+                frustumCorners.push_back(pt / pt.w);
+            }
+        }
+    }
+    
+    return frustumCorners;
+}
+
+Mat4 Renderer::GetLightSpaceMatrix(const float nearPlane, const float farPlane) {
+    const auto proj = Mat4::Perspective(m_Camera->GetFOV(), m_Camera->GetAspectRatio(), nearPlane, farPlane);
+    const auto corners = GetFrustumCornersWorldSpace(proj, m_Camera->GetViewMatrix());
+
+    Vec3 center = Vec3(0, 0, 0);
+    for (const auto& v : corners) {
+        center = center + Vec3(v.x, v.y, v.z);
+    }
+    center = center / static_cast<float>(corners.size());
+
+    const auto lightView = Mat4::LookAt(center + m_Lights[0].direction * -1.0f, center, Vec3(0.0f, 1.0f, 0.0f));
+
+    float minX = std::numeric_limits<float>::max();
+    float maxX = std::numeric_limits<float>::lowest();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = std::numeric_limits<float>::lowest();
+    float minZ = std::numeric_limits<float>::max();
+    float maxZ = std::numeric_limits<float>::lowest();
+
+    for (const auto& v : corners) {
+        const auto trf = lightView * v;
+        minX = (std::min)(minX, trf.x);
+        maxX = (std::max)(maxX, trf.x);
+        minY = (std::min)(minY, trf.y);
+        maxY = (std::max)(maxY, trf.y);
+        minZ = (std::min)(minZ, trf.z);
+        maxZ = (std::max)(maxZ, trf.z);
+    }
+
+    // Tune this parameter for your scene
+    constexpr float zMult = 10.0f;
+    if (minZ < 0) {
+        minZ *= zMult;
+    } else {
+        minZ /= zMult;
+    }
+    if (maxZ < 0) {
+        maxZ /= zMult;
+    } else {
+        maxZ *= zMult;
+    }
+
+    const Mat4 lightProjection = Mat4::Orthographic(minX, maxX, minY, maxY, minZ, maxZ);
+    return lightProjection * lightView;
+}
+
+std::vector<Mat4> Renderer::GetLightSpaceMatrices() {
+    std::vector<Mat4> ret;
+    for (size_t i = 0; i < m_CascadeSplits.size() + 1; ++i) {
+        if (i == 0) {
+            ret.push_back(GetLightSpaceMatrix(m_Camera->GetNearPlane(), m_CascadeSplits[i]));
+        } else if (i < m_CascadeSplits.size()) {
+            ret.push_back(GetLightSpaceMatrix(m_CascadeSplits[i - 1], m_CascadeSplits[i]));
+        } else {
+            ret.push_back(GetLightSpaceMatrix(m_CascadeSplits[i - 1], m_Camera->GetFarPlane()));
+        }
+    }
+    return ret;
+}
+
+Mat4 Renderer::GetSpotLightMatrix(const Light& light) {
+    // Calculate perspective projection based on spot light's cutoff angle
+    // Use outer cutoff for FOV to ensure entire cone is covered
+    float fov = light.outerCutOff * 2.0f * 3.14159f / 180.0f; // Convert to radians and double for full cone
+    float aspect = 1.0f; // Square shadow map
+    float nearPlane = 0.1f;
+    float farPlane = light.range > 0.0f ? light.range : 50.0f;
+    
+    Mat4 projection = Mat4::Perspective(fov, aspect, nearPlane, farPlane);
+    
+    // Calculate view matrix from light's position looking in light's direction
+    Vec3 up = Vec3(0.0f, 1.0f, 0.0f);
+    // If light direction is parallel to up vector, use different up vector
+    float dotProduct = light.direction.Dot(up);
+    if (dotProduct < 0.0f) dotProduct = -dotProduct; // Manual abs to avoid macro
+    if (dotProduct > 0.99f) {
+        up = Vec3(1.0f, 0.0f, 0.0f);
+    }
+    
+    Mat4 view = Mat4::LookAt(light.position, light.position + light.direction, up);
+    
+    return projection * view;
 }

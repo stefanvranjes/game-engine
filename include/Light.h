@@ -27,6 +27,7 @@ struct Light {
     bool castsShadows;
     float range;
     float shadowSoftness;
+    float lightSize; // For PCSS - affects shadow softness
 
     Light(Vec3 pos = Vec3(0,0,0), Vec3 col = Vec3(1,1,1), float inten = 1.0f, LightType t = LightType::Point)
         : type(t)
@@ -42,5 +43,6 @@ struct Light {
         , castsShadows(false)
         , range(20.0f)
         , shadowSoftness(1.0f)
+        , lightSize(0.5f)
     {}
 };
