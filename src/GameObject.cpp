@@ -1,4 +1,5 @@
 #include "GameObject.h"
+#include "Frustum.h"
 #include <algorithm>
 #include <iostream>
 
@@ -21,7 +22,45 @@ void GameObject::Update(const Mat4& parentMatrix) {
     }
 }
 
-void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection) {
+void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, Frustum* frustum) {
+    // Frustum culling: Test if this object is visible
+    if (frustum && m_Mesh) {
+        const AABB& localBounds = m_Mesh->GetBounds();
+        
+        // Transform AABB to world space
+        Vec3 corners[8];
+        corners[0] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.min.y, localBounds.min.z);
+        corners[1] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.min.y, localBounds.min.z);
+        corners[2] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.max.y, localBounds.min.z);
+        corners[3] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.min.y, localBounds.max.z);
+        corners[4] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.max.y, localBounds.min.z);
+        corners[5] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.min.y, localBounds.max.z);
+        corners[6] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.max.y, localBounds.max.z);
+        corners[7] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.max.y, localBounds.max.z);
+
+        Vec3 minBounds = corners[0];
+        Vec3 maxBounds = corners[0];
+        for (int j = 1; j < 8; ++j) {
+            if (corners[j].x < minBounds.x) minBounds.x = corners[j].x;
+            if (corners[j].y < minBounds.y) minBounds.y = corners[j].y;
+            if (corners[j].z < minBounds.z) minBounds.z = corners[j].z;
+            if (corners[j].x > maxBounds.x) maxBounds.x = corners[j].x;
+            if (corners[j].y > maxBounds.y) maxBounds.y = corners[j].y;
+            if (corners[j].z > maxBounds.z) maxBounds.z = corners[j].z;
+        }
+
+        AABB worldBounds(minBounds, maxBounds);
+        
+        // If object is outside frustum, skip rendering
+        if (!frustum->ContainsAABB(worldBounds)) {
+            // Still need to check children
+            for (auto& child : m_Children) {
+                child->Draw(shader, view, projection, frustum);
+            }
+            return;
+        }
+    }
+    
     if (m_Model) {
         // Draw model (handles its own materials)
         Mat4 mvp = projection * view * m_WorldMatrix;
@@ -40,7 +79,7 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection) 
     
     // Draw children
     for (auto& child : m_Children) {
-        child->Draw(shader, view, projection);
+        child->Draw(shader, view, projection, frustum);
     }
 }
 

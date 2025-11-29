@@ -1,5 +1,6 @@
 #define NOMINMAX
 #include "Renderer.h"
+#include "Frustum.h"
 #include "Camera.h"
 #include "GLExtensions.h"
 #include "Material.h"
@@ -9,9 +10,13 @@
 #include <sstream>
 #include <limits>
 #include <algorithm>
+#include <cmath>
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
+    , m_ShowCascades(false)
+    , m_ShadowFadeStart(40.0f)
+    , m_ShadowFadeEnd(50.0f)
 {
     m_TextureManager = std::make_unique<TextureManager>();
     m_Root = std::make_shared<GameObject>("Root");
@@ -314,11 +319,12 @@ void Renderer::Render() {
             
             m_PointShadows[shadowIndex]->BindForWriting();
             
-            // Draw scene for shadow map
+            // Draw scene for shadow map with frustum culling
             if (m_Root) {
-                // Note: We need a simpler Draw method that just sends model matrices
-                // For now, reusing standard Draw but ignoring view/proj since shader doesn't use them
-                m_Root->Draw(m_PointShadowShader.get(), Mat4::Identity(), Mat4::Identity());
+                // For cubemap, we render all 6 faces
+                // Frustum culling for each face would require extracting frustum per face
+                // For now, skip frustum culling for point lights (cubemap complexity)
+                m_Root->Draw(m_PointShadowShader.get(), Mat4::Identity(), Mat4::Identity(), nullptr);
             }
             
             shadowIndex++;
@@ -343,7 +349,10 @@ void Renderer::Render() {
             glClear(GL_DEPTH_BUFFER_BIT);
             
             if (m_Root) {
-                m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), spotLightMatrix);
+                // Extract frustum from spot light matrix for culling
+                Frustum spotFrustum;
+                spotFrustum.ExtractFromMatrix(spotLightMatrix);
+                m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), spotLightMatrix, &spotFrustum);
             }
             
             spotShadowIndex++;
@@ -351,7 +360,7 @@ void Renderer::Render() {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ===== PASS 2: Calculate light space matrix for shadow mapping (first directional light only)
+    // ===== PASS 2: Calculate light space matrix for shadow mapping (first directional light only) =====
     std::vector<Mat4> lightSpaceMatrices;
     if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
         lightSpaceMatrices = GetLightSpaceMatrices();
@@ -365,7 +374,10 @@ void Renderer::Render() {
             glClear(GL_DEPTH_BUFFER_BIT);
             
             if (m_Root) {
-                m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), lightSpaceMatrices[i]);
+                // Extract frustum from cascade matrix for culling
+                Frustum cascadeFrustum;
+                cascadeFrustum.ExtractFromMatrix(lightSpaceMatrices[i]);
+                m_Root->Draw(m_DepthShader.get(), Mat4::Identity(), lightSpaceMatrices[i], &cascadeFrustum);
             }
         }
         
@@ -464,6 +476,9 @@ void Renderer::Render() {
     Vec3 camPos = m_Camera->GetPosition();
     m_LightingShader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
     m_LightingShader->SetMat4("view", m_Camera->GetViewMatrix().m);
+    m_LightingShader->SetInt("u_ShowCascades", m_ShowCascades ? 1 : 0);
+    m_LightingShader->SetFloat("u_ShadowFadeStart", m_ShadowFadeStart);
+    m_LightingShader->SetFloat("u_ShadowFadeEnd", m_ShadowFadeEnd);
 
     // Render fullscreen quad
     RenderQuad();
@@ -540,14 +555,17 @@ Mat4 Renderer::GetLightSpaceMatrix(const float nearPlane, const float farPlane) 
     float minZ = std::numeric_limits<float>::max();
     float maxZ = std::numeric_limits<float>::lowest();
 
+#undef min
+#undef max
+
     for (const auto& v : corners) {
-        const auto trf = lightView * v;
-        minX = (std::min)(minX, trf.x);
-        maxX = (std::max)(maxX, trf.x);
-        minY = (std::min)(minY, trf.y);
-        maxY = (std::max)(maxY, trf.y);
-        minZ = (std::min)(minZ, trf.z);
-        maxZ = (std::max)(maxZ, trf.z);
+        const auto trf = lightView * Vec3(v.x, v.y, v.z);
+        minX = std::fmin(minX, trf.x);
+        maxX = std::fmax(maxX, trf.x);
+        minY = std::fmin(minY, trf.y);
+        maxY = std::fmax(maxY, trf.y);
+        minZ = std::fmin(minZ, trf.z);
+        maxZ = std::fmax(maxZ, trf.z);
     }
 
     // Tune this parameter for your scene

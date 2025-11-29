@@ -35,6 +35,9 @@ uniform vec3 u_ViewPos;
 uniform mat4 cascadeLightSpaceMatrices[3];
 uniform float cascadePlaneDistances[3];
 uniform mat4 view; // Need view matrix for depth calculation
+uniform bool u_ShowCascades; // toggle cascade visualization
+uniform float u_ShadowFadeStart; // Distance where shadows start fading
+uniform float u_ShadowFadeEnd; // Distance where shadows completely disappear
 
 uniform samplerCube pointShadowMaps[4]; // Support up to 4 point lights with shadows
 uniform sampler2D spotShadowMaps[4]; // Support up to 4 spot lights with shadows
@@ -73,64 +76,6 @@ float PointShadowCalculation(vec3 fragPos, vec3 lightPos, float far_plane, sampl
     return shadow;
 }
 
-float ShadowCalculation(vec3 fragPos, vec3 normal, vec3 lightDir, float softness)
-{
-    // Select cascade layer
-    vec4 fragPosViewSpace = view * vec4(fragPos, 1.0);
-    float depthValue = abs(fragPosViewSpace.z);
-
-    int layer = -1;
-    for (int i = 0; i < 3; ++i)
-    {
-        if (depthValue < cascadePlaneDistances[i])
-        {
-            layer = i;
-            break;
-        }
-    }
-    if (layer == -1)
-    {
-        layer = 2;
-    }
-
-    vec4 fragPosLightSpace = cascadeLightSpaceMatrices[layer] * vec4(fragPos, 1.0);
-    
-    // Perform perspective divide
-    vec3 projCoords = fragPosLightSpace.xyz / fragPosLightSpace.w;
-    // Transform to [0,1] range
-    projCoords = projCoords * 0.5 + 0.5;
-    
-    // Get depth of current fragment from light's perspective
-    float currentDepth = projCoords.z;
-    // Calculate bias to prevent shadow acne
-    float bias = max(0.05 * (1.0 - dot(normal, lightDir)), 0.005);
-    if (layer == 2) bias *= 0.5;
-    else bias *= 1.0 / (float(layer) + 1.0);
-    
-    // PCF
-    float shadow = 0.0;
-    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
-    
-    // Adjust kernel size based on softness
-    int kernelSize = int(softness);
-    if (kernelSize < 1) kernelSize = 1;
-    
-    for(int x = -kernelSize; x <= kernelSize; ++x)
-    {
-        for(int y = -kernelSize; y <= kernelSize; ++y)
-        {
-            float pcfDepth = texture(shadowMap, vec3(projCoords.xy + vec2(x, y) * texelSize, layer)).r; 
-            shadow += currentDepth - bias > pcfDepth ? 1.0 : 0.0;        
-        }    
-    }
-    shadow /= float((2 * kernelSize + 1) * (2 * kernelSize + 1));
-    
-    // Keep the shadow at 0.0 when outside the far_plane region
-    if(projCoords.z > 1.0)
-        shadow = 0.0;
-    
-    return shadow;
-}
 
 // PCSS Helper Functions
 #define BLOCKER_SEARCH_NUM_SAMPLES 16
@@ -437,6 +382,10 @@ void main()
     
     int pointShadowIndex = 0;
     
+    // Calculate shadow fade factor based on distance
+    float fragDistance = length(u_ViewPos - FragPos);
+    float shadowFadeFactor = 1.0 - smoothstep(u_ShadowFadeStart, u_ShadowFadeEnd, fragDistance);
+    
     for(int i = 0; i < u_LightCount && i < MAX_LIGHTS; ++i) {
         float shadow = 0.0;
         
@@ -445,6 +394,7 @@ void main()
             if(i == 0 && u_Lights[i].castsShadows == 1) {
                  vec3 lightDir = normalize(-u_Lights[i].direction);
                  shadow = ShadowCalculation(FragPos, Normal, lightDir, u_Lights[i].lightSize);
+                 shadow *= shadowFadeFactor; // Apply fade
             }
             result += CalcDirLight(u_Lights[i], Normal, viewDir, Albedo, Specular, shadow);
         } else if (u_Lights[i].type == 1) { // Point
@@ -460,6 +410,7 @@ void main()
                  else if (pointShadowIndex == 3)
                     shadow = PointShadowCalculation(FragPos, u_Lights[i].position, 25.0, pointShadowMaps[3], u_Lights[i].shadowSoftness);
                  
+                 shadow *= shadowFadeFactor; // Apply fade
                  pointShadowIndex++;
             }
             result += CalcPointLight(u_Lights[i], FragPos, Normal, viewDir, Albedo, Specular, shadow);
@@ -483,10 +434,31 @@ void main()
                     shadow = SpotShadowCalculation(FragPos, Normal, lightDir, spotLightSpaceMatrices[2], spotShadowMaps[2], u_Lights[i].lightSize);
                  else if (spotShadowIndex == 3)
                     shadow = SpotShadowCalculation(FragPos, Normal, lightDir, spotLightSpaceMatrices[3], spotShadowMaps[3], u_Lights[i].lightSize);
+                  
+                 shadow *= shadowFadeFactor; // Apply fade
              }
              
              result += CalcSpotLight(u_Lights[i], FragPos, Normal, viewDir, Albedo, Specular, shadow);
         }
+    }
+    
+    // Cascade Visualization
+    if (u_ShowCascades) {
+        vec4 fragPosViewSpace = view * vec4(FragPos, 1.0);
+        float depthValue = abs(fragPosViewSpace.z);
+        
+        int layer = -1;
+        for (int i = 0; i < 3; ++i) {
+            if (depthValue < cascadePlaneDistances[i]) {
+                layer = i;
+                break;
+            }
+        }
+        if (layer == -1) layer = 2;
+        
+        if (layer == 0) result *= vec3(1.0, 0.2, 0.2); // Red
+        else if (layer == 1) result *= vec3(0.2, 1.0, 0.2); // Green
+        else if (layer == 2) result *= vec3(0.2, 0.2, 1.0); // Blue
     }
     
     FragColor = vec4(result, 1.0);

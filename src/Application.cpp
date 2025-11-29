@@ -247,6 +247,21 @@ void Application::RenderEditorUI() {
         m_Renderer->AddLight(Light(Vec3(0, 5, 0)));
     }
     
+    bool showCascades = m_Renderer->GetShowCascades();
+    if (ImGui::Checkbox("Show CSM Cascades", &showCascades)) {
+        m_Renderer->SetShowCascades(showCascades);
+    }
+    
+    float fadeStart = m_Renderer->GetShadowFadeStart();
+    if (ImGui::SliderFloat("Shadow Fade Start", &fadeStart, 10.0f, 100.0f)) {
+        m_Renderer->SetShadowFadeStart(fadeStart);
+    }
+    
+    float fadeEnd = m_Renderer->GetShadowFadeEnd();
+    if (ImGui::SliderFloat("Shadow Fade End", &fadeEnd, 10.0f, 100.0f)) {
+        m_Renderer->SetShadowFadeEnd(fadeEnd);
+    }
+    
     ImGui::Separator();
 
     for (size_t i = 0; i < lights.size(); ++i) {
@@ -271,7 +286,11 @@ void Application::RenderEditorUI() {
 
         ImGui::Checkbox("Cast Shadows", &light.castsShadows);
         if (light.castsShadows) {
-            ImGui::SliderFloat("Shadow Softness", &light.shadowSoftness, 1.0f, 5.0f);
+            if (light.type == LightType::Point) {
+                ImGui::SliderFloat("Shadow Softness", &light.shadowSoftness, 1.0f, 5.0f);
+            } else {
+                ImGui::SliderFloat("Light Size (PCSS)", &light.lightSize, 0.0f, 5.0f);
+            }
         }
 
         if (light.type != LightType::Directional) {

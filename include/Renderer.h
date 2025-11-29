@@ -48,6 +48,16 @@ public:
     TextureManager* GetTextureManager() { return m_TextureManager.get(); }
     PostProcessing* GetPostProcessing() { return m_PostProcessing.get(); }
     
+    // Debug
+    void SetShowCascades(bool show) { m_ShowCascades = show; }
+    bool GetShowCascades() const { return m_ShowCascades; }
+    
+    // Shadow fade
+    void SetShadowFadeStart(float distance) { m_ShadowFadeStart = distance; }
+    void SetShadowFadeEnd(float distance) { m_ShadowFadeEnd = distance; }
+    float GetShadowFadeStart() const { return m_ShadowFadeStart; }
+    float GetShadowFadeEnd() const { return m_ShadowFadeEnd; }
+    
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
     void RemoveObject(size_t index);
@@ -80,6 +90,13 @@ private:
     
     std::shared_ptr<GameObject> m_Root;
     std::vector<Light> m_Lights;
+
+    // Debug
+    bool m_ShowCascades;
+    
+    // Shadow fade
+    float m_ShadowFadeStart;
+    float m_ShadowFadeEnd;
 
     // CSM Helpers
     std::vector<float> m_CascadeSplits;

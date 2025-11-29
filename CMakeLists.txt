@@ -50,6 +50,8 @@ add_executable(GameEngine
     src/GBuffer.cpp
     src/PostProcessing.cpp
     src/CubemapShadow.cpp
+    src/CascadedShadowMap.cpp
+    src/Frustum.cpp
     ${IMGUI_SOURCES}
 )
 

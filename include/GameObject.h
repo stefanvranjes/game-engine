@@ -15,7 +15,7 @@ public:
     ~GameObject();
 
     void Update(const Mat4& parentMatrix);
-    void Draw(Shader* shader, const Mat4& view, const Mat4& projection);
+    void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr);
 
     void AddChild(std::shared_ptr<GameObject> child);
     void RemoveChild(std::shared_ptr<GameObject> child);
