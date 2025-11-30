@@ -15,7 +15,7 @@ public:
     ~GameObject();
 
     void Update(const Mat4& parentMatrix);
-    void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr);
+    void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr, bool forceRender = false);
 
     void AddChild(std::shared_ptr<GameObject> child);
     void RemoveChild(std::shared_ptr<GameObject> child);
@@ -35,6 +35,32 @@ public:
     // Helper to check collision recursively
     bool CheckCollision(const AABB& bounds);
 
+    // LOD System
+    struct LODLevel {
+        std::shared_ptr<Mesh> mesh;
+        std::shared_ptr<Model> model;
+        float minDistance; // Switch to this LOD when distance >= minDistance
+    };
+
+    void AddLOD(std::shared_ptr<Mesh> mesh, float minDistance);
+    void AddLOD(std::shared_ptr<Model> model, float minDistance);
+
+    // Occlusion Culling
+    void InitQuery();
+    void RenderBoundingBox();
+    unsigned int GetQueryID() const { return m_QueryID; }
+    bool IsVisible() const { return m_Visible; }
+    void SetVisible(bool visible) { m_Visible = visible; }
+    bool IsQueryIssued() const { return m_QueryIssued; }
+    void SetQueryIssued(bool issued) { m_QueryIssued = issued; }
+    
+    // Adaptive query frequency
+    int GetQueryInterval() const { return m_QueryFrameInterval; }
+    void UpdateQueryInterval(); // Update based on visibility stability
+    bool ShouldIssueQuery() const; // Check if query should be issued this frame
+    void ResetQueryFrameCounter() { m_FramesSinceLastQuery = 0; }
+    void IncrementQueryFrameCounter() { m_FramesSinceLastQuery++; }
+
 private:
     std::string m_Name;
     Transform m_Transform;
@@ -44,6 +70,19 @@ private:
     std::shared_ptr<Material> m_Material;
     std::shared_ptr<Model> m_Model;
     
+    std::vector<LODLevel> m_LODs; // Sorted by distance descending
+
+    // Occlusion Culling Data
+    unsigned int m_QueryID;
+    bool m_Visible;
+    bool m_QueryIssued;
+    
+    // Adaptive query frequency
+    bool m_PreviousVisible;           // Visibility from last frame
+    int m_VisibilityStableFrames;     // Consecutive frames with same visibility
+    int m_QueryFrameInterval;         // How often to issue queries (1 = every frame)
+    int m_FramesSinceLastQuery;       // Counter for skipping frames
+
     std::vector<std::shared_ptr<GameObject>> m_Children;
     std::weak_ptr<GameObject> m_Parent;
 };

@@ -163,6 +163,10 @@ public:
         return result;
     }
 
+    Vec3 GetTranslation() const {
+        return Vec3(m[12], m[13], m[14]);
+    }
+
     // Matrix-Vector multiplication (Vec4)
     Vec4 operator*(const Vec4& v) const {
         float x = m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12] * v.w;

@@ -136,6 +136,28 @@ void Renderer::AddPyramid(const Transform& transform) {
     std::cout << "Added pyramid at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
+void Renderer::AddLODTestObject(const Transform& transform) {
+    auto lodObject = std::make_shared<GameObject>("LOD_Test");
+    
+    // Base mesh (High detail - Pyramid) - Swapped for debugging
+    lodObject->SetMesh(Mesh::LoadFromOBJ("assets/pyramid.obj"));
+    lodObject->GetTransform() = transform;
+    
+    auto mat = std::make_shared<Material>();
+    mat->texture = m_Texture;
+    mat->specularMap = m_Texture;
+    mat->diffuse = Vec3(1.0f, 1.0f, 0.0f); // Yellow for pyramid
+    lodObject->SetMaterial(mat);
+    
+    // LOD 1 (Low detail - Cube at 10m) - Swapped for debugging
+    auto cubeMesh = std::make_shared<Mesh>(Mesh::CreateCube());
+    lodObject->AddLOD(cubeMesh, 10.0f);
+    
+    if (m_Root) m_Root->AddChild(lodObject);
+    
+    std::cout << "Added LOD test object at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
+}
+
 void Renderer::RemoveObject(size_t index) {
     if (m_Root && index < m_Root->GetChildren().size()) {
         auto child = m_Root->GetChildren()[index];
@@ -149,6 +171,9 @@ void Renderer::SetupScene() {
     AddCube(Transform(Vec3(0, 0, 0)));
     AddCube(Transform(Vec3(2, 0, 0)));
     AddPyramid(Transform(Vec3(-2, 0, 0)));
+    
+    // Add LOD test object
+    AddLODTestObject(Transform(Vec3(0, 0, -5))); // Place it 10 units away from camera (at 0,0,5)
     
     // Add a floor
     auto floor = std::make_shared<GameObject>("Floor");
@@ -388,21 +413,106 @@ void Renderer::Render() {
     int width, height;
     glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
 
-    // ===== PASS 2: Geometry Pass - Render to G-Buffer =====
+
+    // ===== PASS 2: Issue Occlusion Queries (BEFORE updating visibility) =====
+    // Issue queries against the depth buffer from the PREVIOUS frame
+    // This ensures we test with the visibility state that was used to render that depth buffer
+    
+    // Disable color and depth writes
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDepthMask(GL_FALSE);
+    
+    // Bind G-Buffer FBO from previous frame (still has old depth buffer)
+    // Note: We haven't rendered the new frame yet, so this is the previous frame's depth
+    m_GBuffer->BindForWriting();
+    
+    m_GeometryShader->Use();
+    
+    if (m_Root) {
+        std::vector<std::shared_ptr<GameObject>> queue;
+        queue.push_back(m_Root);
+        
+        while (!queue.empty()) {
+            auto obj = queue.back();
+            queue.pop_back();
+            
+            // Initialize query if needed
+            obj->InitQuery();
+            
+            // Check if we should issue query this frame (adaptive frequency)
+            if (obj->ShouldIssueQuery()) {
+                // Issue query
+                glBeginQuery(GL_SAMPLES_PASSED, obj->GetQueryID());
+                
+                // Draw the object with forceRender=true to bypass visibility check
+                obj->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix(), nullptr, true);
+                
+                glEndQuery(GL_SAMPLES_PASSED);
+                obj->SetQueryIssued(true);
+                
+                // Reset frame counter
+                obj->ResetQueryFrameCounter();
+            } else {
+                // Increment frame counter
+                obj->IncrementQueryFrameCounter();
+            }
+            
+            for (auto& child : obj->GetChildren()) {
+                queue.push_back(child);
+            }
+        }
+    }
+    
+    // Restore state
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDepthMask(GL_TRUE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    // ===== PASS 3: Retrieve Query Results and Update Visibility =====
+    // Retrieve results from queries issued in the PREVIOUS frame
+    if (m_Root) {
+        std::vector<std::shared_ptr<GameObject>> queue;
+        queue.push_back(m_Root);
+        
+        while (!queue.empty()) {
+            auto obj = queue.back();
+            queue.pop_back();
+            
+            if (obj->IsQueryIssued()) {
+                GLuint available = 0;
+                glGetQueryObjectuiv(obj->GetQueryID(), GL_QUERY_RESULT_AVAILABLE, &available);
+                
+                if (available) {
+                    GLuint samples = 0;
+                    glGetQueryObjectuiv(obj->GetQueryID(), GL_QUERY_RESULT, &samples);
+                    obj->SetVisible(samples > 0);
+                    
+                    // Update query interval based on visibility stability
+                    obj->UpdateQueryInterval();
+                }
+            }
+            
+            for (auto& child : obj->GetChildren()) {
+                queue.push_back(child);
+            }
+        }
+    }
+
+    // ===== PASS 4: Geometry Pass - Render to G-Buffer =====
     glViewport(0, 0, width, height);
     m_GBuffer->BindForWriting();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     m_GeometryShader->Use();
 
-    // Render scene to G-Buffer
+    // Render scene to G-Buffer with updated visibility
     if (m_Root) {
         m_Root->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-    // ===== PASS 3: Lighting Pass - Render to HDR framebuffer =====
+    // ===== PASS 5: Lighting Pass - Render to HDR framebuffer =====
     m_PostProcessing->BeginHDR();
 
     m_LightingShader->Use();
@@ -483,7 +593,7 @@ void Renderer::Render() {
     // Render fullscreen quad
     RenderQuad();
 
-    // ===== PASS 4: Forward Pass for Skybox (still in HDR) =====
+    // ===== PASS 6: Forward Pass for Skybox (still in HDR) =====
     // Copy depth buffer from G-Buffer to HDR framebuffer
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetPositionTexture());
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // Will be handled by post-processing
@@ -493,7 +603,7 @@ void Renderer::Render() {
         m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
     }
     
-    // ===== PASS 5: Post-Processing =====
+    // ===== PASS 7: Post-Processing =====
     // Apply bloom, tone mapping, and other effects
     m_PostProcessing->ApplyEffects();
 }

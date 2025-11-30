@@ -60,6 +60,7 @@ public:
     
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
+    void AddLODTestObject(const Transform& transform);
     void RemoveObject(size_t index);
     
     void AddLight(const Light& light) { m_Lights.push_back(light); }

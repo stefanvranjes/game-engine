@@ -1,15 +1,31 @@
 #include "GameObject.h"
 #include "Frustum.h"
+#include "GLExtensions.h"
 #include <algorithm>
 #include <iostream>
+
+// Adaptive query frequency parameters
+const int STABLE_THRESHOLD = 10;      // Frames before considered stable
+const int MAX_QUERY_INTERVAL = 4;     // Max frames between queries
+const int MIN_QUERY_INTERVAL = 1;     // Min frames (always test unstable objects)
 
 GameObject::GameObject(const std::string& name) 
     : m_Name(name)
     , m_WorldMatrix(Mat4::Identity())
+    , m_QueryID(0)
+    , m_Visible(true)
+    , m_QueryIssued(false)
+    , m_PreviousVisible(true)
+    , m_VisibilityStableFrames(0)
+    , m_QueryFrameInterval(1)  // Start with every frame
+    , m_FramesSinceLastQuery(0)
 {
 }
 
 GameObject::~GameObject() {
+    if (m_QueryID != 0) {
+        glDeleteQueries(1, &m_QueryID);
+    }
 }
 
 void GameObject::Update(const Mat4& parentMatrix) {
@@ -22,8 +38,8 @@ void GameObject::Update(const Mat4& parentMatrix) {
     }
 }
 
-void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, Frustum* frustum) {
-    // Frustum culling: Test if this object is visible
+void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, Frustum* frustum, bool forceRender) {
+    // Frustum Culling
     if (frustum && m_Mesh) {
         const AABB& localBounds = m_Mesh->GetBounds();
         
@@ -55,32 +71,127 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
         if (!frustum->ContainsAABB(worldBounds)) {
             // Still need to check children
             for (auto& child : m_Children) {
-                child->Draw(shader, view, projection, frustum);
+                child->Draw(shader, view, projection, frustum, forceRender);
             }
             return;
         }
     }
     
-    if (m_Model) {
+    // Occlusion Culling Check (skip if forceRender is true)
+    if (!forceRender && !m_Visible) {
+        // If not visible from last frame's query, skip drawing this object
+        // But still draw children
+        for (auto& child : m_Children) {
+            child->Draw(shader, view, projection, frustum, forceRender);
+        }
+        return;
+    }
+    
+    // LOD Selection
+    std::shared_ptr<Mesh> meshToDraw = m_Mesh;
+    std::shared_ptr<Model> modelToDraw = m_Model;
+    
+    if (!m_LODs.empty()) {
+        // Calculate distance to camera
+        Vec3 viewPos = view * m_WorldMatrix.GetTranslation();
+        float dist = viewPos.Length();
+        
+        for (const auto& lod : m_LODs) {
+            if (dist >= lod.minDistance) {
+                if (lod.mesh) {
+                    meshToDraw = lod.mesh;
+                    modelToDraw = nullptr;
+                } else if (lod.model) {
+                    modelToDraw = lod.model;
+                    meshToDraw = nullptr;
+                }
+                break;
+            }
+        }
+    }
+
+    if (modelToDraw) {
         // Draw model (handles its own materials)
         Mat4 mvp = projection * view * m_WorldMatrix;
         shader->SetMat4("u_MVP", mvp.m);
         shader->SetMat4("u_Model", m_WorldMatrix.m);
-        m_Model->Draw(shader);
+        modelToDraw->Draw(shader);
     }
-    else if (m_Mesh && m_Material) {
+    else if (meshToDraw && m_Material) {
         // Draw single mesh with material
         Mat4 mvp = projection * view * m_WorldMatrix;
         shader->SetMat4("u_MVP", mvp.m);
         shader->SetMat4("u_Model", m_WorldMatrix.m);
         m_Material->Bind(shader);
-        m_Mesh->Draw();
+        meshToDraw->Draw();
     }
     
     // Draw children
     for (auto& child : m_Children) {
-        child->Draw(shader, view, projection, frustum);
+        child->Draw(shader, view, projection, frustum, forceRender);
     }
+}
+
+void GameObject::AddLOD(std::shared_ptr<Mesh> mesh, float minDistance) {
+    LODLevel lod;
+    lod.mesh = mesh;
+    lod.minDistance = minDistance;
+    m_LODs.push_back(lod);
+    
+    // Sort by distance descending (farthest first)
+    std::sort(m_LODs.begin(), m_LODs.end(), [](const LODLevel& a, const LODLevel& b) {
+        return a.minDistance > b.minDistance;
+    });
+}
+
+void GameObject::AddLOD(std::shared_ptr<Model> model, float minDistance) {
+    LODLevel lod;
+    lod.model = model;
+    lod.minDistance = minDistance;
+    m_LODs.push_back(lod);
+    
+    // Sort by distance descending
+    std::sort(m_LODs.begin(), m_LODs.end(), [](const LODLevel& a, const LODLevel& b) {
+        return a.minDistance > b.minDistance;
+    });
+}
+
+void GameObject::InitQuery() {
+    if (m_QueryID == 0) {
+        glGenQueries(1, &m_QueryID);
+    }
+}
+
+void GameObject::RenderBoundingBox() {
+    // Placeholder - actual rendering handled by Renderer
+}
+
+void GameObject::UpdateQueryInterval() {
+    // Track visibility stability
+    if (m_Visible == m_PreviousVisible) {
+        m_VisibilityStableFrames++;
+    } else {
+        m_VisibilityStableFrames = 0;
+        m_QueryFrameInterval = MIN_QUERY_INTERVAL; // Reset to every frame when visibility changes
+    }
+    
+    // Update previous visibility for next frame
+    m_PreviousVisible = m_Visible;
+    
+    // Increase interval if stable
+    if (m_VisibilityStableFrames >= STABLE_THRESHOLD) {
+        m_QueryFrameInterval = std::min(m_QueryFrameInterval + 1, MAX_QUERY_INTERVAL);
+    }
+}
+
+bool GameObject::ShouldIssueQuery() const {
+    // Always issue query if we haven't issued one yet
+    if (m_QueryID == 0) {
+        return true;
+    }
+    
+    // Check if enough frames have passed
+    return m_FramesSinceLastQuery >= m_QueryFrameInterval;
 }
 
 void GameObject::AddChild(std::shared_ptr<GameObject> child) {

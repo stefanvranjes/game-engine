@@ -49,6 +49,13 @@ PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers = nullptr;
 PFNGLTEXIMAGE3DPROC glTexImage3D = nullptr;
 PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer = nullptr;
 
+// Query functions
+PFNGLGENQUERIESPROC glGenQueries = nullptr;
+PFNGLDELETEQUERIESPROC glDeleteQueries = nullptr;
+PFNGLBEGINQUERYPROC glBeginQuery = nullptr;
+PFNGLENDQUERYPROC glEndQuery = nullptr;
+PFNGLGETQUERYOBJECTUIVPROC glGetQueryObjectuiv = nullptr;
+
 
 bool LoadGLExtensions() {
     glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
@@ -97,6 +104,13 @@ bool LoadGLExtensions() {
     glDeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)wglGetProcAddress("glDeleteRenderbuffers");
     glTexImage3D = (PFNGLTEXIMAGE3DPROC)wglGetProcAddress("glTexImage3D");
     glFramebufferTextureLayer = (PFNGLFRAMEBUFFERTEXTURELAYERPROC)wglGetProcAddress("glFramebufferTextureLayer");
+    
+    // Load Query functions
+    glGenQueries = (PFNGLGENQUERIESPROC)wglGetProcAddress("glGenQueries");
+    glDeleteQueries = (PFNGLDELETEQUERIESPROC)wglGetProcAddress("glDeleteQueries");
+    glBeginQuery = (PFNGLBEGINQUERYPROC)wglGetProcAddress("glBeginQuery");
+    glEndQuery = (PFNGLENDQUERYPROC)wglGetProcAddress("glEndQuery");
+    glGetQueryObjectuiv = (PFNGLGETQUERYOBJECTUIVPROC)wglGetProcAddress("glGetQueryObjectuiv");
 
 
     // Check if all functions were loaded
