@@ -10,15 +10,21 @@ struct Material {
     Vec3 diffuse;
     Vec3 specular;
     float shininess;
+    float roughness;
+    float metallic;
     std::shared_ptr<Texture> texture;
     std::shared_ptr<Texture> specularMap;
     std::shared_ptr<Texture> normalMap;
+    std::shared_ptr<Texture> roughnessMap;
+    std::shared_ptr<Texture> metallicMap;
 
     Material() 
         : ambient(1.0f, 1.0f, 1.0f)
         , diffuse(1.0f, 1.0f, 1.0f)
         , specular(0.5f, 0.5f, 0.5f)
         , shininess(32.0f)
+        , roughness(0.5f)
+        , metallic(0.0f)
     {
     }
 
@@ -28,6 +34,8 @@ struct Material {
             shader->SetVec3("material.diffuse", diffuse.x, diffuse.y, diffuse.z);
             shader->SetVec3("material.specular", specular.x, specular.y, specular.z);
             shader->SetFloat("material.shininess", shininess);
+            shader->SetFloat("material.roughness", roughness);
+            shader->SetFloat("material.metallic", metallic);
 
             if (texture) {
                 texture->Bind(0);

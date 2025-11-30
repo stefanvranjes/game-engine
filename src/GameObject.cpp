@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <iostream>
 
+static std::shared_ptr<Mesh> s_UnitCube = nullptr;
+
 // Adaptive query frequency parameters
 const int STABLE_THRESHOLD = 10;      // Frames before considered stable
 const int MAX_QUERY_INTERVAL = 4;     // Max frames between queries
@@ -162,8 +164,58 @@ void GameObject::InitQuery() {
     }
 }
 
-void GameObject::RenderBoundingBox() {
-    // Placeholder - actual rendering handled by Renderer
+void GameObject::RenderBoundingBox(Shader* shader, const Mat4& view, const Mat4& projection) {
+    if (!m_Mesh && !m_Model) return;
+
+    if (!s_UnitCube) {
+        s_UnitCube = std::make_shared<Mesh>(Mesh::CreateCube());
+    }
+
+    AABB totalBounds;
+    bool boundsInitialized = false;
+
+    if (m_Mesh) {
+        totalBounds = m_Mesh->GetBounds();
+        boundsInitialized = true;
+    } else if (m_Model) {
+        for (const auto& mesh : m_Model->GetMeshes()) {
+            if (!boundsInitialized) {
+                totalBounds = mesh->GetBounds();
+                boundsInitialized = true;
+            } else {
+                // Union bounds
+                const AABB& b = mesh->GetBounds();
+                totalBounds.min.x = std::min(totalBounds.min.x, b.min.x);
+                totalBounds.min.y = std::min(totalBounds.min.y, b.min.y);
+                totalBounds.min.z = std::min(totalBounds.min.z, b.min.z);
+                totalBounds.max.x = std::max(totalBounds.max.x, b.max.x);
+                totalBounds.max.y = std::max(totalBounds.max.y, b.max.y);
+                totalBounds.max.z = std::max(totalBounds.max.z, b.max.z);
+            }
+        }
+    }
+
+    if (!boundsInitialized) return;
+
+    // Calculate transform
+    Vec3 size = totalBounds.max - totalBounds.min;
+    Vec3 center = (totalBounds.min + totalBounds.max) * 0.5f;
+
+    Mat4 scaleMatrix = Mat4::Scale(size);
+    Mat4 translationMatrix = Mat4::Translate(center);
+    
+    // Model matrix for the bounding box (in local space of the object)
+    Mat4 localBoxMatrix = translationMatrix * scaleMatrix;
+    
+    // Combine with object's world matrix
+    Mat4 worldBoxMatrix = m_WorldMatrix * localBoxMatrix;
+    
+    Mat4 mvp = projection * view * worldBoxMatrix;
+    
+    shader->SetMat4("u_MVP", mvp.m);
+    shader->SetMat4("u_Model", worldBoxMatrix.m);
+    
+    s_UnitCube->Draw();
 }
 
 void GameObject::UpdateQueryInterval() {

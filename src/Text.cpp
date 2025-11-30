@@ -74,6 +74,9 @@ void Text::RenderText(const std::string& text, float x, float y, float scale, co
 
     m_Shader->Use();
     m_Shader->SetVec3("textColor", color.x, color.y, color.z);
+    
+    // Ensure we're using texture unit 0 (IBL may have changed active texture)
+    glActiveTexture(GL_TEXTURE0);
     m_FontAtlas->Bind(0);
 
     glBindVertexArray(m_VAO);

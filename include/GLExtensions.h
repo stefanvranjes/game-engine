@@ -63,6 +63,8 @@
 #define GL_RENDERBUFFER 0x8D41
 #define GL_TEXTURE3 0x84C3
 #define GL_TEXTURE_2D_ARRAY 0x8C1A
+#define GL_RG 0x8227
+#define GL_RG16F 0x822F
 
 
 // OpenGL 3.3 types

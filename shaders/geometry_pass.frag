@@ -1,7 +1,7 @@
 #version 330 core
-layout (location = 0) out vec3 gPosition;
-layout (location = 1) out vec3 gNormal;
-layout (location = 2) out vec4 gAlbedoSpec;
+layout (location = 0) out vec4 gPosition; // RGB: Position, A: AO
+layout (location = 1) out vec4 gNormal;   // RGB: Normal, A: Roughness
+layout (location = 2) out vec4 gAlbedoSpec; // RGB: Albedo, A: Metallic
 
 in vec3 FragPos;
 in vec3 Normal;
@@ -12,9 +12,13 @@ struct Material {
     vec3 diffuse;
     vec3 specular;
     float shininess;
+    float roughness;
+    float metallic;
     sampler2D texture;
-    sampler2D specularMap;
+    sampler2D specularMap; // Used as metallic map for now if needed, or separate
     sampler2D normalMap;
+    sampler2D roughnessMap;
+    sampler2D metallicMap;
 };
 
 uniform Material material;
@@ -25,7 +29,8 @@ uniform int u_HasNormalMap;
 void main()
 {
     // Store fragment position
-    gPosition = FragPos;
+    // Store fragment position and AO (default 1.0)
+    gPosition = vec4(FragPos, 1.0);
     
     // Store normal (with normal mapping if available)
     vec3 norm = normalize(Normal);
@@ -47,7 +52,10 @@ void main()
         norm = normalize(TBN * normalMapSample);
     }
     
-    gNormal = norm;
+    // Store normal and Roughness
+    float roughness = material.roughness;
+    // if (u_HasRoughnessMap) ... (TODO)
+    gNormal = vec4(norm, roughness);
     
     // Store albedo (diffuse color)
     vec3 albedo = material.diffuse;
@@ -56,10 +64,8 @@ void main()
     }
     gAlbedoSpec.rgb = albedo;
     
-    // Store specular intensity in alpha channel
-    float specular = material.specular.r; // Use red channel as intensity
-    if (u_HasSpecularMap == 1) {
-        specular = texture(material.specularMap, TexCoord).r;
-    }
-    gAlbedoSpec.a = specular;
+    // Store Metallic in alpha channel
+    float metallic = material.metallic;
+    // if (u_HasMetallicMap) ... (TODO)
+    gAlbedoSpec.a = metallic;
 }

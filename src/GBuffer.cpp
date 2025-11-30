@@ -25,23 +25,23 @@ bool GBuffer::Init(unsigned int width, unsigned int height) {
     glGenFramebuffers(1, &m_FBO);
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
 
-    // Position texture (RGB16F for high precision)
+    // Position texture (RGBA16F for high precision) - RGB: Position, A: AO
     glGenTextures(1, &m_PositionTexture);
     glBindTexture(GL_TEXTURE_2D, m_PositionTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_PositionTexture, 0);
 
-    // Normal texture (RGB16F for high precision)
+    // Normal texture (RGBA16F for high precision) - RGB: Normal, A: Roughness
     glGenTextures(1, &m_NormalTexture);
     glBindTexture(GL_TEXTURE_2D, m_NormalTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, nullptr);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0, GL_RGBA, GL_FLOAT, nullptr);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, m_NormalTexture, 0);
 
-    // Albedo + Specular texture (RGBA)
+    // Albedo + Metallic texture (RGBA) - RGB: Albedo, A: Metallic
     glGenTextures(1, &m_AlbedoSpecTexture);
     glBindTexture(GL_TEXTURE_2D, m_AlbedoSpecTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);

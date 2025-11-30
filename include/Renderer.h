@@ -4,7 +4,6 @@
 #include "Texture.h"
 #include "Mesh.h"
 #include "Transform.h"
-#include "Transform.h"
 #include "Math/AABB.h"
 #include "Math/Vec4.h"
 #include "Material.h"
@@ -71,6 +70,19 @@ public:
 private:
     void SetupScene();
     void RenderQuad(); // For fullscreen quad in lighting pass
+    void RenderCube(); // For cubemap rendering
+
+    // IBL
+    void InitIBL();
+    unsigned int m_EnvCubemap;
+    unsigned int m_IrradianceMap;
+    unsigned int m_PrefilterMap;
+    unsigned int m_BRDFLUT;
+    
+    std::unique_ptr<Shader> m_EquirectangularToCubemapShader;
+    std::unique_ptr<Shader> m_IrradianceShader;
+    std::unique_ptr<Shader> m_PrefilterShader;
+    std::unique_ptr<Shader> m_BRDFShader;
 
     std::unique_ptr<Shader> m_Shader;
     std::unique_ptr<Shader> m_DepthShader;

@@ -47,7 +47,7 @@ public:
 
     // Occlusion Culling
     void InitQuery();
-    void RenderBoundingBox();
+    void RenderBoundingBox(Shader* shader, const Mat4& view, const Mat4& projection);
     unsigned int GetQueryID() const { return m_QueryID; }
     bool IsVisible() const { return m_Visible; }
     void SetVisible(bool visible) { m_Visible = visible; }

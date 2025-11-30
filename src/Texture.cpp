@@ -67,6 +67,29 @@ bool Texture::LoadFromFile(const std::string& path) {
     return true;
 }
 
+bool Texture::LoadHDR(const std::string& path) {
+    stbi_set_flip_vertically_on_load(true);
+    float* data = stbi_loadf(path.c_str(), &m_Width, &m_Height, &m_Channels, 0);
+    
+    if (data) {
+        glGenTextures(1, &m_TextureID);
+        glBindTexture(GL_TEXTURE_2D, m_TextureID);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, m_Width, m_Height, 0, GL_RGB, GL_FLOAT, data);
+
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        stbi_image_free(data);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        return true;
+    }
+    
+    std::cerr << "Failed to load HDR texture: " << path << std::endl;
+    return false;
+}
+
 void Texture::Bind(unsigned int unit) const {
     glActiveTexture(GL_TEXTURE0 + unit);
     glBindTexture(GL_TEXTURE_2D, m_TextureID);
