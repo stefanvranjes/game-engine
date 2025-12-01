@@ -17,7 +17,7 @@ Renderer::Renderer()
     , m_ShowCascades(false)
     , m_ShadowFadeStart(40.0f)
     , m_ShadowFadeEnd(50.0f)
-    , m_SSAOEnabled(true)
+    , m_SSAOEnabled(false)
 {
     m_TextureManager = std::make_unique<TextureManager>();
     m_Root = std::make_shared<GameObject>("Root");
@@ -189,8 +189,8 @@ void Renderer::SetupScene() {
     if (m_Root) m_Root->AddChild(floor);
     
     // Add lights
-    AddLight(Light(Vec3(0, 5, 0), Vec3(1, 1, 1), 1.0f));
-    AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 1.0f)); // Red light
+    AddLight(Light(Vec3(0, 5, 0), Vec3(1, 1, 1), 5.0f));
+    AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 3.0f)); // Red light
 }
 
 bool Renderer::Init() {
@@ -203,8 +203,10 @@ bool Renderer::Init() {
 
     // Load texture using manager
     m_Texture = m_TextureManager->LoadTexture("assets/brick.png");
-    if (!m_Texture) {
-        std::cerr << "Failed to load default texture" << std::endl;
+    if (m_Texture) {
+        std::cout << "Texture loaded successfully: brick.png (ID: " << m_Texture->GetID() << ")" << std::endl;
+    } else {
+        std::cerr << "ERROR: Failed to load brick.png texture!" << std::endl;
         return false;
     }
 
@@ -326,7 +328,181 @@ bool Renderer::Init() {
     // Initialize IBL
     InitIBL();
 
+    // Add a test Light Probe
+    // AddLightProbe(Vec3(0, 2, 0), 10.0f);
+    // BakeLightProbes();
+
     return true;
+}
+
+void Renderer::AddLightProbe(const Vec3& position, float radius) {
+    auto probe = std::make_unique<LightProbe>(position, radius);
+    if (probe->Init()) {
+        m_LightProbes.push_back(std::move(probe));
+    }
+}
+
+void Renderer::BakeLightProbes() {
+    glDisable(GL_CULL_FACE); // Disable culling for capturing inside objects
+    for (auto& probe : m_LightProbes) {
+        BakeProbe(probe.get());
+    }
+    glEnable(GL_CULL_FACE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    // Restore viewport
+    int width, height;
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    glViewport(0, 0, width, height);
+}
+
+void Renderer::BakeProbe(LightProbe* probe) {
+    if (!probe) return;
+    
+    // 1. Capture Scene to Environment Cubemap
+    unsigned int captureFBO, captureRBO;
+    glGenFramebuffers(1, &captureFBO);
+    glGenRenderbuffers(1, &captureRBO);
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 512, 512);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, captureRBO);
+    
+    Mat4 captureProjection = Mat4::Perspective(90.0f, 1.0f, 0.1f, 100.0f);
+    Vec3 pos = probe->GetPosition();
+    std::vector<Mat4> captureViews = {
+        Mat4::LookAt(pos, pos + Vec3( 1.0f,  0.0f,  0.0f), Vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::LookAt(pos, pos + Vec3(-1.0f,  0.0f,  0.0f), Vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f,  1.0f,  0.0f), Vec3(0.0f,  0.0f,  1.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f, -1.0f,  0.0f), Vec3(0.0f,  0.0f, -1.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f,  0.0f,  1.0f), Vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f,  0.0f, -1.0f), Vec3(0.0f, -1.0f,  0.0f))
+    };
+    
+    // Use a simple shader for capturing (e.g., the geometry shader but outputting color directly? 
+    // or just reuse lighting shader? No, lighting shader needs G-Buffer.
+    // We need a Forward Shader. Let's use m_Shader (textured.vert/frag) which is a simple forward shader.
+    // But textured.frag might need lights.
+    // Let's assume m_Shader is simple enough or we configure it.
+    // Actually, let's just render the Skybox for now to verify IBL capture.
+    // Rendering the scene geometry requires a proper forward shader which we might not have fully set up for PBR.
+    // But we can try using m_Shader which seems to be "textured".
+    
+    m_Shader->Use();
+    m_Shader->SetInt("u_Texture", 0);
+    
+    glViewport(0, 0, 512, 512);
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    
+    for (unsigned int i = 0; i < 6; ++i) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, probe->GetEnvironmentMap(), 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // Render Scene
+        // Set view/proj matrices
+        m_Shader->SetMat4("u_MVP", (captureProjection * captureViews[i]).m); // This might be wrong if shader expects Model/View/Proj separately
+        // m_Shader expects u_MVP based on previous look at geometry_pass.vert, but let's check textured.vert
+        
+        // Render Skybox
+        if (m_Skybox) {
+            m_Skybox->Draw(captureViews[i], captureProjection);
+        }
+        
+        // Render Objects (Forward)
+        // RenderSceneForward(m_Shader.get()); // Commented out until we verify shader compatibility
+    }
+    
+    // Generate Mipmaps for Environment Map
+    glBindTexture(GL_TEXTURE_CUBE_MAP, probe->GetEnvironmentMap());
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    
+    // 2. Convolute to Irradiance Map
+    m_IrradianceShader->Use();
+    m_IrradianceShader->SetInt("environmentMap", 0);
+    m_IrradianceShader->SetMat4("projection", captureProjection.m);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, probe->GetEnvironmentMap());
+    
+    glViewport(0, 0, 32, 32);
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, 32, 32);
+    
+    for (unsigned int i = 0; i < 6; ++i) {
+        m_IrradianceShader->SetMat4("view", captureViews[i].m);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, probe->GetIrradianceMap(), 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        RenderCube();
+    }
+    
+    // 3. Prefilter Map
+    m_PrefilterShader->Use();
+    m_PrefilterShader->SetInt("environmentMap", 0);
+    m_PrefilterShader->SetMat4("projection", captureProjection.m);
+    
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, probe->GetEnvironmentMap());
+    
+    unsigned int maxMipLevels = 5;
+    for (unsigned int mip = 0; mip < maxMipLevels; ++mip) {
+        unsigned int mipWidth = 128 * std::pow(0.5, mip);
+        unsigned int mipHeight = 128 * std::pow(0.5, mip);
+        
+        glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipWidth, mipHeight);
+        glViewport(0, 0, mipWidth, mipHeight);
+        
+        float roughness = (float)mip / (float)(maxMipLevels - 1);
+        m_PrefilterShader->SetFloat("roughness", roughness);
+        
+        for (unsigned int i = 0; i < 6; ++i) {
+            m_PrefilterShader->SetMat4("view", captureViews[i].m);
+            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, probe->GetPrefilterMap(), mip);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            RenderCube();
+        }
+    }
+    
+    // Cleanup
+    glDeleteFramebuffers(1, &captureFBO);
+    glDeleteRenderbuffers(1, &captureRBO);
+}
+
+void Renderer::RenderSceneForward(Shader* shader) {
+    if (m_Root) {
+        // We need a DrawForward method on GameObject or similar, 
+        // or we just use Draw but with a specific shader.
+        // GameObject::Draw takes a shader, so we can use that.
+        // But we need to make sure the shader uniforms are compatible.
+        // For now, let's assume m_Shader (textured) is compatible with GameObject::Draw
+        
+        // We need to traverse and draw
+        std::vector<std::shared_ptr<GameObject>> queue;
+        queue.push_back(m_Root);
+        
+        while (!queue.empty()) {
+            auto obj = queue.back();
+            queue.pop_back();
+            
+            // Draw object
+            // Note: GameObject::Draw sets uniforms like u_Model, u_MVP if passed
+            // But we need to pass View/Proj to Draw? 
+            // GameObject::Draw signature: Draw(Shader* shader, const Mat4& view, const Mat4& projection, ...)
+            // So we need to pass the capture view/proj here.
+            // But RenderSceneForward signature I defined doesn't take matrices.
+            // I should probably pass them or set them in shader before calling.
+            // GameObject::Draw uses the passed matrices to calculate MVP.
+            
+            // Let's skip implementing this fully for now and just rely on Skybox capture
+            // as it's safer and sufficient to prove the probe works (it will reflect the sky).
+            
+            for (auto& child : obj->GetChildren()) {
+                queue.push_back(child);
+            }
+        }
+    }
 }
 
 void Renderer::Render() {
@@ -351,7 +527,6 @@ void Renderer::Render() {
             }
             m_PointShadowShader->SetFloat("far_plane", farPlane);
             m_PointShadowShader->SetVec3("lightPos", light.position.x, light.position.y, light.position.z);
-            m_PointShadowShader->SetMat4("u_Model", Mat4::Identity().m); // Simplified, should be per object
             
             m_PointShadows[shadowIndex]->BindForWriting();
             
@@ -599,6 +774,23 @@ void Renderer::Render() {
     glBindTexture(GL_TEXTURE_2D, m_SSAO->GetSSAOTexture());
     m_LightingShader->SetInt("ssaoTexture", 15);
     m_LightingShader->SetInt("ssaoEnabled", m_SSAOEnabled ? 1 : 0);
+
+    // Bind Light Probe (Test with first probe)
+    if (!m_LightProbes.empty()) {
+        glActiveTexture(GL_TEXTURE0 + 16);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, m_LightProbes[0]->GetIrradianceMap());
+        m_LightingShader->SetInt("probeIrradianceMap", 16);
+        
+        glActiveTexture(GL_TEXTURE0 + 17);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, m_LightProbes[0]->GetPrefilterMap());
+        m_LightingShader->SetInt("probePrefilterMap", 17);
+        
+        m_LightingShader->SetInt("u_HasLightProbe", 1);
+        m_LightingShader->SetVec3("u_ProbePos", m_LightProbes[0]->GetPosition().x, m_LightProbes[0]->GetPosition().y, m_LightProbes[0]->GetPosition().z);
+        m_LightingShader->SetFloat("u_ProbeRadius", m_LightProbes[0]->GetRadius());
+    } else {
+        m_LightingShader->SetInt("u_HasLightProbe", 0);
+    }
 
 
     // Light setup

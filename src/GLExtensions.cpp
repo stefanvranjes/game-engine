@@ -20,6 +20,7 @@ PFNGLUNIFORM1IPROC glUniform1i = nullptr;
 PFNGLUNIFORM1FPROC glUniform1f = nullptr;
 PFNGLUNIFORM3FPROC glUniform3f = nullptr;
 PFNGLUNIFORM4FPROC glUniform4f = nullptr;
+PFNGLUNIFORM2FPROC glUniform2f = nullptr;
 PFNGLUNIFORMMATRIX4FVPROC glUniformMatrix4fv = nullptr;
 PFNGLGENVERTEXARRAYSPROC glGenVertexArrays = nullptr;
 PFNGLBINDVERTEXARRAYPROC glBindVertexArray = nullptr;
@@ -76,6 +77,7 @@ bool LoadGLExtensions() {
     glUniform1f = (PFNGLUNIFORM1FPROC)wglGetProcAddress("glUniform1f");
     glUniform3f = (PFNGLUNIFORM3FPROC)wglGetProcAddress("glUniform3f");
     glUniform4f = (PFNGLUNIFORM4FPROC)wglGetProcAddress("glUniform4f");
+    glUniform2f = (PFNGLUNIFORM2FPROC)wglGetProcAddress("glUniform2f");
     glUniformMatrix4fv = (PFNGLUNIFORMMATRIX4FVPROC)wglGetProcAddress("glUniformMatrix4fv");
     glGenVertexArrays = (PFNGLGENVERTEXARRAYSPROC)wglGetProcAddress("glGenVertexArrays");
     glBindVertexArray = (PFNGLBINDVERTEXARRAYPROC)wglGetProcAddress("glBindVertexArray");
@@ -118,7 +120,7 @@ bool LoadGLExtensions() {
         !glGetShaderInfoLog || !glDeleteShader || !glCreateProgram || !glAttachShader ||
         !glLinkProgram || !glGetProgramiv || !glGetProgramInfoLog || !glDeleteProgram ||
         !glUseProgram || !glGetUniformLocation || !glUniform1i || !glUniform1f ||
-        !glUniform3f || !glUniform4f || !glUniformMatrix4fv || !glGenVertexArrays ||
+        !glUniform3f || !glUniform4f || !glUniform2f || !glUniformMatrix4fv || !glGenVertexArrays ||
         !glBindVertexArray || !glDeleteVertexArrays || !glGenBuffers || !glBindBuffer ||
         !glBufferData || !glBufferSubData || !glDeleteBuffers || !glVertexAttribPointer || !glEnableVertexAttribArray ||
         !glGenerateMipmap || !glActiveTexture || !glGenFramebuffers || !glBindFramebuffer ||

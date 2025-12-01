@@ -52,6 +52,13 @@ uniform sampler2D brdfLUT;
 uniform sampler2D ssaoTexture;
 uniform int ssaoEnabled;
 
+// Light Probe
+uniform samplerCube probeIrradianceMap;
+uniform samplerCube probePrefilterMap;
+uniform int u_HasLightProbe;
+uniform vec3 u_ProbePos;
+uniform float u_ProbeRadius;
+
 // Array of offset direction for sampling
 vec3 gridSamplingDisk[20] = vec3[]
 (
@@ -396,7 +403,8 @@ void main()
              // Range cutoff (optional for PBR but good for performance)
              if (u_Lights[i].range > 0.0) {
                 float cutoff = u_Lights[i].range;
-                attenuation *= max(min(1.0 - pow(distance / cutoff, 4.0), 1.0), 0.0) / (distance * distance + 1.0); // Improved attenuation
+                float rangeFactor = max(min(1.0 - pow(distance / cutoff, 4.0), 1.0), 0.0);
+                attenuation *= rangeFactor;
              }
              
              if (u_Lights[i].castsShadows == 1 && pointShadowIndex < 4) {
@@ -461,6 +469,25 @@ void main()
     vec3 kS = FresnelSchlick(max(dot(N, V), 0.0), F0);
     vec3 kD = 1.0 - kS;
     kD *= 1.0 - Metallic;
+    
+    // Local Light Probe Blending
+    if (u_HasLightProbe == 1) {
+        float dist = length(FragPos - u_ProbePos);
+        float blend = 1.0 - smoothstep(u_ProbeRadius * 0.8, u_ProbeRadius, dist); // 1.0 at center, 0.0 at radius
+        
+        if (blend > 0.0) {
+            // Sample Probe
+            vec3 probeIrradiance = texture(probeIrradianceMap, N).rgb;
+            vec3 probeDiffuse = probeIrradiance * Albedo;
+            
+            vec3 probePrefilteredColor = textureLod(probePrefilterMap, R, Roughness * MAX_REFLECTION_LOD).rgb;
+            vec3 probeSpecular = probePrefilteredColor * (F0 * brdf.x + brdf.y);
+            
+            // Blend
+            diffuse = mix(diffuse, probeDiffuse, blend);
+            specular = mix(specular, probeSpecular, blend);
+        }
+    }
     
     vec3 ambient = (kD * diffuse + specular) * AO;
     

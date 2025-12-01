@@ -17,6 +17,7 @@
 #include "PostProcessing.h"
 #include "CubemapShadow.h"
 #include "SSAO.h"
+#include "LightProbe.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -73,6 +74,11 @@ public:
         if (index < m_Lights.size()) m_Lights.erase(m_Lights.begin() + index); 
     }
 
+    // Light Probes
+    void AddLightProbe(const Vec3& position, float radius);
+    void BakeLightProbes();
+    std::vector<std::unique_ptr<LightProbe>>& GetLightProbes() { return m_LightProbes; }
+
 private:
     void SetupScene();
     void RenderQuad(); // For fullscreen quad in lighting pass
@@ -111,6 +117,10 @@ private:
     
     std::shared_ptr<GameObject> m_Root;
     std::vector<Light> m_Lights;
+    std::vector<std::unique_ptr<LightProbe>> m_LightProbes;
+    
+    void BakeProbe(LightProbe* probe);
+    void RenderSceneForward(Shader* shader);
 
     // Debug
     bool m_ShowCascades;

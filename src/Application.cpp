@@ -284,7 +284,10 @@ void Application::RenderEditorUI() {
             light.type = static_cast<LightType>(currentType);
         }
 
-        ImGui::Checkbox("Cast Shadows", &light.castsShadows);
+        bool castsShadows = light.castsShadows;
+        if (ImGui::Checkbox("Cast Shadows", &castsShadows)) {
+            light.castsShadows = castsShadows;
+        }
         if (light.castsShadows) {
             if (light.type == LightType::Point) {
                 ImGui::SliderFloat("Shadow Softness", &light.shadowSoftness, 1.0f, 5.0f);
