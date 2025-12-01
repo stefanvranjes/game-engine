@@ -17,6 +17,7 @@ Renderer::Renderer()
     , m_ShowCascades(false)
     , m_ShadowFadeStart(40.0f)
     , m_ShadowFadeEnd(50.0f)
+    , m_SSAOEnabled(true)
 {
     m_TextureManager = std::make_unique<TextureManager>();
     m_Root = std::make_shared<GameObject>("Root");
@@ -315,6 +316,13 @@ bool Renderer::Init() {
         return false;
     }
 
+    // Initialize SSAO
+    m_SSAO = std::make_unique<SSAO>();
+    if (!m_SSAO->Init(width, height)) {
+        std::cerr << "Failed to initialize SSAO" << std::endl;
+        return false;
+    }
+
     // Initialize IBL
     InitIBL();
 
@@ -416,6 +424,8 @@ void Renderer::Render() {
     int width, height;
     glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
 
+    // Restore viewport to window size after shadow passes
+    glViewport(0, 0, width, height);
 
     // ===== PASS 2: Issue Occlusion Queries (BEFORE updating visibility) =====
     // Issue queries against the depth buffer from the PREVIOUS frame
@@ -515,6 +525,16 @@ void Renderer::Render() {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+    // ===== PASS 4.5: SSAO Pass =====
+    if (m_SSAOEnabled) {
+        m_SSAO->Render(
+            m_GBuffer->GetPositionTexture(),
+            m_GBuffer->GetNormalTexture(),
+            m_Camera->GetProjectionMatrix().m,
+            m_Camera->GetViewMatrix().m
+        );
+    }
+
     // ===== PASS 5: Lighting Pass - Render to HDR framebuffer =====
     m_PostProcessing->BeginHDR();
 
@@ -573,6 +593,12 @@ void Renderer::Render() {
     glActiveTexture(GL_TEXTURE0 + 14);
     glBindTexture(GL_TEXTURE_2D, m_BRDFLUT);
     m_LightingShader->SetInt("brdfLUT", 14);
+
+    // Bind SSAO texture
+    glActiveTexture(GL_TEXTURE0 + 15);
+    glBindTexture(GL_TEXTURE_2D, m_SSAO->GetSSAOTexture());
+    m_LightingShader->SetInt("ssaoTexture", 15);
+    m_LightingShader->SetInt("ssaoEnabled", m_SSAOEnabled ? 1 : 0);
 
 
     // Light setup

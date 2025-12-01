@@ -14,6 +14,7 @@ public:
     // Uniform setters
     void SetInt(const std::string& name, int value);
     void SetFloat(const std::string& name, float value);
+    void SetVec2(const std::string& name, float x, float y);
     void SetVec3(const std::string& name, float x, float y, float z);
     void SetVec4(const std::string& name, float x, float y, float z, float w);
     void SetMat4(const std::string& name, const float* value);

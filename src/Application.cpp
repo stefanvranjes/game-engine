@@ -369,6 +369,30 @@ void Application::RenderEditorUI() {
         if (ImGui::SliderFloat("Gamma", &gamma, 1.8f, 2.4f)) {
             postProcessing->SetGamma(gamma);
         }
+        
+        ImGui::Separator();
+        
+        // SSAO settings
+        ImGui::Text("SSAO (Ambient Occlusion)");
+        bool ssaoEnabled = m_Renderer->GetSSAOEnabled();
+        if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled)) {
+            m_Renderer->SetSSAOEnabled(ssaoEnabled);
+        }
+        
+        if (ssaoEnabled) {
+            auto ssao = m_Renderer->GetSSAO();
+            if (ssao) {
+                float radius = ssao->GetRadius();
+                if (ImGui::SliderFloat("SSAO Radius", &radius, 0.1f, 2.0f)) {
+                    ssao->SetRadius(radius);
+                }
+                
+                float bias = ssao->GetBias();
+                if (ImGui::SliderFloat("SSAO Bias", &bias, 0.001f, 0.1f)) {
+                    ssao->SetBias(bias);
+                }
+            }
+        }
     }
     
     ImGui::End();

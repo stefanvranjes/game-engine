@@ -16,6 +16,7 @@
 #include "GBuffer.h"
 #include "PostProcessing.h"
 #include "CubemapShadow.h"
+#include "SSAO.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -56,6 +57,11 @@ public:
     void SetShadowFadeEnd(float distance) { m_ShadowFadeEnd = distance; }
     float GetShadowFadeStart() const { return m_ShadowFadeStart; }
     float GetShadowFadeEnd() const { return m_ShadowFadeEnd; }
+    
+    // SSAO
+    SSAO* GetSSAO() { return m_SSAO.get(); }
+    void SetSSAOEnabled(bool enabled) { m_SSAOEnabled = enabled; }
+    bool GetSSAOEnabled() const { return m_SSAOEnabled; }
     
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
@@ -98,6 +104,8 @@ private:
     std::unique_ptr<TextureManager> m_TextureManager;
     std::unique_ptr<GBuffer> m_GBuffer;
     std::unique_ptr<PostProcessing> m_PostProcessing;
+    std::unique_ptr<SSAO> m_SSAO;
+    bool m_SSAOEnabled;
     
     unsigned int m_QuadVAO, m_QuadVBO;
     

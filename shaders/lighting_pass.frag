@@ -48,6 +48,10 @@ uniform samplerCube irradianceMap;
 uniform samplerCube prefilterMap;
 uniform sampler2D brdfLUT;
 
+// SSAO
+uniform sampler2D ssaoTexture;
+uniform int ssaoEnabled;
+
 // Array of offset direction for sampling
 vec3 gridSamplingDisk[20] = vec3[]
 (
@@ -349,6 +353,12 @@ void main()
     
     vec3 N = normalize(Normal);
     vec3 V = normalize(u_ViewPos - FragPos);
+    
+    // Apply SSAO
+    if (ssaoEnabled == 1) {
+        float ssao = texture(ssaoTexture, TexCoord).r;
+        AO *= ssao;
+    }
     
     // F0: Surface reflection at zero incidence
     vec3 F0 = vec3(0.04); 
