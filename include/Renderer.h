@@ -18,6 +18,7 @@
 #include "CubemapShadow.h"
 #include "SSAO.h"
 #include "LightProbe.h"
+#include "ReflectionProbe.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -78,6 +79,11 @@ public:
     void AddLightProbe(const Vec3& position, float radius);
     void BakeLightProbes();
     std::vector<std::unique_ptr<LightProbe>>& GetLightProbes() { return m_LightProbes; }
+    
+    // Reflection Probes
+    void AddReflectionProbe(const Vec3& position, float radius, unsigned int resolution = 256);
+    void CaptureReflectionProbes();
+    std::vector<std::unique_ptr<ReflectionProbe>>& GetReflectionProbes() { return m_ReflectionProbes; }
 
 private:
     void SetupScene();
@@ -118,8 +124,10 @@ private:
     std::shared_ptr<GameObject> m_Root;
     std::vector<Light> m_Lights;
     std::vector<std::unique_ptr<LightProbe>> m_LightProbes;
+    std::vector<std::unique_ptr<ReflectionProbe>> m_ReflectionProbes;
     
     void BakeProbe(LightProbe* probe);
+    void CaptureProbe(ReflectionProbe* probe);
     void RenderSceneForward(Shader* shader);
 
     // Debug

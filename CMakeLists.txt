@@ -5,6 +5,10 @@ project(GameEngine VERSION 0.1.0 LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(MSVC)
+    add_compile_options(/FS)
+endif()
+
 # Fetch GLFW
 include(FetchContent)
 
@@ -19,6 +23,27 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
 FetchContent_MakeAvailable(glfw)
+
+# Fetch nlohmann_json
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.2
+)
+FetchContent_GetProperties(json)
+if(NOT json_populated)
+    FetchContent_Populate(json)
+    add_library(nlohmann_json INTERFACE)
+    target_include_directories(nlohmann_json INTERFACE ${json_SOURCE_DIR}/include)
+endif()
+
+# Fetch tinygltf
+FetchContent_Declare(
+    tinygltf
+    GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
+    GIT_TAG v2.8.13
+)
+FetchContent_MakeAvailable(tinygltf)
 
 # ImGui sources
 set(IMGUI_SOURCES
@@ -54,12 +79,14 @@ add_executable(GameEngine
     src/Frustum.cpp
     src/SSAO.cpp
     src/LightProbe.cpp
+    src/ReflectionProbe.cpp
+    src/GLTFLoader.cpp
     ${IMGUI_SOURCES}
 )
 
 target_include_directories(GameEngine PUBLIC include include/imgui)
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD

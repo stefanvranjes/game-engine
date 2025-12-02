@@ -67,6 +67,43 @@ bool Texture::LoadFromFile(const std::string& path) {
     return true;
 }
 
+bool Texture::LoadFromData(const unsigned char* data, int width, int height, int channels, bool sRGB) {
+    m_Width = width;
+    m_Height = height;
+    m_Channels = channels;
+
+    GLenum format = GL_RGB;
+    GLenum internalFormat = sRGB ? GL_SRGB : GL_RGB;
+
+    if (m_Channels == 1) {
+        format = GL_RED;
+        internalFormat = GL_RED;
+    } else if (m_Channels == 3) {
+        format = GL_RGB;
+        internalFormat = sRGB ? GL_SRGB : GL_RGB;
+    } else if (m_Channels == 4) {
+        format = GL_RGBA;
+        internalFormat = sRGB ? GL_SRGB_ALPHA : GL_RGBA;
+    }
+
+    if (m_TextureID != 0) {
+        glDeleteTextures(1, &m_TextureID);
+    }
+
+    glGenTextures(1, &m_TextureID);
+    glBindTexture(GL_TEXTURE_2D, m_TextureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, m_Width, m_Height, 0, format, GL_UNSIGNED_BYTE, data);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return true;
+}
+
 bool Texture::LoadHDR(const std::string& path) {
     stbi_set_flip_vertically_on_load(true);
     float* data = stbi_loadf(path.c_str(), &m_Width, &m_Height, &m_Channels, 0);

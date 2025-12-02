@@ -189,8 +189,17 @@ void Renderer::SetupScene() {
     if (m_Root) m_Root->AddChild(floor);
     
     // Add lights
-    AddLight(Light(Vec3(0, 5, 0), Vec3(1, 1, 1), 5.0f));
-    AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 3.0f)); // Red light
+    // First light must be Directional with shadows for CSM to work
+    Light mainLight;
+    mainLight.type = LightType::Directional;
+    mainLight.direction = Vec3(0.3f, -1.0f, 0.5f); // Diagonal downward direction
+    mainLight.color = Vec3(1.0f, 1.0f, 0.95f); // Slightly warm white
+    mainLight.intensity = 2.0f;
+    mainLight.castsShadows = true;
+    mainLight.lightSize = 0.5f; // For PCSS soft shadows
+    AddLight(mainLight);
+    
+    AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 3.0f)); // Red point light
 }
 
 bool Renderer::Init() {
@@ -470,6 +479,86 @@ void Renderer::BakeProbe(LightProbe* probe) {
     glDeleteRenderbuffers(1, &captureRBO);
 }
 
+// Reflection Probes
+void Renderer::AddReflectionProbe(const Vec3& position, float radius, unsigned int resolution) {
+    auto probe = std::make_unique<ReflectionProbe>(position, radius, resolution);
+    if (probe->Init()) {
+        m_ReflectionProbes.push_back(std::move(probe));
+        std::cout << "Added reflection probe at (" << position.x << ", " << position.y << ", " << position.z << ")" << std::endl;
+    }
+}
+
+void Renderer::CaptureReflectionProbes() {
+    glDisable(GL_CULL_FACE);
+    for (auto& probe : m_ReflectionProbes) {
+        if (probe->NeedsUpdate()) {
+            CaptureProbe(probe.get());
+        }
+    }
+    glEnable(GL_CULL_FACE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    // Restore viewport
+    int width, height;
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    glViewport(0, 0, width, height);
+}
+
+void Renderer::CaptureProbe(ReflectionProbe* probe) {
+    if (!probe) return;
+    
+    // Setup capture matrices
+    Mat4 captureProjection = Mat4::Perspective(90.0f, 1.0f, 0.1f, 100.0f);
+    Vec3 pos = probe->GetPosition();
+    std::vector<Mat4> captureViews = {
+        Mat4::LookAt(pos, pos + Vec3( 1.0f,  0.0f,  0.0f), Vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::LookAt(pos, pos + Vec3(-1.0f,  0.0f,  0.0f), Vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f,  1.0f,  0.0f), Vec3(0.0f,  0.0f,  1.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f, -1.0f,  0.0f), Vec3(0.0f,  0.0f, -1.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f,  0.0f,  1.0f), Vec3(0.0f, -1.0f,  0.0f)),
+        Mat4::LookAt(pos, pos + Vec3( 0.0f,  0.0f, -1.0f), Vec3(0.0f, -1.0f,  0.0f))
+    };
+    
+    // Bind probe FBO
+    unsigned int probeFBO = probe->GetCubemap(); // We need to expose FBO, not cubemap
+    // Actually, ReflectionProbe stores FBO internally, we need a getter
+    // For now, let's bind the probe's internal FBO by accessing it
+    // We'll need to modify ReflectionProbe to expose GetFBO()
+    
+    // Temporary: create FBO here (inefficient but works)
+    unsigned int captureFBO;
+    glGenFramebuffers(1, &captureFBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
+    
+    // Set viewport to probe resolution
+    glViewport(0, 0, 256, 256); // Should use probe->GetResolution() but it's private
+    
+    // Render each face
+    for (unsigned int i = 0; i < 6; ++i) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, 
+                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, probe->GetCubemap(), 0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // Render skybox
+        if (m_Skybox) {
+            m_Skybox->Draw(captureViews[i], captureProjection);
+        }
+        
+        // TODO: Render scene geometry with forward shader
+        // For now, just capturing skybox is sufficient for testing
+    }
+    
+    // Generate mipmaps for roughness sampling
+    glBindTexture(GL_TEXTURE_CUBE_MAP, probe->GetCubemap());
+    glGenerateMipmap(GL_TEXTURE_CUBE_MAP);
+    
+    // Cleanup
+    glDeleteFramebuffers(1, &captureFBO);
+    
+    probe->SetNeedsUpdate(false);
+    std::cout << "Captured reflection probe at (" << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
+}
+
 void Renderer::RenderSceneForward(Shader* shader) {
     if (m_Root) {
         // We need a DrawForward method on GameObject or similar, 
@@ -693,6 +782,10 @@ void Renderer::Render() {
 
     m_GeometryShader->Use();
 
+    // Set view position for parallax occlusion mapping
+    Vec3 viewPos = m_Camera->GetPosition();
+    m_GeometryShader->SetVec3("u_ViewPos", viewPos.x, viewPos.y, viewPos.z);
+
     // Render scene to G-Buffer with updated visibility
     if (m_Root) {
         m_Root->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
@@ -792,6 +885,26 @@ void Renderer::Render() {
         m_LightingShader->SetInt("u_HasLightProbe", 0);
     }
 
+    // Bind Reflection Probes
+    int reflectionProbeCount = (std::min)(static_cast<int>(m_ReflectionProbes.size()), 4);
+    m_LightingShader->SetInt("u_ReflectionProbeCount", reflectionProbeCount);
+    
+    for (int i = 0; i < reflectionProbeCount; ++i) {
+        // Bind cubemap
+        glActiveTexture(GL_TEXTURE0 + 18 + i);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, m_ReflectionProbes[i]->GetCubemap());
+        m_LightingShader->SetInt("u_ReflectionProbeCubemaps[" + std::to_string(i) + "]", 18 + i);
+        
+        // Upload position and radius
+        Vec3 pos = m_ReflectionProbes[i]->GetPosition();
+        m_LightingShader->SetVec3("u_ReflectionProbePositions[" + std::to_string(i) + "]", pos.x, pos.y, pos.z);
+        m_LightingShader->SetFloat("u_ReflectionProbeRadii[" + std::to_string(i) + "]", m_ReflectionProbes[i]->GetRadius());
+    }
+
+    // Bind emissive texture from G-Buffer
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->GetEmissiveTexture());
+    m_LightingShader->SetInt("gEmissive", 3);
 
     // Light setup
     int lightCount = (std::min)(static_cast<int>(m_Lights.size()), MAX_LIGHTS);

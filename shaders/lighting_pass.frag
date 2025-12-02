@@ -6,6 +6,7 @@ in vec2 TexCoord;
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
+uniform sampler2D gEmissive;
 uniform sampler2DArray shadowMap;
 
 struct Light {
@@ -58,6 +59,12 @@ uniform samplerCube probePrefilterMap;
 uniform int u_HasLightProbe;
 uniform vec3 u_ProbePos;
 uniform float u_ProbeRadius;
+
+// Reflection Probes
+uniform int u_ReflectionProbeCount;
+uniform vec3 u_ReflectionProbePositions[4];
+uniform float u_ReflectionProbeRadii[4];
+uniform samplerCube u_ReflectionProbeCubemaps[4];
 
 // Array of offset direction for sampling
 vec3 gridSamplingDisk[20] = vec3[]
@@ -345,7 +352,6 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0)
 void main()
 {
     // Retrieve data from G-Buffer
-    // Retrieve data from G-Buffer
     vec4 gPosData = texture(gPosition, TexCoord);
     vec3 FragPos = gPosData.rgb;
     float AO = gPosData.a;
@@ -357,6 +363,8 @@ void main()
     vec4 gAlbedoData = texture(gAlbedoSpec, TexCoord);
     vec3 Albedo = gAlbedoData.rgb;
     float Metallic = gAlbedoData.a;
+
+    vec3 Emissive = texture(gEmissive, TexCoord).rgb;
     
     vec3 N = normalize(Normal);
     vec3 V = normalize(u_ViewPos - FragPos);
@@ -489,6 +497,35 @@ void main()
         }
     }
     
+    // Reflection Probe Blending
+    if (u_ReflectionProbeCount > 0) {
+        // Find closest probe within range
+        float closestDist = 1000000.0;
+        int closestProbe = -1;
+        
+        for (int i = 0; i < u_ReflectionProbeCount && i < 4; ++i) {
+            float dist = length(FragPos - u_ReflectionProbePositions[i]);
+            if (dist < u_ReflectionProbeRadii[i] && dist < closestDist) {
+                closestDist = dist;
+                closestProbe = i;
+            }
+        }
+        
+        // Blend with closest probe
+        if (closestProbe >= 0) {
+            float blend = 1.0 - smoothstep(u_ReflectionProbeRadii[closestProbe] * 0.7, u_ReflectionProbeRadii[closestProbe], closestDist);
+            
+            if (blend > 0.0) {
+                // Sample reflection probe cubemap
+                vec3 reflectionColor = textureLod(u_ReflectionProbeCubemaps[closestProbe], R, Roughness * MAX_REFLECTION_LOD).rgb;
+                vec3 reflectionSpecular = reflectionColor * (F0 * brdf.x + brdf.y);
+                
+                // Blend with global IBL specular
+                specular = mix(specular, reflectionSpecular, blend);
+            }
+        }
+    }
+    
     vec3 ambient = (kD * diffuse + specular) * AO;
     
     // Fallback ambient if IBL is not loaded (prevents black screen)
@@ -497,7 +534,7 @@ void main()
         ambient = vec3(0.03) * Albedo * AO; // Simple ambient fallback
     }
     
-    vec3 color = ambient + Lo;
+    vec3 color = ambient + Lo + Emissive; // Add emissive component
     
     FragColor = vec4(color, 1.0);
 }
