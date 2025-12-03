@@ -16,6 +16,7 @@ public:
     unsigned int GetNormalTexture() const { return m_NormalTexture; }
     unsigned int GetAlbedoSpecTexture() const { return m_AlbedoSpecTexture; }
     unsigned int GetEmissiveTexture() const { return m_EmissiveTexture; }
+    unsigned int GetVelocityTexture() const { return m_VelocityTexture; }
     
     unsigned int GetWidth() const { return m_Width; }
     unsigned int GetHeight() const { return m_Height; }
@@ -26,6 +27,7 @@ private:
     unsigned int m_NormalTexture;
     unsigned int m_AlbedoSpecTexture;
     unsigned int m_EmissiveTexture;
+    unsigned int m_VelocityTexture;
     unsigned int m_DepthTexture;
     
     unsigned int m_Width;

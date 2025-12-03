@@ -7,9 +7,12 @@ out vec3 FragPos;
 out vec3 Normal;
 out vec2 TexCoord;
 out vec3 ViewPos;
+out vec4 CurrentPos;
+out vec4 PreviousPos;
 
 uniform mat4 u_Model;
 uniform mat4 u_MVP;
+uniform mat4 u_PrevMVP;
 uniform vec3 u_ViewPos;
 
 void main()
@@ -20,5 +23,9 @@ void main()
     TexCoord = aTexCoord;
     ViewPos = u_ViewPos;
     
-    gl_Position = u_MVP * vec4(aPos, 1.0);
+    // Calculate current and previous clip-space positions for motion vectors
+    CurrentPos = u_MVP * vec4(aPos, 1.0);
+    PreviousPos = u_PrevMVP * vec4(aPos, 1.0);
+    
+    gl_Position = CurrentPos;
 }

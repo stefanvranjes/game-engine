@@ -15,8 +15,10 @@ Camera::Camera(const Vec3& position, float fov, float aspect)
     , m_FarPlane(100.0f)
     , m_MovementSpeed(2.5f)
     , m_RotationSpeed(45.0f)
+    , m_Jitter(0, 0)
 {
     UpdateCameraVectors();
+    m_PrevViewProjection = GetProjectionMatrix() * GetViewMatrix();
 }
 
 Mat4 Camera::GetViewMatrix() const {
@@ -24,7 +26,22 @@ Mat4 Camera::GetViewMatrix() const {
 }
 
 Mat4 Camera::GetProjectionMatrix() const {
-    return Mat4::Perspective(m_FOV * PI / 180.0f, m_AspectRatio, m_NearPlane, m_FarPlane);
+    Mat4 proj = Mat4::Perspective(m_FOV * PI / 180.0f, m_AspectRatio, m_NearPlane, m_FarPlane);
+    
+    // Apply jitter for TAA
+    if (m_Jitter.x != 0.0f || m_Jitter.y != 0.0f) {
+        // Jitter is in NDC space [-1, 1]
+        // Apply to projection matrix
+        proj.m[8] += m_Jitter.x * 2.0f; // Column 2, row 0
+        proj.m[9] += m_Jitter.y * 2.0f; // Column 2, row 1
+    }
+    
+    return proj;
+}
+
+void Camera::UpdateMatrices() {
+    // Store previous view-projection before updating
+    m_PrevViewProjection = GetProjectionMatrix() * GetViewMatrix();
 }
 
 void Camera::ProcessInput(GLFWwindow* window, float deltaTime) {

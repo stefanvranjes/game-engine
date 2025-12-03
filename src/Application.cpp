@@ -228,10 +228,25 @@ void Application::RenderEditorUI() {
         if (mat) {
             ImGui::Text("Material");
             
-            ImGui::ColorEdit3("Ambient", &mat->ambient.x);
-            ImGui::ColorEdit3("Diffuse", &mat->diffuse.x);
-            ImGui::ColorEdit3("Specular", &mat->specular.x);
-            ImGui::DragFloat("Shininess", &mat->shininess, 1.0f, 1.0f, 256.0f);
+            Vec3 ambient = mat->GetAmbient();
+            if (ImGui::ColorEdit3("Ambient", &ambient.x)) {
+                mat->SetAmbient(ambient);
+            }
+            
+            Vec3 diffuse = mat->GetDiffuse();
+            if (ImGui::ColorEdit3("Diffuse", &diffuse.x)) {
+                mat->SetDiffuse(diffuse);
+            }
+            
+            Vec3 specular = mat->GetSpecular();
+            if (ImGui::ColorEdit3("Specular", &specular.x)) {
+                mat->SetSpecular(specular);
+            }
+            
+            float shininess = mat->GetShininess();
+            if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 256.0f)) {
+                mat->SetShininess(shininess);
+            }
         }
 
         ImGui::End();

@@ -17,6 +17,8 @@
 #include "PostProcessing.h"
 #include "CubemapShadow.h"
 #include "SSAO.h"
+#include "SSR.h"
+#include "TAA.h"
 #include "LightProbe.h"
 #include "ReflectionProbe.h"
 #include <memory>
@@ -24,7 +26,7 @@
 #include <string>
 
 class Camera;
-struct Material;
+class Material;
 
 class Renderer {
 public:
@@ -64,6 +66,16 @@ public:
     SSAO* GetSSAO() { return m_SSAO.get(); }
     void SetSSAOEnabled(bool enabled) { m_SSAOEnabled = enabled; }
     bool GetSSAOEnabled() const { return m_SSAOEnabled; }
+    
+    // SSR
+    SSR* GetSSR() { return m_SSR.get(); }
+    void SetSSREnabled(bool enabled) { m_SSREnabled = enabled; }
+    bool GetSSREnabled() const { return m_SSREnabled; }
+    
+    // TAA
+    TAA* GetTAA() { return m_TAA.get(); }
+    void SetTAAEnabled(bool enabled) { m_TAAEnabled = enabled; }
+    bool GetTAAEnabled() const { return m_TAAEnabled; }
     
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
@@ -118,6 +130,10 @@ private:
     std::unique_ptr<PostProcessing> m_PostProcessing;
     std::unique_ptr<SSAO> m_SSAO;
     bool m_SSAOEnabled;
+    std::unique_ptr<SSR> m_SSR;
+    bool m_SSREnabled;
+    std::unique_ptr<TAA> m_TAA;
+    bool m_TAAEnabled;
     
     unsigned int m_QuadVAO, m_QuadVBO;
     

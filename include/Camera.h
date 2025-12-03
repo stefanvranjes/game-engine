@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Vec3.h"
+#include "Math/Vec2.h"
 #include "Math/Mat4.h"
 
 struct GLFWwindow;
@@ -11,12 +12,18 @@ public:
     
     Mat4 GetViewMatrix() const;
     Mat4 GetProjectionMatrix() const;
+    Mat4 GetPreviousViewProjection() const { return m_PrevViewProjection; }
+    
+    void SetJitter(const Vec2& jitter) { m_Jitter = jitter; }
+    Vec2 GetJitter() const { return m_Jitter; }
     
     void ProcessInput(GLFWwindow* window, float deltaTime);
     void SetAspectRatio(float aspect);
     
     Vec3 GetPosition() const { return m_Position; }
     void SetPosition(const Vec3& position) { m_Position = position; }
+    
+    void UpdateMatrices();
     
 private:
     Vec3 m_Position;
@@ -35,6 +42,9 @@ private:
     
     float m_MovementSpeed;
     float m_RotationSpeed;
+    
+    Vec2 m_Jitter;
+    Mat4 m_PrevViewProjection;
     
     void UpdateCameraVectors();
 

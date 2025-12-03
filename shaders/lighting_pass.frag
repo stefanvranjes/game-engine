@@ -53,6 +53,10 @@ uniform sampler2D brdfLUT;
 uniform sampler2D ssaoTexture;
 uniform int ssaoEnabled;
 
+// SSR
+uniform sampler2D ssrTexture;
+uniform int ssrEnabled;
+
 // Light Probe
 uniform samplerCube probeIrradianceMap;
 uniform samplerCube probePrefilterMap;
@@ -473,6 +477,23 @@ void main()
     vec2 brdf = texture(brdfLUT, vec2(max(dot(N, V), 0.0), Roughness)).rg;
     vec3 specular = prefilteredColor * (F0 * brdf.x + brdf.y);
     
+    // Apply SSR if enabled
+    if (ssrEnabled == 1) {
+        vec4 ssrSample = texture(ssrTexture, TexCoord);
+        vec3 ssrColor = ssrSample.rgb;
+        float ssrStrength = ssrSample.a;
+        
+        // Blend SSR with IBL based on roughness and SSR confidence
+        // SSR is more prominent on smooth surfaces
+        float ssrBlend = ssrStrength * (1.0 - Roughness * 0.8);
+        
+        // Apply BRDF to SSR color (same as IBL)
+        vec3 ssrSpecular = ssrColor * (F0 * brdf.x + brdf.y);
+        
+        // Blend SSR with IBL specular
+        specular = mix(specular, ssrSpecular, ssrBlend);
+    }
+    
     // Combine IBL
     vec3 kS = FresnelSchlick(max(dot(N, V), 0.0), F0);
     vec3 kD = 1.0 - kS;
@@ -516,8 +537,18 @@ void main()
             float blend = 1.0 - smoothstep(u_ReflectionProbeRadii[closestProbe] * 0.7, u_ReflectionProbeRadii[closestProbe], closestDist);
             
             if (blend > 0.0) {
-                // Sample reflection probe cubemap
-                vec3 reflectionColor = textureLod(u_ReflectionProbeCubemaps[closestProbe], R, Roughness * MAX_REFLECTION_LOD).rgb;
+                // Sample reflection probe cubemap (using if-else instead of dynamic indexing)
+                vec3 reflectionColor = vec3(0.0);
+                if (closestProbe == 0) {
+                    reflectionColor = textureLod(u_ReflectionProbeCubemaps[0], R, Roughness * MAX_REFLECTION_LOD).rgb;
+                } else if (closestProbe == 1) {
+                    reflectionColor = textureLod(u_ReflectionProbeCubemaps[1], R, Roughness * MAX_REFLECTION_LOD).rgb;
+                } else if (closestProbe == 2) {
+                    reflectionColor = textureLod(u_ReflectionProbeCubemaps[2], R, Roughness * MAX_REFLECTION_LOD).rgb;
+                } else if (closestProbe == 3) {
+                    reflectionColor = textureLod(u_ReflectionProbeCubemaps[3], R, Roughness * MAX_REFLECTION_LOD).rgb;
+                }
+                
                 vec3 reflectionSpecular = reflectionColor * (F0 * brdf.x + brdf.y);
                 
                 // Blend with global IBL specular

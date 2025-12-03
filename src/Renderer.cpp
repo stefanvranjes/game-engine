@@ -18,6 +18,8 @@ Renderer::Renderer()
     , m_ShadowFadeStart(40.0f)
     , m_ShadowFadeEnd(50.0f)
     , m_SSAOEnabled(false)
+    , m_SSREnabled(false)
+    , m_TAAEnabled(false)
 {
     m_TextureManager = std::make_unique<TextureManager>();
     m_Root = std::make_shared<GameObject>("Root");
@@ -334,6 +336,20 @@ bool Renderer::Init() {
         return false;
     }
 
+    // Initialize SSR
+    m_SSR = std::make_unique<SSR>();
+    if (!m_SSR->Init(width, height)) {
+        std::cerr << "Failed to initialize SSR" << std::endl;
+        return false;
+    }
+
+    // Initialize TAA
+    m_TAA = std::make_unique<TAA>();
+    if (!m_TAA->Init(width, height)) {
+        std::cerr << "Failed to initialize TAA" << std::endl;
+        return false;
+    }
+
     // Initialize IBL
     InitIBL();
 
@@ -597,6 +613,24 @@ void Renderer::RenderSceneForward(Shader* shader) {
 void Renderer::Render() {
     if (!m_Camera) return;
 
+    // Update texture streaming
+    if (m_TextureManager) {
+        m_TextureManager->Update();
+    }
+
+    // Apply TAA jitter if enabled
+    if (m_TAAEnabled && m_Camera) {
+        Vec2 jitter = m_TAA->GetJitter();
+        m_Camera->SetJitter(jitter);
+    } else if (m_Camera) {
+        m_Camera->SetJitter(Vec2(0, 0));
+    }
+    
+    // Update camera matrices (stores previous view-projection)
+    if (m_Camera) {
+        m_Camera->UpdateMatrices();
+    }
+
     // Update scene graph
     if (m_Root) {
         m_Root->Update(Mat4::Identity());
@@ -803,6 +837,17 @@ void Renderer::Render() {
         );
     }
 
+    // ===== PASS 4.6: SSR Pass =====
+    if (m_SSREnabled) {
+        m_SSR->Render(
+            m_GBuffer->GetPositionTexture(),
+            m_GBuffer->GetNormalTexture(),
+            m_GBuffer->GetAlbedoSpecTexture(),
+            m_Camera->GetViewMatrix(),
+            m_Camera->GetProjectionMatrix()
+        );
+    }
+
     // ===== PASS 5: Lighting Pass - Render to HDR framebuffer =====
     m_PostProcessing->BeginHDR();
 
@@ -868,15 +913,21 @@ void Renderer::Render() {
     m_LightingShader->SetInt("ssaoTexture", 15);
     m_LightingShader->SetInt("ssaoEnabled", m_SSAOEnabled ? 1 : 0);
 
+    // Bind SSR texture
+    glActiveTexture(GL_TEXTURE0 + 16);
+    glBindTexture(GL_TEXTURE_2D, m_SSR->GetSSRTexture());
+    m_LightingShader->SetInt("ssrTexture", 16);
+    m_LightingShader->SetInt("ssrEnabled", m_SSREnabled ? 1 : 0);
+
     // Bind Light Probe (Test with first probe)
     if (!m_LightProbes.empty()) {
-        glActiveTexture(GL_TEXTURE0 + 16);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, m_LightProbes[0]->GetIrradianceMap());
-        m_LightingShader->SetInt("probeIrradianceMap", 16);
-        
         glActiveTexture(GL_TEXTURE0 + 17);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, m_LightProbes[0]->GetIrradianceMap());
+        m_LightingShader->SetInt("probeIrradianceMap", 17);
+        
+        glActiveTexture(GL_TEXTURE0 + 18);
         glBindTexture(GL_TEXTURE_CUBE_MAP, m_LightProbes[0]->GetPrefilterMap());
-        m_LightingShader->SetInt("probePrefilterMap", 17);
+        m_LightingShader->SetInt("probePrefilterMap", 18);
         
         m_LightingShader->SetInt("u_HasLightProbe", 1);
         m_LightingShader->SetVec3("u_ProbePos", m_LightProbes[0]->GetPosition().x, m_LightProbes[0]->GetPosition().y, m_LightProbes[0]->GetPosition().z);
@@ -891,9 +942,9 @@ void Renderer::Render() {
     
     for (int i = 0; i < reflectionProbeCount; ++i) {
         // Bind cubemap
-        glActiveTexture(GL_TEXTURE0 + 18 + i);
+        glActiveTexture(GL_TEXTURE0 + 19 + i);
         glBindTexture(GL_TEXTURE_CUBE_MAP, m_ReflectionProbes[i]->GetCubemap());
-        m_LightingShader->SetInt("u_ReflectionProbeCubemaps[" + std::to_string(i) + "]", 18 + i);
+        m_LightingShader->SetInt("u_ReflectionProbeCubemaps[" + std::to_string(i) + "]", 19 + i);
         
         // Upload position and radius
         Vec3 pos = m_ReflectionProbes[i]->GetPosition();
@@ -949,6 +1000,22 @@ void Renderer::Render() {
     // Draw Skybox to HDR framebuffer
     if (m_Skybox) {
         m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+    }
+    
+    // ===== PASS 6.5: TAA Pass =====
+    if (m_TAAEnabled) {
+        m_TAA->Render(
+            m_PostProcessing->GetHDRTexture(),
+            m_GBuffer->GetVelocityTexture(),
+            m_Camera->GetViewMatrix(),
+            m_Camera->GetProjectionMatrix(),
+            m_Camera->GetPreviousViewProjection()
+        );
+        
+        // Use TAA output for post-processing
+        // Note: Post-processing should use TAA output instead of HDR texture
+        // This requires modifying PostProcessing to accept input texture
+        // For now, TAA output is available via m_TAA->GetOutputTexture()
     }
     
     // ===== PASS 7: Post-Processing =====

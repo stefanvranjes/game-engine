@@ -3,11 +3,14 @@ layout (location = 0) out vec4 gPosition; // RGB: Position, A: AO
 layout (location = 1) out vec4 gNormal;   // RGB: Normal, A: Roughness
 layout (location = 2) out vec4 gAlbedoSpec; // RGB: Albedo, A: Metallic
 layout (location = 3) out vec3 gEmissive;   // RGB: Emissive
+layout (location = 4) out vec2 gVelocity;   // RG: Motion Vector
 
 in vec3 FragPos;
 in vec3 Normal;
 in vec2 TexCoord;
 in vec3 ViewPos;
+in vec4 CurrentPos;
+in vec4 PreviousPos;
 
 struct Material {
     vec3 ambient;
@@ -227,4 +230,12 @@ void main()
         // This allows both.
     }
     gEmissive = emissive;
+    
+    // Calculate motion vector (screen-space velocity)
+    // Convert to NDC
+    vec2 currentNDC = CurrentPos.xy / CurrentPos.w;
+    vec2 previousNDC = PreviousPos.xy / PreviousPos.w;
+    
+    // Calculate velocity in screen space
+    gVelocity = (currentNDC - previousNDC) * 0.5;
 }

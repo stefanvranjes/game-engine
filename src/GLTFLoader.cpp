@@ -135,14 +135,14 @@ private:
             auto& pbr = mat.pbrMetallicRoughness;
             
             // Base Color
-            material->diffuse = Vec3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]);
+            material->SetDiffuse(Vec3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
             if (pbr.baseColorTexture.index >= 0) {
-                material->texture = m_Textures[pbr.baseColorTexture.index];
+                material->SetTexture(m_Textures[pbr.baseColorTexture.index]);
             }
 
             // Metallic Roughness
-            material->metallic = (float)pbr.metallicFactor;
-            material->roughness = (float)pbr.roughnessFactor;
+            material->SetMetallic((float)pbr.metallicFactor);
+            material->SetRoughness((float)pbr.roughnessFactor);
             if (pbr.metallicRoughnessTexture.index >= 0) {
                 // glTF packs Occlusion (R), Roughness (G), Metallic (B) often, 
                 // but strictly MetallicRoughness is G=Roughness, B=Metallic.
@@ -151,26 +151,26 @@ private:
                 // Actually, if we use this texture as ORM, we assume it has AO in R.
                 // If not, we might get wrong AO.
                 // But standard glTF workflow often uses the SAME texture for occlusion and metallicRoughness.
-                material->ormMap = m_Textures[pbr.metallicRoughnessTexture.index];
+                material->SetORMMap(m_Textures[pbr.metallicRoughnessTexture.index]);
                 
                 // Check if occlusion texture is the same
                 if (mat.occlusionTexture.index == pbr.metallicRoughnessTexture.index) {
                     // Perfect, it's a packed ORM map
                 } else if (mat.occlusionTexture.index >= 0) {
                     // Separate AO map
-                    material->aoMap = m_Textures[mat.occlusionTexture.index];
+                    material->SetAOMap(m_Textures[mat.occlusionTexture.index]);
                 }
             }
 
             // Normal Map
             if (mat.normalTexture.index >= 0) {
-                material->normalMap = m_Textures[mat.normalTexture.index];
+                material->SetNormalMap(m_Textures[mat.normalTexture.index]);
             }
 
             // Emissive
-            material->emissiveColor = Vec3(mat.emissiveFactor[0], mat.emissiveFactor[1], mat.emissiveFactor[2]);
+            material->SetEmissiveColor(Vec3(mat.emissiveFactor[0], mat.emissiveFactor[1], mat.emissiveFactor[2]));
             if (mat.emissiveTexture.index >= 0) {
-                material->emissiveMap = m_Textures[mat.emissiveTexture.index];
+                material->SetEmissiveMap(m_Textures[mat.emissiveTexture.index]);
                 // If emissive texture is present but factor is 0 (default in some exporters if not set),
                 // we should set factor to 1 to make it visible?
                 // Spec says: emissive = texture * factor. Default factor is [0,0,0].

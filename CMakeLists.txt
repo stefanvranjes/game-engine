@@ -78,6 +78,8 @@ add_executable(GameEngine
     src/CascadedShadowMap.cpp
     src/Frustum.cpp
     src/SSAO.cpp
+    src/SSR.cpp
+    src/TAA.cpp
     src/LightProbe.cpp
     src/ReflectionProbe.cpp
     src/GLTFLoader.cpp
