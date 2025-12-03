@@ -5,6 +5,7 @@
 #include "Camera.h"
 #include "Text.h"
 #include "ImGuiManager.h"
+#include "PreviewRenderer.h"
 #include <memory>
 
 class Application {
@@ -25,6 +26,7 @@ private:
     std::unique_ptr<Camera> m_Camera;
     std::unique_ptr<Text> m_Text;
     std::unique_ptr<ImGuiManager> m_ImGui;
+    std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
     
     int m_SelectedObjectIndex;
     

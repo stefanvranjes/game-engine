@@ -303,3 +303,75 @@ bool GameObject::CheckCollision(const AABB& bounds) {
     
     return false;
 }
+
+std::shared_ptr<Mesh> GameObject::GetActiveMesh(const Mat4& view) const {
+    // If we have a Model, we can't return a single mesh
+    // Models handle their own rendering with multiple meshes
+    if (m_Model) {
+        return nullptr;
+    }
+    
+    // Start with default mesh
+    std::shared_ptr<Mesh> meshToReturn = m_Mesh;
+    
+    // Check LOD levels if any exist
+    if (!m_LODs.empty()) {
+        // Calculate distance to camera
+        // Extract camera position from view matrix (inverse of view)
+        Vec3 viewPos = view * m_WorldMatrix.GetTranslation();
+        float dist = viewPos.Length();
+        
+        // Find appropriate LOD level
+        for (const auto& lod : m_LODs) {
+            if (dist >= lod.minDistance) {
+                if (lod.mesh) {
+                    meshToReturn = lod.mesh;
+                }
+                // If LOD has a model instead, we can't return a single mesh
+                else if (lod.model) {
+                    return nullptr;
+                }
+                break;
+            }
+        }
+    }
+    
+    return meshToReturn;
+}
+
+AABB GameObject::GetWorldAABB() const {
+    if (m_Mesh) {
+        const AABB& localBounds = m_Mesh->GetBounds();
+        
+        // Transform all 8 corners of the AABB
+        Vec3 corners[8];
+        corners[0] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.min.y, localBounds.min.z);
+        corners[1] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.min.y, localBounds.min.z);
+        corners[2] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.max.y, localBounds.min.z);
+        corners[3] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.min.y, localBounds.max.z);
+        corners[4] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.max.y, localBounds.min.z);
+        corners[5] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.min.y, localBounds.max.z);
+        corners[6] = m_WorldMatrix * Vec3(localBounds.min.x, localBounds.max.y, localBounds.max.z);
+        corners[7] = m_WorldMatrix * Vec3(localBounds.max.x, localBounds.max.y, localBounds.max.z);
+
+        // Calculate new world AABB
+        Vec3 minBounds = corners[0];
+        Vec3 maxBounds = corners[0];
+
+        for (int j = 1; j < 8; ++j) {
+            if (corners[j].x < minBounds.x) minBounds.x = corners[j].x;
+            if (corners[j].y < minBounds.y) minBounds.y = corners[j].y;
+            if (corners[j].z < minBounds.z) minBounds.z = corners[j].z;
+
+            if (corners[j].x > maxBounds.x) maxBounds.x = corners[j].x;
+            if (corners[j].y > maxBounds.y) maxBounds.y = corners[j].y;
+            if (corners[j].z > maxBounds.z) maxBounds.z = corners[j].z;
+        }
+
+        return AABB(minBounds, maxBounds);
+    }
+    
+    // Fallback for no mesh: return point AABB at position
+    Vec3 pos = m_WorldMatrix.GetTranslation();
+    return AABB(pos, pos);
+}

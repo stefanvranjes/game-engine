@@ -18,6 +18,10 @@ public:
     Mesh& operator=(Mesh&& other) noexcept;
 
     void Draw() const;
+    void DrawInstanced(unsigned int count) const;
+    
+    void Bind() const;
+    void Unbind() const;
     
     static Mesh CreateCube();
     static Mesh LoadFromOBJ(const std::string& filename);

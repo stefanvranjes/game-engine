@@ -20,8 +20,10 @@ Renderer::Renderer()
     , m_SSAOEnabled(false)
     , m_SSREnabled(false)
     , m_TAAEnabled(false)
+    , m_BatchedRenderingEnabled(true)  // Enable by default
 {
     m_TextureManager = std::make_unique<TextureManager>();
+    m_MaterialLibrary = std::make_unique<MaterialLibrary>();
     m_Root = std::make_shared<GameObject>("Root");
 }
 
@@ -114,8 +116,8 @@ void Renderer::AddCube(const Transform& transform) {
     cube->GetTransform() = transform;
     
     auto mat = std::make_shared<Material>();
-    mat->texture = m_Texture;
-    mat->specularMap = m_Texture;
+    mat->SetTexture(m_Texture);
+    mat->SetSpecularMap(m_Texture);
     cube->SetMaterial(mat);
     
     if (m_Root) m_Root->AddChild(cube);
@@ -129,9 +131,9 @@ void Renderer::AddPyramid(const Transform& transform) {
     pyramid->GetTransform() = transform;
     
     auto mat = std::make_shared<Material>();
-    mat->diffuse = Vec3(1.0f, 1.0f, 0.0f);
-    mat->texture = m_Texture;
-    mat->specularMap = m_Texture;
+    mat->SetDiffuse(Vec3(1.0f, 1.0f, 0.0f));
+    mat->SetTexture(m_Texture);
+    mat->SetSpecularMap(m_Texture);
     pyramid->SetMaterial(mat);
     
     if (m_Root) m_Root->AddChild(pyramid);
@@ -169,6 +171,22 @@ void Renderer::RemoveObject(size_t index) {
     }
 }
 
+    m_PointShadows.clear();
+    m_SpotShadows.clear();
+}
+
+void Renderer::UpdateShaders() {
+    if (m_Shader) m_Shader->CheckForUpdates();
+    if (m_DepthShader) m_DepthShader->CheckForUpdates();
+    if (m_GeometryShader) m_GeometryShader->CheckForUpdates();
+    if (m_LightingShader) m_LightingShader->CheckForUpdates();
+    if (m_EquirectangularToCubemapShader) m_EquirectangularToCubemapShader->CheckForUpdates();
+    if (m_IrradianceShader) m_IrradianceShader->CheckForUpdates();
+    if (m_PrefilterShader) m_PrefilterShader->CheckForUpdates();
+    if (m_BRDFShader) m_BRDFShader->CheckForUpdates();
+    if (m_PointShadowShader) m_PointShadowShader->CheckForUpdates();
+}
+
 void Renderer::SetupScene() {
     // Add some default objects
     AddCube(Transform(Vec3(0, 0, 0)));
@@ -184,8 +202,8 @@ void Renderer::SetupScene() {
     floor->GetTransform() = Transform(Vec3(0, -2, 0), Vec3(0, 0, 0), Vec3(10, 0.1f, 10));
     
     auto mat = std::make_shared<Material>();
-    mat->texture = m_Texture;
-    mat->specularMap = m_Texture;
+    mat->SetTexture(m_Texture);
+    mat->SetSpecularMap(m_Texture);
     floor->SetMaterial(mat);
     
     if (m_Root) m_Root->AddChild(floor);
@@ -322,6 +340,13 @@ bool Renderer::Init() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glBindVertexArray(0);
 
+    // Initialize Instance VBO
+    glGenBuffers(1, &m_InstanceVBO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_InstanceVBO);
+    // Initial size, will be resized if needed (using GL_DYNAMIC_DRAW)
+    glBufferData(GL_ARRAY_BUFFER, 1000 * sizeof(Mat4), nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
     // Initialize post-processing
     m_PostProcessing = std::make_unique<PostProcessing>();
     if (!m_PostProcessing->Init(width, height)) {
@@ -356,6 +381,17 @@ bool Renderer::Init() {
     // Add a test Light Probe
     // AddLightProbe(Vec3(0, 2, 0), 10.0f);
     // BakeLightProbes();
+    
+    // Initialize Particle System
+    m_ParticleSystem = std::make_unique<ParticleSystem>();
+    if (!m_ParticleSystem->Init()) {
+        std::cerr << "Failed to initialize ParticleSystem" << std::endl;
+        return false;
+    }
+    
+    // Add a test fire emitter
+    auto fireEmitter = ParticleEmitter::CreateFire(Vec3(0, 1, 0));
+    m_ParticleSystem->AddEmitter(fireEmitter);
 
     return true;
 }
@@ -613,6 +649,9 @@ void Renderer::RenderSceneForward(Shader* shader) {
 void Renderer::Render() {
     if (!m_Camera) return;
 
+    // Clear transparent items from previous frame
+    m_TransparentItems.clear();
+
     // Update texture streaming
     if (m_TextureManager) {
         m_TextureManager->Update();
@@ -634,6 +673,11 @@ void Renderer::Render() {
     // Update scene graph
     if (m_Root) {
         m_Root->Update(Mat4::Identity());
+    }
+    
+    // Update particles
+    if (m_ParticleSystem) {
+        m_ParticleSystem->Update(0.016f); // Approximate 60 FPS deltaTime
     }
 
     // ===== PASS 0: Render point light shadows =====
@@ -820,9 +864,23 @@ void Renderer::Render() {
     Vec3 viewPos = m_Camera->GetPosition();
     m_GeometryShader->SetVec3("u_ViewPos", viewPos.x, viewPos.y, viewPos.z);
 
-    // Render scene to G-Buffer with updated visibility
+    // Render scene to G-Buffer
     if (m_Root) {
-        m_Root->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+        if (m_BatchedRenderingEnabled) {
+            // Batched rendering: Group objects by material to minimize state changes
+            std::map<Material*, std::vector<RenderItem>> batches;
+            CollectRenderItems(m_Root.get(), batches, nullptr, false);
+            
+            // Render batched objects
+            RenderBatched(batches, m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+            
+            // Note: Objects with Models (multiple meshes/materials) are not batched
+            // They still use the regular Draw path which is called during collection
+            // This is acceptable as Models are typically fewer in number
+        } else {
+            // Regular rendering: Objects rendered in scene graph order
+            m_Root->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+        }
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -992,6 +1050,17 @@ void Renderer::Render() {
     // Render fullscreen quad
     RenderQuad();
 
+    // ===== PASS 5.5: Transparent Pass =====
+    // Render transparent objects forward
+    // Use m_Shader (textured) for now, assuming it handles lighting or is unlit
+    // Ideally we need a Forward PBR shader here
+    RenderTransparentItems(m_Shader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+    
+    // ===== PASS 5.6: Particle Pass =====
+    if (m_ParticleSystem) {
+        m_ParticleSystem->Render(m_Camera, m_GBuffer.get());
+    }
+
     // ===== PASS 6: Forward Pass for Skybox (still in HDR) =====
     // Copy depth buffer from G-Buffer to HDR framebuffer
     glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetPositionTexture());
@@ -1104,6 +1173,10 @@ void Renderer::Shutdown() {
     if (m_QuadVBO) {
         glDeleteBuffers(1, &m_QuadVBO);
         m_QuadVBO = 0;
+    }
+    if (m_InstanceVBO) {
+        glDeleteBuffers(1, &m_InstanceVBO);
+        m_InstanceVBO = 0;
     }
     m_Root.reset();
 }
@@ -1416,5 +1489,284 @@ void Renderer::InitIBL() {
     glViewport(0, 0, width, height);
     
     std::cout << "IBL initialization complete with real HDR environment!" << std::endl;
+}
+
+void Renderer::CollectRenderItems(GameObject* obj, std::map<Material*, std::vector<RenderItem>>& batches, Frustum* frustum, bool forceRender) {
+    if (!obj) return;
+    
+    // Occlusion culling check
+    if (!forceRender && !obj->IsVisible()) {
+        // Skip this object but process children
+        for (auto& child : obj->GetChildren()) {
+            CollectRenderItems(child.get(), batches, frustum, forceRender);
+        }
+        return;
+    }
+
+    // Frustum Culling
+    if (frustum && !forceRender) {
+        if (!frustum->ContainsAABB(obj->GetWorldAABB())) {
+            // If parent is culled, children might still be visible if they are larger or offset?
+            // Usually, we assume hierarchy implies spatial containment or we check children individually.
+            // For now, let's assume we check children individually if parent is culled, 
+            // UNLESS we implement hierarchical culling (parent AABB encapsulates children).
+            // The current GameObject doesn't enforce AABB encapsulation.
+            // So we MUST check children even if parent is culled, unless we know parent bounds include children.
+            // However, the standard optimization is: if parent is culled, cull children.
+            // Let's stick to checking this object. If it's culled, we don't render IT, but we proceed to children.
+            
+            // BUT, if we return here, we skip children loop at the end.
+            // So we should NOT return, just skip adding to batch.
+        } else {
+            // Object is inside frustum, proceed to add to batch
+            
+            // Case 1: Object has a Model (multiple meshes/materials)
+            auto model = obj->GetModel();
+            if (model) {
+                const auto& meshes = model->GetMeshes();
+                const auto& materials = model->GetMaterials();
+                
+                for (size_t i = 0; i < meshes.size(); ++i) {
+                    if (i >= materials.size() || !materials[i]) continue;
+                    
+                    RenderItem item;
+                    item.object = obj;
+                    item.mesh = meshes[i];
+                    item.worldMatrix = obj->GetWorldMatrix();
+                    
+                    // Calculate squared distance to camera
+                    Vec3 camPos = m_Camera->GetPosition();
+                    Vec3 objPos = item.worldMatrix.GetTranslation();
+                    Vec3 diff = objPos - camPos;
+                    item.distance = diff.Dot(diff);
+                    
+                    if (materials[i]->IsTransparent()) {
+                        m_TransparentItems.push_back(item);
+                    } else {
+                        batches[materials[i].get()].push_back(item);
+                    }
+                }
+            }
+            // Case 2: Object has a single Mesh and Material
+            else {
+                auto material = obj->GetMaterial();
+                auto mesh = obj->GetActiveMesh(m_Camera->GetViewMatrix());
+                
+                if (material && mesh) {
+                    RenderItem item;
+                    item.object = obj;
+                    item.mesh = mesh;
+                    item.worldMatrix = obj->GetWorldMatrix();
+                    
+                    // Calculate squared distance to camera
+                    Vec3 camPos = m_Camera->GetPosition();
+                    Vec3 objPos = item.worldMatrix.GetTranslation();
+                    Vec3 diff = objPos - camPos;
+                    item.distance = diff.Dot(diff);
+                    
+                    if (material->IsTransparent()) {
+                        m_TransparentItems.push_back(item);
+                    } else {
+                        batches[material.get()].push_back(item);
+                    }
+                }
+            }
+        }
+    } else {
+        // No frustum or forced render, just add it
+        
+        // Case 1: Object has a Model
+        auto model = obj->GetModel();
+        if (model) {
+            const auto& meshes = model->GetMeshes();
+            const auto& materials = model->GetMaterials();
+            
+            for (size_t i = 0; i < meshes.size(); ++i) {
+                if (i >= materials.size() || !materials[i]) continue;
+                
+                RenderItem item;
+                item.object = obj;
+                item.mesh = meshes[i];
+                item.worldMatrix = obj->GetWorldMatrix();
+                
+                // Calculate squared distance to camera
+                Vec3 camPos = m_Camera->GetPosition();
+                Vec3 objPos = item.worldMatrix.GetTranslation();
+                Vec3 diff = objPos - camPos;
+                item.distance = diff.Dot(diff);
+                
+                if (materials[i]->IsTransparent()) {
+                    m_TransparentItems.push_back(item);
+                } else {
+                    batches[materials[i].get()].push_back(item);
+                }
+            }
+        }
+        // Case 2: Object has single Mesh/Material
+        else {
+            auto material = obj->GetMaterial();
+            auto mesh = obj->GetActiveMesh(m_Camera->GetViewMatrix());
+            
+            if (material && mesh) {
+                RenderItem item;
+                item.object = obj;
+                item.mesh = mesh;
+                item.worldMatrix = obj->GetWorldMatrix();
+                
+                // Calculate squared distance to camera
+                Vec3 camPos = m_Camera->GetPosition();
+                Vec3 objPos = item.worldMatrix.GetTranslation();
+                Vec3 diff = objPos - camPos;
+                item.distance = diff.Dot(diff);
+                
+                if (material->IsTransparent()) {
+                    m_TransparentItems.push_back(item);
+                } else {
+                    batches[material.get()].push_back(item);
+                }
+            }
+        }
+    }
+    
+    // Process children
+    for (auto& child : obj->GetChildren()) {
+        CollectRenderItems(child.get(), batches, frustum, forceRender);
+    }
+}
+
+void Renderer::RenderBatched(const std::map<Material*, std::vector<RenderItem>>& batches, Shader* shader, const Mat4& view, const Mat4& projection) {
+    // Render each batch
+    for (auto& batch : batches) { // Note: Removed const to allow sorting
+        Material* material = batch.first;
+        auto& items = batch.second; // Note: Removed const to allow sorting
+        
+        if (items.empty()) continue;
+        
+        // Sort Opaque items Front-to-Back for Early Z optimization
+        SortItems(items, true);
+        
+        // Bind material once for all objects in this batch
+        material->Bind(shader);
+        
+        // Group items by mesh to enable instancing
+        // Map from Mesh* to vector of model matrices
+        std::map<Mesh*, std::vector<Mat4>> meshGroups;
+        
+        for (const auto& item : items) {
+            if (!item.mesh) continue;
+            meshGroups[item.mesh.get()].push_back(item.worldMatrix);
+        }
+        
+        // Render each mesh group instanced
+        for (const auto& group : meshGroups) {
+            Mesh* mesh = group.first;
+            const std::vector<Mat4>& models = group.second;
+            
+            if (models.empty()) continue;
+            
+            // Update instance VBO
+            glBindBuffer(GL_ARRAY_BUFFER, m_InstanceVBO);
+            glBufferData(GL_ARRAY_BUFFER, models.size() * sizeof(Mat4), models.data(), GL_DYNAMIC_DRAW);
+            
+            // Bind Mesh VAO
+            mesh->Bind();
+            
+            // Set up instance attributes (Model Matrix = 4 vec4s)
+            // Locations 3, 4, 5, 6
+            std::size_t vec4Size = sizeof(Vec4);
+            glEnableVertexAttribArray(3);
+            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+            glEnableVertexAttribArray(4);
+            glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+            glEnableVertexAttribArray(5);
+            glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+            glEnableVertexAttribArray(6);
+            glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+            
+            glVertexAttribDivisor(3, 1);
+            glVertexAttribDivisor(4, 1);
+            glVertexAttribDivisor(5, 1);
+            glVertexAttribDivisor(6, 1);
+            
+            // Set uniforms that are constant for the batch
+            shader->SetBool("u_Instanced", true);
+            shader->SetMat4("u_View", view.m);
+            shader->SetMat4("u_Projection", projection.m);
+            // u_MVP and u_Model are now handled in shader via attributes
+            
+            // Draw instanced
+            glDrawElementsInstanced(GL_TRIANGLES, mesh->GetIndexCount(), GL_UNSIGNED_INT, 0, static_cast<GLsizei>(models.size()));
+            
+            // Cleanup
+            glVertexAttribDivisor(3, 0);
+            glVertexAttribDivisor(4, 0);
+            glVertexAttribDivisor(5, 0);
+            glVertexAttribDivisor(6, 0);
+            glDisableVertexAttribArray(3);
+            glDisableVertexAttribArray(4);
+            glDisableVertexAttribArray(5);
+            glDisableVertexAttribArray(6);
+            
+            mesh->Unbind();
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+            
+            shader->SetBool("u_Instanced", false);
+        }
+    }
+}
+
+void Renderer::SortItems(std::vector<RenderItem>& items, bool frontToBack) {
+    if (frontToBack) {
+        // Sort by distance ascending (Front-to-Back) for opaque objects (Early Z)
+        std::sort(items.begin(), items.end(), [](const RenderItem& a, const RenderItem& b) {
+            return a.distance < b.distance;
+        });
+    } else {
+        // Sort by distance descending (Back-to-Front) for transparent objects (Blending)
+        std::sort(items.begin(), items.end(), [](const RenderItem& a, const RenderItem& b) {
+            return a.distance > b.distance;
+        });
+    }
+}
+
+void Renderer::RenderTransparentItems(Shader* shader, const Mat4& view, const Mat4& projection) {
+    if (m_TransparentItems.empty()) return;
+
+    // Sort transparent items Back-to-Front
+    SortItems(m_TransparentItems, false);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    // Use forward shader (passed as argument, likely m_Shader or similar)
+    // Note: Deferred renderer's lighting pass is already done. 
+    // We need a forward pass shader that can handle lighting or just unlit/simple lighting.
+    // For now, let's assume 'shader' is capable (e.g. textured.frag with lighting uniforms set).
+    
+    shader->Use();
+    shader->SetMat4("u_View", view.m);
+    shader->SetMat4("u_Projection", projection.m);
+    
+    // We can reuse RenderBatched logic if we group by material, 
+    // but we MUST preserve the sort order.
+    // Batching breaks sort order unless we batch only adjacent items with same material.
+    // For simplicity and correctness, let's draw one by one for now.
+    
+    for (const auto& item : m_TransparentItems) {
+        auto material = item.object->GetMaterial();
+        if (material) {
+            material->Bind(shader);
+            
+            Mat4 mvp = projection * view * item.worldMatrix;
+            shader->SetMat4("u_MVP", mvp.m);
+            shader->SetMat4("u_Model", item.worldMatrix.m);
+            
+            if (item.mesh) {
+                item.mesh->Draw();
+            }
+        }
+    }
+    
+    glDisable(GL_BLEND);
 }
 

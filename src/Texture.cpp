@@ -15,6 +15,9 @@ Texture::Texture()
     , m_LastUsedTime(0.0)
     , m_IsHDR(false)
     , m_LocalBufferHDR(nullptr)
+    , m_AnisotropyLevel(1.0f)
+    , m_DownscaleLevel(0)
+    , m_GenerateMipmaps(true)
 {
     Touch();
 }
@@ -42,6 +45,63 @@ void Texture::Unload() {
     m_Width = 0;
     m_Height = 0;
     m_Channels = 0;
+}
+
+    }
+}
+
+// Helper for software downscaling (Box Filter)
+unsigned char* DownscaleImage(unsigned char* data, int& width, int& height, int channels, int levels) {
+    if (levels <= 0 || !data) return data;
+
+    unsigned char* currentData = data;
+    int currentW = width;
+    int currentH = height;
+
+    for (int l = 0; l < levels; ++l) {
+        if (currentW <= 1 || currentH <= 1) break;
+
+        int newW = currentW / 2;
+        int newH = currentH / 2;
+        unsigned char* newData = (unsigned char*)malloc(newW * newH * channels);
+
+        for (int y = 0; y < newH; ++y) {
+            for (int x = 0; x < newW; ++x) {
+                for (int c = 0; c < channels; ++c) {
+                    // Average 2x2 block
+                    int sum = 0;
+                    sum += currentData[((y * 2) * currentW + (x * 2)) * channels + c];
+                    sum += currentData[((y * 2) * currentW + (x * 2) + 1) * channels + c];
+                    sum += currentData[((y * 2 + 1) * currentW + (x * 2)) * channels + c];
+                    sum += currentData[((y * 2 + 1) * currentW + (x * 2) + 1) * channels + c];
+                    newData[(y * newW + x) * channels + c] = (unsigned char)(sum / 4);
+                }
+            }
+        }
+
+        // Free old data if it wasn't the original buffer passed in (handled by caller logic usually, 
+        // but here we need to be careful. The first iteration 'currentData' is 'data' which is stbi_malloc'd.
+        // Subsequent iterations 'currentData' is malloc'd.
+        // We should probably free 'currentData' if it's not the initial 'data', OR just rely on the fact 
+        // that we will replace m_LocalBuffer with the result.
+        // Actually, let's assume we free the input 'currentData' and return 'newData'.
+        // BUT the first input is m_LocalBuffer which is stbi_malloc. We can use stbi_image_free on it?
+        // Or just standard free? stbi uses malloc usually.
+        
+        if (l == 0) {
+            stbi_image_free(currentData); // Free original stbi buffer
+        } else {
+            free(currentData); // Free intermediate buffer
+        }
+
+        currentData = newData;
+        currentW = newW;
+        currentH = newH;
+    }
+
+    width = currentW;
+    height = currentH;
+    return currentData;
 }
 
 void Texture::LoadDataAsync(const std::string& path) {
@@ -91,6 +151,12 @@ bool Texture::UploadToGPU() {
         stbi_image_free(m_LocalBufferHDR);
         m_LocalBufferHDR = nullptr;
     } else {
+    } else {
+        // Apply software downscaling if requested
+        if (m_DownscaleLevel > 0 && m_LocalBuffer) {
+            m_LocalBuffer = DownscaleImage(m_LocalBuffer, m_Width, m_Height, m_Channels, m_DownscaleLevel);
+        }
+
         // Determine format
         GLenum format = GL_RGB;
         if (m_Channels == 1) format = GL_RED;
@@ -100,15 +166,44 @@ bool Texture::UploadToGPU() {
         glGenTextures(1, &m_TextureID);
         glBindTexture(GL_TEXTURE_2D, m_TextureID);
         glTexImage2D(GL_TEXTURE_2D, 0, format, m_Width, m_Height, 0, format, GL_UNSIGNED_BYTE, m_LocalBuffer);
-        glGenerateMipmap(GL_TEXTURE_2D);
+        
+        if (m_GenerateMipmaps) {
+            glGenerateMipmap(GL_TEXTURE_2D);
+        }
 
         // Set texture parameters
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        
+        if (m_GenerateMipmaps) {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+        } else {
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
-        stbi_image_free(m_LocalBuffer);
+        // Apply Anisotropy
+        if (GLEW_EXT_texture_filter_anisotropic && m_AnisotropyLevel > 1.0f) {
+            float maxAnisotropy;
+            glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAnisotropy);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(m_AnisotropyLevel, maxAnisotropy));
+        }
+        
+        // If we downscaled, m_LocalBuffer is now a malloc'd buffer, not stbi.
+        // DownscaleImage handles the freeing of the original stbi buffer.
+        // So we just need to free m_LocalBuffer using free() if it was downscaled, or stbi_free if not?
+        // DownscaleImage frees the input and returns new malloc'd data.
+        // So if m_DownscaleLevel > 0, m_LocalBuffer is malloc'd.
+        // If m_DownscaleLevel == 0, m_LocalBuffer is stbi_malloc'd.
+        // This is messy. Let's make DownscaleImage always return a buffer we can free with stbi_image_free?
+        // No, stbi_image_free is just free() usually but we shouldn't rely on it.
+        // Better: Check flag.
+        
+        if (m_DownscaleLevel > 0) {
+            free(m_LocalBuffer);
+        } else {
+            stbi_image_free(m_LocalBuffer);
+        }
         m_LocalBuffer = nullptr;
     }
     

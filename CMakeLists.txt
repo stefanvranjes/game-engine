@@ -70,6 +70,7 @@ add_executable(GameEngine
     src/Skybox.cpp
     src/ShadowMap.cpp
     src/TextureManager.cpp
+    src/MaterialLibrary.cpp
     src/GameObject.cpp
     src/Model.cpp
     src/GBuffer.cpp
@@ -83,6 +84,10 @@ add_executable(GameEngine
     src/LightProbe.cpp
     src/ReflectionProbe.cpp
     src/GLTFLoader.cpp
+    src/PreviewRenderer.cpp
+    src/Material.cpp
+    src/ParticleEmitter.cpp
+    src/ParticleSystem.cpp
     ${IMGUI_SOURCES}
 )
 

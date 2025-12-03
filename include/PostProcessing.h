@@ -33,6 +33,9 @@ public:
     void SetExposure(float exposure) { m_Exposure = exposure; }
     void SetGamma(float gamma) { m_Gamma = gamma; }
     void SetToneMappingMode(int mode) { m_ToneMappingMode = mode; }
+    
+    // Texture access
+    GLuint GetHDRTexture() const { return m_HDRColorBuffer; }
 
 private:
     void CreateFramebuffers();

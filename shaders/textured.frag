@@ -14,6 +14,7 @@ struct Material {
     sampler2D texture;
     sampler2D specularMap;
     sampler2D normalMap;
+    float opacity;
 };
 
 struct Light {
@@ -126,8 +127,9 @@ void main()
     }
     
     if (u_HasTexture == 1) {
-        FragColor = texture(material.texture, TexCoord) * vec4(result, 1.0);
+        vec4 texColor = texture(material.texture, TexCoord);
+        FragColor = vec4(texColor.rgb * result, texColor.a * material.opacity);
     } else {
-        FragColor = vec4(result, 1.0);
+        FragColor = vec4(result, material.opacity);
     }
 }

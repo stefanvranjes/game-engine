@@ -29,11 +29,15 @@ public:
     const Mat4& GetWorldMatrix() const { return m_WorldMatrix; }
     const std::string& GetName() const { return m_Name; }
     std::shared_ptr<Material> GetMaterial() { return m_Material; }
+    std::shared_ptr<Mesh> GetActiveMesh(const Mat4& view) const;
     
     std::vector<std::shared_ptr<GameObject>>& GetChildren() { return m_Children; }
     
     // Helper to check collision recursively
     bool CheckCollision(const AABB& bounds);
+    
+    // Get World Space AABB
+    AABB GetWorldAABB() const;
 
     // LOD System
     struct LODLevel {

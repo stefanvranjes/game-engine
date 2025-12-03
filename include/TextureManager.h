@@ -32,6 +32,12 @@ public:
     // Memory Budget
     void SetMemoryBudget(size_t bytes) { m_MemoryBudget = bytes; }
     size_t GetMemoryUsage() const { return m_CurrentMemoryUsage; }
+    
+    // Quality Settings
+    void SetGlobalAnisotropy(float level);
+    
+    // Resource Listing
+    std::vector<std::string> GetTextureNames() const;
 
 private:
     std::map<std::string, std::shared_ptr<Texture>> m_Textures;
@@ -52,8 +58,11 @@ private:
     std::mutex m_UploadMutex;
     
     // Memory Management
+    // Memory Management
     size_t m_MemoryBudget;
     size_t m_CurrentMemoryUsage;
+    
+    float m_GlobalAnisotropy;
     
     void WorkerThreadLoop();
     void ManageMemory();

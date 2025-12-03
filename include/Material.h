@@ -25,7 +25,10 @@ public:
         AOMap = 1 << 13,
         ORMMap = 1 << 14,
         HeightMap = 1 << 15,
-        EmissiveMap = 1 << 16
+        HeightMap = 1 << 15,
+        EmissiveMap = 1 << 16,
+        Opacity = 1 << 17,
+        IsTransparent = 1 << 18
     };
 
     Material() 
@@ -37,6 +40,8 @@ public:
         , m_Metallic(0.0f)
         , m_HeightScale(0.1f)
         , m_EmissiveColor(0.0f, 0.0f, 0.0f)
+        , m_Opacity(1.0f)
+        , m_IsTransparent(false)
         , m_Overrides(0)
     {
     }
@@ -84,6 +89,16 @@ public:
     void SetORMMap(std::shared_ptr<Texture> t) { m_ORMMap = t; m_Overrides |= ORMMap; }
     void SetHeightMap(std::shared_ptr<Texture> t) { m_HeightMap = t; m_Overrides |= HeightMap; }
     void SetEmissiveMap(std::shared_ptr<Texture> t) { m_EmissiveMap = t; m_Overrides |= EmissiveMap; }
+    
+    void SetOpacity(float opacity) { m_Opacity = opacity; m_Overrides |= Opacity; }
+    void SetIsTransparent(bool transparent) { m_IsTransparent = transparent; m_Overrides |= IsTransparent; }
+    
+    float GetOpacity() const { return (m_Overrides & Opacity) ? m_Opacity : (m_Parent ? m_Parent->GetOpacity() : m_Opacity); }
+    bool IsTransparent() const { return (m_Overrides & IsTransparent) ? m_IsTransparent : (m_Parent ? m_Parent->IsTransparent() : m_IsTransparent); }
+
+    // Preset Save/Load
+    bool SaveToFile(const std::string& filepath) const;
+    bool LoadFromFile(const std::string& filepath, class TextureManager* texManager);
 
     // Factory methods for common material presets
     static std::shared_ptr<Material> CreateMetal(float roughness = 0.3f, const Vec3& color = Vec3(0.9f, 0.9f, 0.9f)) {
@@ -239,6 +254,8 @@ public:
             } else {
                 shader->SetInt("u_HasEmissiveMap", 0);
             }
+            
+            shader->SetFloat("material.opacity", GetOpacity());
         }
     }
 
@@ -254,6 +271,8 @@ private:
     float m_Metallic;
     float m_HeightScale;
     Vec3 m_EmissiveColor;
+    float m_Opacity;
+    bool m_IsTransparent;
 
     std::shared_ptr<Texture> m_Texture;
     std::shared_ptr<Texture> m_SpecularMap;

@@ -5,6 +5,9 @@
 #include "imgui/imgui.h"
 #include "Material.h"
 #include "Light.h"
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 Application::Application() 
     : m_Running(false)
@@ -53,6 +56,13 @@ bool Application::Init() {
     m_ImGui = std::make_unique<ImGuiManager>();
     if (!m_ImGui->Init(m_Window->GetGLFWWindow())) {
         std::cerr << "Failed to initialize ImGui" << std::endl;
+        return false;
+    }
+
+    // Initialize Preview Renderer
+    m_PreviewRenderer = std::make_unique<PreviewRenderer>();
+    if (!m_PreviewRenderer->Init(512, 512)) {
+        std::cerr << "Failed to initialize PreviewRenderer" << std::endl;
         return false;
     }
 
@@ -111,6 +121,14 @@ void Application::Update(float deltaTime) {
     }
     if (glfwGetKey(m_Window->GetGLFWWindow(), GLFW_KEY_F9) == GLFW_PRESS) {
         m_Renderer->LoadScene("assets/scene.txt");
+    }
+    
+    // Shader Hot-Reload (Poll every 1.0s)
+    static float shaderTimer = 0.0f;
+    shaderTimer += deltaTime;
+    if (shaderTimer >= 1.0f) {
+        m_Renderer->UpdateShaders();
+        shaderTimer = 0.0f;
     }
 }
 
@@ -226,26 +244,174 @@ void Application::RenderEditorUI() {
         // Material Inspector
         auto mat = object->GetMaterial();
         if (mat) {
-            ImGui::Text("Material");
-            
-            Vec3 ambient = mat->GetAmbient();
-            if (ImGui::ColorEdit3("Ambient", &ambient.x)) {
-                mat->SetAmbient(ambient);
+            // Render and display preview
+            if (m_PreviewRenderer) {
+                // Create a simple shader for preview (we'll use a basic approach)
+                // For now, render the preview - the PreviewRenderer will handle shader internally
+                m_PreviewRenderer->RenderPreview(object.get(), nullptr);
+                
+                // Display preview image
+                ImGui::Text("Material Preview");
+                ImVec2 previewSize(256, 256);
+                ImGui::Image(
+                    (void*)(intptr_t)m_PreviewRenderer->GetTextureID(),
+                    previewSize,
+                    ImVec2(0, 1), // UV coordinates flipped for OpenGL
+                    ImVec2(1, 0)
+                );
+                ImGui::Separator();
             }
             
-            Vec3 diffuse = mat->GetDiffuse();
-            if (ImGui::ColorEdit3("Diffuse", &diffuse.x)) {
-                mat->SetDiffuse(diffuse);
+            ImGui::Text("Material Properties");
+            ImGui::Separator();
+            
+            // Basic Colors
+            if (ImGui::CollapsingHeader("Colors", ImGuiTreeNodeFlags_DefaultOpen)) {
+                Vec3 ambient = mat->GetAmbient();
+                if (ImGui::ColorEdit3("Ambient", &ambient.x)) {
+                    mat->SetAmbient(ambient);
+                }
+                
+                Vec3 diffuse = mat->GetDiffuse();
+                if (ImGui::ColorEdit3("Diffuse", &diffuse.x)) {
+                    mat->SetDiffuse(diffuse);
+                }
+                
+                Vec3 specular = mat->GetSpecular();
+                if (ImGui::ColorEdit3("Specular", &specular.x)) {
+                    mat->SetSpecular(specular);
+                }
+                
+                Vec3 emissive = mat->GetEmissiveColor();
+                if (ImGui::ColorEdit3("Emissive", &emissive.x)) {
+                    mat->SetEmissiveColor(emissive);
+                }
             }
             
-            Vec3 specular = mat->GetSpecular();
-            if (ImGui::ColorEdit3("Specular", &specular.x)) {
-                mat->SetSpecular(specular);
+            // PBR Properties
+            if (ImGui::CollapsingHeader("PBR Properties", ImGuiTreeNodeFlags_DefaultOpen)) {
+                float shininess = mat->GetShininess();
+                if (ImGui::SliderFloat("Shininess", &shininess, 1.0f, 256.0f)) {
+                    mat->SetShininess(shininess);
+                }
+                
+                float roughness = mat->GetRoughness();
+                if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
+                    mat->SetRoughness(roughness);
+                }
+                
+                float metallic = mat->GetMetallic();
+                if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
+                    mat->SetMetallic(metallic);
+                }
+                
+                float heightScale = mat->GetHeightScale();
+                if (ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 1.0f)) {
+                    mat->SetHeightScale(heightScale);
+                }
+                
+                float opacity = mat->GetOpacity();
+                if (ImGui::SliderFloat("Opacity", &opacity, 0.0f, 1.0f)) {
+                    mat->SetOpacity(opacity);
+                }
+                
+                bool isTransparent = mat->IsTransparent();
+                if (ImGui::Checkbox("Transparent", &isTransparent)) {
+                    mat->SetIsTransparent(isTransparent);
+                }
             }
             
-            float shininess = mat->GetShininess();
-            if (ImGui::DragFloat("Shininess", &shininess, 1.0f, 1.0f, 256.0f)) {
-                mat->SetShininess(shininess);
+            // Texture Maps
+            if (ImGui::CollapsingHeader("Texture Maps")) {
+                auto texManager = m_Renderer->GetTextureManager();
+                if (texManager) {
+                    auto textureNames = texManager->GetTextureNames();
+                    
+                    // Helper lambda for texture selection
+                    auto renderTextureCombo = [&](const char* label, std::shared_ptr<Texture> currentTex, auto setter) {
+                        std::string currentName = currentTex ? "Loaded Texture" : "None";
+                        if (ImGui::BeginCombo(label, currentName.c_str())) {
+                            if (ImGui::Selectable("None", !currentTex)) {
+                                (mat.get()->*setter)(nullptr);
+                            }
+                            for (const auto& name : textureNames) {
+                                bool isSelected = (currentTex && currentTex == texManager->GetTexture(name));
+                                if (ImGui::Selectable(name.c_str(), isSelected)) {
+                                    (mat.get()->*setter)(texManager->GetTexture(name));
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                    };
+                    
+                    renderTextureCombo("Albedo/Diffuse", mat->GetTexture(), &Material::SetTexture);
+                    renderTextureCombo("Normal Map", mat->GetNormalMap(), &Material::SetNormalMap);
+                    renderTextureCombo("Specular Map", mat->GetSpecularMap(), &Material::SetSpecularMap);
+                    renderTextureCombo("Roughness Map", mat->GetRoughnessMap(), &Material::SetRoughnessMap);
+                    renderTextureCombo("Metallic Map", mat->GetMetallicMap(), &Material::SetMetallicMap);
+                    renderTextureCombo("AO Map", mat->GetAOMap(), &Material::SetAOMap);
+                    renderTextureCombo("ORM Map", mat->GetORMMap(), &Material::SetORMMap);
+                    renderTextureCombo("Height Map", mat->GetHeightMap(), &Material::SetHeightMap);
+                    renderTextureCombo("Emissive Map", mat->GetEmissiveMap(), &Material::SetEmissiveMap);
+                }
+            }
+            
+            // Material Presets
+            ImGui::Separator();
+            if (ImGui::CollapsingHeader("Material Presets")) {
+                static char presetName[128] = "my_material";
+                
+                // Save Preset
+                ImGui::InputText("Preset Name", presetName, sizeof(presetName));
+                if (ImGui::Button("Save Preset")) {
+                    std::string filepath = "assets/materials/" + std::string(presetName) + ".mat";
+                    if (mat->SaveToFile(filepath)) {
+                        std::cout << "Preset saved successfully!" << std::endl;
+                    }
+                }
+                
+                ImGui::Separator();
+                
+                // Load Preset - scan for .mat files
+                static std::vector<std::string> presetFiles;
+                static int selectedPreset = -1;
+                
+                if (ImGui::Button("Refresh Presets")) {
+                    presetFiles.clear();
+                    selectedPreset = -1;
+                    
+                    // Simple directory scan (Windows-specific for now)
+                    #ifdef _WIN32
+                    WIN32_FIND_DATAA findData;
+                    HANDLE hFind = FindFirstFileA("assets/materials/*.mat", &findData);
+                    if (hFind != INVALID_HANDLE_VALUE) {
+                        do {
+                            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                                presetFiles.push_back(findData.cFileName);
+                            }
+                        } while (FindNextFileA(hFind, &findData));
+                        FindClose(hFind);
+                    }
+                    #endif
+                }
+                
+                if (!presetFiles.empty()) {
+                    ImGui::Text("Available Presets:");
+                    for (size_t i = 0; i < presetFiles.size(); ++i) {
+                        if (ImGui::Selectable(presetFiles[i].c_str(), selectedPreset == (int)i)) {
+                            selectedPreset = (int)i;
+                        }
+                    }
+                    
+                    if (selectedPreset >= 0 && ImGui::Button("Load Selected Preset")) {
+                        std::string filepath = "assets/materials/" + presetFiles[selectedPreset];
+                        if (mat->LoadFromFile(filepath, m_Renderer->GetTextureManager())) {
+                            std::cout << "Preset loaded successfully!" << std::endl;
+                        }
+                    }
+                } else {
+                    ImGui::TextDisabled("No presets found. Click 'Refresh Presets'.");
+                }
             }
         }
 

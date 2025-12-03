@@ -20,13 +20,23 @@ public:
     void SetMat4(const std::string& name, const float* value);
 
     unsigned int GetProgramID() const { return m_ProgramID; }
+    
+    // Hot-Reload
+    void CheckForUpdates();
 
 private:
     bool CompileShader(unsigned int shader, const std::string& source, const std::string& type);
     bool LinkProgram();
     std::string ReadFile(const std::string& filepath);
     int GetUniformLocation(const std::string& name);
+    long long GetFileTimestamp(const std::string& filepath);
 
     unsigned int m_ProgramID;
     std::unordered_map<std::string, int> m_UniformLocationCache;
+    
+    // Hot-Reload State
+    std::string m_VertexPath;
+    std::string m_FragmentPath;
+    std::string m_GeometryPath;
+    long long m_LastWriteTime;
 };

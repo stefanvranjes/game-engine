@@ -177,19 +177,27 @@ void Model::LoadMTL(const std::string& path, std::map<std::string, std::shared_p
         else if (currentMaterial) {
             if (prefix == "Ka") {
                 // Ambient color
-                iss >> currentMaterial->ambient.x >> currentMaterial->ambient.y >> currentMaterial->ambient.z;
+                Vec3 ambient;
+                iss >> ambient.x >> ambient.y >> ambient.z;
+                currentMaterial->SetAmbient(ambient);
             }
             else if (prefix == "Kd") {
                 // Diffuse color
-                iss >> currentMaterial->diffuse.x >> currentMaterial->diffuse.y >> currentMaterial->diffuse.z;
+                Vec3 diffuse;
+                iss >> diffuse.x >> diffuse.y >> diffuse.z;
+                currentMaterial->SetDiffuse(diffuse);
             }
             else if (prefix == "Ks") {
                 // Specular color
-                iss >> currentMaterial->specular.x >> currentMaterial->specular.y >> currentMaterial->specular.z;
+                Vec3 specular;
+                iss >> specular.x >> specular.y >> specular.z;
+                currentMaterial->SetSpecular(specular);
             }
             else if (prefix == "Ns") {
                 // Shininess
-                iss >> currentMaterial->shininess;
+                float shininess;
+                iss >> shininess;
+                currentMaterial->SetShininess(shininess);
             }
             else if (prefix == "map_Kd") {
                 // Diffuse texture
@@ -198,7 +206,7 @@ void Model::LoadMTL(const std::string& path, std::map<std::string, std::shared_p
                 // Extract directory from MTL path
                 size_t lastSlash = path.find_last_of("/\\");
                 std::string dir = (lastSlash != std::string::npos) ? path.substr(0, lastSlash + 1) : "";
-                currentMaterial->texture = texManager->LoadTexture(dir + texPath);
+                currentMaterial->SetTexture(texManager->LoadTexture(dir + texPath));
             }
             else if (prefix == "map_Ks") {
                 // Specular texture
@@ -207,7 +215,7 @@ void Model::LoadMTL(const std::string& path, std::map<std::string, std::shared_p
                 // Extract directory from MTL path
                 size_t lastSlash = path.find_last_of("/\\");
                 std::string dir = (lastSlash != std::string::npos) ? path.substr(0, lastSlash + 1) : "";
-                currentMaterial->specularMap = texManager->LoadTexture(dir + texPath);
+                currentMaterial->SetSpecularMap(texManager->LoadTexture(dir + texPath));
             }
             else if (prefix == "map_Bump" || prefix == "bump") {
                 // Normal map
@@ -216,7 +224,7 @@ void Model::LoadMTL(const std::string& path, std::map<std::string, std::shared_p
                 // Extract directory from MTL path
                 size_t lastSlash = path.find_last_of("/\\");
                 std::string dir = (lastSlash != std::string::npos) ? path.substr(0, lastSlash + 1) : "";
-                currentMaterial->normalMap = texManager->LoadTexture(dir + texPath);
+                currentMaterial->SetNormalMap(texManager->LoadTexture(dir + texPath));
             }
         }
     }

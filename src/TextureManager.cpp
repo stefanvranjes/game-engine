@@ -9,6 +9,7 @@ TextureManager::TextureManager()
     : m_IsRunning(true)
     , m_MemoryBudget(1024 * 1024 * 512) // 512 MB default budget
     , m_CurrentMemoryUsage(0)
+    , m_GlobalAnisotropy(1.0f)
 {
     // Start worker thread
     m_WorkerThread = std::thread(&TextureManager::WorkerThreadLoop, this);
@@ -31,6 +32,7 @@ std::shared_ptr<Texture> TextureManager::LoadTexture(const std::string& path) {
 
     // Create new texture object
     std::shared_ptr<Texture> texture = std::make_shared<Texture>();
+    texture->SetAnisotropy(m_GlobalAnisotropy); // Apply global setting
     m_Textures[path] = texture;
     
     // Queue for async loading
@@ -40,6 +42,23 @@ std::shared_ptr<Texture> TextureManager::LoadTexture(const std::string& path) {
     }
 
     return texture;
+}
+
+void TextureManager::SetGlobalAnisotropy(float level) {
+    m_GlobalAnisotropy = level;
+    // Update existing textures
+    for (auto& pair : m_Textures) {
+        pair.second->SetAnisotropy(level);
+    }
+    }
+}
+
+std::vector<std::string> TextureManager::GetTextureNames() const {
+    std::vector<std::string> names;
+    for (const auto& pair : m_Textures) {
+        names.push_back(pair.first);
+    }
+    return names;
 }
 
 std::shared_ptr<Texture> TextureManager::GetTexture(const std::string& path) {

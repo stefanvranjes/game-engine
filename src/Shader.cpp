@@ -127,8 +127,55 @@ bool Shader::LoadFromFiles(const std::string& vertexPath, const std::string& fra
     glDeleteShader(fragmentShader);
     if (geometryShader) glDeleteShader(geometryShader);
 
+    // Store paths and timestamp
+    m_VertexPath = vertexPath;
+    m_FragmentPath = fragmentPath;
+    m_GeometryPath = geometryPath;
+    
+    m_LastWriteTime = GetFileTimestamp(vertexPath);
+    m_LastWriteTime = std::max(m_LastWriteTime, GetFileTimestamp(fragmentPath));
+    if (!geometryPath.empty()) {
+        m_LastWriteTime = std::max(m_LastWriteTime, GetFileTimestamp(geometryPath));
+    }
+
     std::cout << "Shader program created successfully" << std::endl;
     return true;
+}
+
+long long Shader::GetFileTimestamp(const std::string& filepath) {
+    struct stat result;
+    if (stat(filepath.c_str(), &result) == 0) {
+        return result.st_mtime;
+    }
+    return 0;
+}
+
+void Shader::CheckForUpdates() {
+    long long currentMaxTime = GetFileTimestamp(m_VertexPath);
+    currentMaxTime = std::max(currentMaxTime, GetFileTimestamp(m_FragmentPath));
+    if (!m_GeometryPath.empty()) {
+        currentMaxTime = std::max(currentMaxTime, GetFileTimestamp(m_GeometryPath));
+    }
+    
+    if (currentMaxTime > m_LastWriteTime) {
+        std::cout << "Reloading shader..." << std::endl;
+        
+        // Keep old ID in case reload fails
+        unsigned int oldProgram = m_ProgramID;
+        
+        // Attempt reload
+        if (LoadFromFiles(m_VertexPath, m_FragmentPath, m_GeometryPath)) {
+            // Success! Delete old program
+            glDeleteProgram(oldProgram);
+            std::cout << "Shader reloaded successfully!" << std::endl;
+        } else {
+            // Failed! Restore old program
+            m_ProgramID = oldProgram;
+            std::cerr << "Shader reload failed! Keeping old shader." << std::endl;
+            // Update timestamp anyway to avoid loop
+            m_LastWriteTime = currentMaxTime;
+        }
+    }
 }
 
 void Shader::Use() const {

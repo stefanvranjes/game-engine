@@ -12,6 +12,7 @@
 #include "CascadedShadowMap.h"
 #include "ShadowMap.h"
 #include "TextureManager.h"
+#include "MaterialLibrary.h"
 #include "GameObject.h"
 #include "GBuffer.h"
 #include "PostProcessing.h"
@@ -21,6 +22,7 @@
 #include "TAA.h"
 #include "LightProbe.h"
 #include "ReflectionProbe.h"
+#include "ParticleSystem.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -37,6 +39,7 @@ public:
 
     bool Init();
     void Render();
+    void UpdateShaders(); // Hot-Reload
     void Shutdown();
     
     void SetCamera(Camera* camera) { m_Camera = camera; }
@@ -50,6 +53,8 @@ public:
     std::vector<Light>& GetLights() { return m_Lights; }
 
     TextureManager* GetTextureManager() { return m_TextureManager.get(); }
+    MaterialLibrary* GetMaterialLibrary() { return m_MaterialLibrary.get(); }
+    ParticleSystem* GetParticleSystem() { return m_ParticleSystem.get(); }
     PostProcessing* GetPostProcessing() { return m_PostProcessing.get(); }
     
     // Debug
@@ -77,6 +82,10 @@ public:
     void SetTAAEnabled(bool enabled) { m_TAAEnabled = enabled; }
     bool GetTAAEnabled() const { return m_TAAEnabled; }
     
+    // Batched Rendering
+    void SetBatchedRenderingEnabled(bool enabled) { m_BatchedRenderingEnabled = enabled; }
+    bool GetBatchedRenderingEnabled() const { return m_BatchedRenderingEnabled; }
+    
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
     void AddLODTestObject(const Transform& transform);
@@ -101,6 +110,20 @@ private:
     void SetupScene();
     void RenderQuad(); // For fullscreen quad in lighting pass
     void RenderCube(); // For cubemap rendering
+    
+    // Batched Rendering
+    struct RenderItem {
+        GameObject* object;
+        std::shared_ptr<Mesh> mesh;
+        Mat4 worldMatrix;
+        float distance; // Squared distance to camera
+    };
+    void CollectRenderItems(GameObject* obj, std::map<Material*, std::vector<RenderItem>>& batches, Frustum* frustum, bool forceRender);
+    void RenderBatched(const std::map<Material*, std::vector<RenderItem>>& batches, Shader* shader, const Mat4& view, const Mat4& projection);
+    
+    std::vector<RenderItem> m_TransparentItems;
+    void SortItems(std::vector<RenderItem>& items, bool frontToBack);
+    void RenderTransparentItems(Shader* shader, const Mat4& view, const Mat4& projection);
 
     // IBL
     void InitIBL();
@@ -126,6 +149,7 @@ private:
     std::vector<std::unique_ptr<CubemapShadow>> m_PointShadows;
     std::vector<std::unique_ptr<ShadowMap>> m_SpotShadows;
     std::unique_ptr<TextureManager> m_TextureManager;
+    std::unique_ptr<MaterialLibrary> m_MaterialLibrary;
     std::unique_ptr<GBuffer> m_GBuffer;
     std::unique_ptr<PostProcessing> m_PostProcessing;
     std::unique_ptr<SSAO> m_SSAO;
@@ -134,8 +158,11 @@ private:
     bool m_SSREnabled;
     std::unique_ptr<TAA> m_TAA;
     bool m_TAAEnabled;
+    std::unique_ptr<ParticleSystem> m_ParticleSystem;
+    bool m_BatchedRenderingEnabled;
     
     unsigned int m_QuadVAO, m_QuadVBO;
+    unsigned int m_InstanceVBO; // VBO for instance data (model matrices)
     
     std::shared_ptr<GameObject> m_Root;
     std::vector<Light> m_Lights;

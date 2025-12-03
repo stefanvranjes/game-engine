@@ -31,6 +31,11 @@ public:
     // Get OpenGL texture ID
     unsigned int GetID() const { return m_TextureID; }
     
+    // Mipmap & Quality Controls
+    void SetAnisotropy(float level);
+    void SetDownscaleLevel(int level); // 0 = original, 1 = half size, etc.
+    void GenerateMipmaps(bool enable);
+    
     // State & LRU
     TextureState GetState() const { return m_State; }
     void Touch(); // Update last used time
@@ -49,4 +54,9 @@ private:
     double m_LastUsedTime;
     bool m_IsHDR;
     float* m_LocalBufferHDR; // Temporary buffer for HDR async loading
+    
+    // Quality settings
+    float m_AnisotropyLevel;
+    int m_DownscaleLevel;
+    bool m_GenerateMipmaps;
 };

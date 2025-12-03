@@ -114,8 +114,22 @@ void Mesh::SetupMesh(const std::vector<float>& vertices, const std::vector<unsig
 }
 
 void Mesh::Draw() const {
-    glBindVertexArray(m_VAO);
+    Bind();
     glDrawElements(GL_TRIANGLES, m_IndexCount, GL_UNSIGNED_INT, 0);
+    Unbind();
+}
+
+void Mesh::DrawInstanced(unsigned int count) const {
+    Bind();
+    glDrawElementsInstanced(GL_TRIANGLES, m_IndexCount, GL_UNSIGNED_INT, 0, count);
+    Unbind();
+}
+
+void Mesh::Bind() const {
+    glBindVertexArray(m_VAO);
+}
+
+void Mesh::Unbind() const {
     glBindVertexArray(0);
 }
 
