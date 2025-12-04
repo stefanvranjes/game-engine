@@ -57,6 +57,11 @@ PFNGLBEGINQUERYPROC glBeginQuery = nullptr;
 PFNGLENDQUERYPROC glEndQuery = nullptr;
 PFNGLGETQUERYOBJECTUIVPROC glGetQueryObjectuiv = nullptr;
 
+PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
+PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
+PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = nullptr;
+PFNGLDRAWELEMENTSINSTANCEDPROC glDrawElementsInstanced = nullptr;
+
 
 bool LoadGLExtensions() {
     glCreateShader = (PFNGLCREATESHADERPROC)wglGetProcAddress("glCreateShader");
@@ -113,6 +118,11 @@ bool LoadGLExtensions() {
     glBeginQuery = (PFNGLBEGINQUERYPROC)wglGetProcAddress("glBeginQuery");
     glEndQuery = (PFNGLENDQUERYPROC)wglGetProcAddress("glEndQuery");
     glGetQueryObjectuiv = (PFNGLGETQUERYOBJECTUIVPROC)wglGetProcAddress("glGetQueryObjectuiv");
+
+    glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)wglGetProcAddress("glDrawArraysInstanced");
+    glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress("glVertexAttribDivisor");
+    glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
+    glDrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)wglGetProcAddress("glDrawElementsInstanced");
 
 
     // Check if all functions were loaded

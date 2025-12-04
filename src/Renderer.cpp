@@ -4,6 +4,7 @@
 #include "Camera.h"
 #include "GLExtensions.h"
 #include "Material.h"
+#include "Sprite.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <fstream>
@@ -391,7 +392,37 @@ bool Renderer::Init() {
     
     // Add a test fire emitter
     auto fireEmitter = ParticleEmitter::CreateFire(Vec3(0, 1, 0));
+    // Use the generated font atlas
+    auto atlasTexture = m_TextureManager->LoadTexture("assets/font_atlas.png");
+    if (atlasTexture) {
+        fireEmitter->SetTexture(atlasTexture);
+        fireEmitter->SetAtlasSize(6, 16); // 6 rows, 16 cols as per generate_atlas.py
+    }
     m_ParticleSystem->AddEmitter(fireEmitter);
+    
+    // Add a test animated sprite
+    auto testSprite = std::make_shared<Sprite>("TestSprite");
+    testSprite->GetTransform().SetPosition(Vec3(3, 1, 0));
+    testSprite->GetTransform().SetScale(Vec3(2, 2, 1));
+    
+    // Create a simple quad mesh for the sprite
+    testSprite->SetMesh(Mesh::CreateQuad());
+    
+    // Create material with the atlas texture
+    auto spriteMaterial = std::make_shared<Material>();
+    if (atlasTexture) {
+        spriteMaterial->SetTexture(atlasTexture);
+    }
+    testSprite->SetMaterial(spriteMaterial);
+    
+    // Configure atlas animation
+    testSprite->SetAtlas(6, 16);  // 6 rows, 16 cols
+    testSprite->SetAnimationSpeed(10.0f);  // 10 frames per second
+    testSprite->SetLoop(true);
+    testSprite->Play();
+    
+    // Add to scene
+    m_RootNode->AddChild(testSprite);
 
     return true;
 }
@@ -666,19 +697,50 @@ void Renderer::Render() {
     }
     
     // Update camera matrices (stores previous view-projection)
+}
+
+void Renderer::Update(float deltaTime) {
+    // Update camera matrices
     if (m_Camera) {
         m_Camera->UpdateMatrices();
     }
 
-    // Update scene graph
+    // Update scene graph with deltaTime
     if (m_Root) {
+        // For Sprite objects, we need to call the deltaTime-aware Update
+        // For now, we'll call the base Update which will use default deltaTime
+        // In the future, we could add a virtual Update(Mat4, float) to GameObject
         m_Root->Update(Mat4::Identity());
+        
+        // Update sprites specifically with deltaTime
+        UpdateSprites(m_Root, deltaTime);
     }
     
-    // Update particles
+    // Update particles with actual deltaTime
     if (m_ParticleSystem) {
-        m_ParticleSystem->Update(0.016f); // Approximate 60 FPS deltaTime
+        m_ParticleSystem->Update(deltaTime);
     }
+}
+
+void Renderer::UpdateSprites(std::shared_ptr<GameObject> node, float deltaTime) {
+    if (!node) return;
+    
+    // Check if this is a Sprite and update with deltaTime
+    auto sprite = std::dynamic_pointer_cast<Sprite>(node);
+    if (sprite) {
+        sprite->Update(Mat4::Identity(), deltaTime);
+    }
+    
+    // Recursively update children
+    for (auto& child : node->GetChildren()) {
+        UpdateSprites(child, deltaTime);
+    }
+}
+
+void Renderer::Render() {
+    // Update camera matrices (moved to Update method)
+    // Update scene graph (moved to Update method)
+    // Update particles (moved to Update method)
 
     // ===== PASS 0: Render point light shadows =====
     m_PointShadowShader->Use();
@@ -1643,7 +1705,7 @@ void Renderer::RenderBatched(const std::map<Material*, std::vector<RenderItem>>&
         if (items.empty()) continue;
         
         // Sort Opaque items Front-to-Back for Early Z optimization
-        SortItems(items, true);
+        SortItems(const_cast<std::vector<RenderItem>&>(items), true);
         
         // Bind material once for all objects in this batch
         material->Bind(shader);
@@ -1689,7 +1751,7 @@ void Renderer::RenderBatched(const std::map<Material*, std::vector<RenderItem>>&
             glVertexAttribDivisor(6, 1);
             
             // Set uniforms that are constant for the batch
-            shader->SetBool("u_Instanced", true);
+            shader->SetInt("u_Instanced", 1);
             shader->SetMat4("u_View", view.m);
             shader->SetMat4("u_Projection", projection.m);
             // u_MVP and u_Model are now handled in shader via attributes
@@ -1710,7 +1772,7 @@ void Renderer::RenderBatched(const std::map<Material*, std::vector<RenderItem>>&
             mesh->Unbind();
             glBindBuffer(GL_ARRAY_BUFFER, 0);
             
-            shader->SetBool("u_Instanced", false);
+            shader->SetInt("u_Instanced", 0);
         }
     }
 }

@@ -94,4 +94,10 @@ private:
     
     // Internal state
     float m_SpawnAccumulator;
+    
+    // Atlas animation
+    int m_AtlasRows;
+    int m_AtlasCols;
+    float m_AnimationSpeed;
+    bool m_LoopAnimation;
 };

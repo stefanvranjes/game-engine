@@ -81,7 +81,7 @@ void PreviewRenderer::RenderPreview(GameObject* object, Shader* shader) {
         radius * cos(angleRad)
     );
     m_Camera->SetPosition(camPos);
-    m_Camera->LookAt(Vec3(0, 0, 0));
+    // Camera automatically looks at origin based on yaw/pitch
 
     // Bind preview framebuffer
     glBindFramebuffer(GL_FRAMEBUFFER, m_FBO);
@@ -102,9 +102,9 @@ void PreviewRenderer::RenderPreview(GameObject* object, Shader* shader) {
     Mat4 projection = m_Camera->GetProjectionMatrix();
     Mat4 model; // Identity - object at origin
 
-    renderShader->SetMat4("u_View", view.GetData());
-    renderShader->SetMat4("u_Projection", projection.GetData());
-    renderShader->SetMat4("u_Model", model.GetData());
+    renderShader->SetMat4("u_View", view.m);
+    renderShader->SetMat4("u_Projection", projection.m);
+    renderShader->SetMat4("u_Model", model.m);
 
     // Simple directional light
     renderShader->SetVec3("u_LightDir", 0.3f, -1.0f, 0.5f);
@@ -117,7 +117,7 @@ void PreviewRenderer::RenderPreview(GameObject* object, Shader* shader) {
         material->Bind(renderShader);
     }
 
-    auto mesh = object->GetMesh();
+    auto mesh = object->GetActiveMesh(view);
     if (mesh) {
         mesh->Draw();
     }

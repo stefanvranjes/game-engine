@@ -200,7 +200,20 @@ extern PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
 extern PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
 extern PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
 extern PFNGLTEXIMAGE3DPROC glTexImage3D;
+extern PFNGLTEXIMAGE3DPROC glTexImage3D;
 extern PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer;
+
+typedef void (APIENTRYP PFNGLDRAWARRAYSINSTANCEDPROC) (GLenum mode, GLint first, GLsizei count, GLsizei instancecount);
+extern PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced;
+
+typedef void (APIENTRYP PFNGLVERTEXATTRIBDIVISORPROC) (GLuint index, GLuint divisor);
+extern PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor;
+
+typedef void (APIENTRYP PFNGLDISABLEVERTEXATTRIBARRAYPROC) (GLuint index);
+extern PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
+
+typedef void (APIENTRYP PFNGLDRAWELEMENTSINSTANCEDPROC) (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
+extern PFNGLDRAWELEMENTSINSTANCEDPROC glDrawElementsInstanced;
 
 
 // Function to load OpenGL extensions

@@ -25,10 +25,9 @@ public:
         AOMap = 1 << 13,
         ORMMap = 1 << 14,
         HeightMap = 1 << 15,
-        HeightMap = 1 << 15,
         EmissiveMap = 1 << 16,
         Opacity = 1 << 17,
-        IsTransparent = 1 << 18
+        Transparent = 1 << 18
     };
 
     Material() 
@@ -91,10 +90,10 @@ public:
     void SetEmissiveMap(std::shared_ptr<Texture> t) { m_EmissiveMap = t; m_Overrides |= EmissiveMap; }
     
     void SetOpacity(float opacity) { m_Opacity = opacity; m_Overrides |= Opacity; }
-    void SetIsTransparent(bool transparent) { m_IsTransparent = transparent; m_Overrides |= IsTransparent; }
+    void SetIsTransparent(bool transparent) { m_IsTransparent = transparent; m_Overrides |= Transparent; }
     
     float GetOpacity() const { return (m_Overrides & Opacity) ? m_Opacity : (m_Parent ? m_Parent->GetOpacity() : m_Opacity); }
-    bool IsTransparent() const { return (m_Overrides & IsTransparent) ? m_IsTransparent : (m_Parent ? m_Parent->IsTransparent() : m_IsTransparent); }
+    bool IsTransparent() const { return (m_Overrides & Transparent) ? m_IsTransparent : (m_Parent ? m_Parent->IsTransparent() : m_IsTransparent); }
 
     // Preset Save/Load
     bool SaveToFile(const std::string& filepath) const;

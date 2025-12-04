@@ -10,6 +10,7 @@ struct Particle {
     float size;
     float lifetime;  // Total lifetime in seconds
     float age;       // Current age in seconds
+    float lifeRatio; // 0.0 to 1.0
     bool active;
     
     Particle()
@@ -19,6 +20,7 @@ struct Particle {
         , size(1.0f)
         , lifetime(1.0f)
         , age(0.0f)
+        , lifeRatio(0.0f)
         , active(false)
     {}
 };

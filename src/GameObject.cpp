@@ -21,6 +21,8 @@ GameObject::GameObject(const std::string& name)
     , m_VisibilityStableFrames(0)
     , m_QueryFrameInterval(1)  // Start with every frame
     , m_FramesSinceLastQuery(0)
+    , m_UVOffset(0.0f, 0.0f)
+    , m_UVScale(1.0f, 1.0f)
 {
 }
 
@@ -124,6 +126,11 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
         Mat4 mvp = projection * view * m_WorldMatrix;
         shader->SetMat4("u_MVP", mvp.m);
         shader->SetMat4("u_Model", m_WorldMatrix.m);
+        
+        // Set UV offset and scale for sprite atlases
+        shader->SetVec2("u_UVOffset", m_UVOffset.x, m_UVOffset.y);
+        shader->SetVec2("u_UVScale", m_UVScale.x, m_UVScale.y);
+        
         m_Material->Bind(shader);
         meshToDraw->Draw();
     }

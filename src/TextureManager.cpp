@@ -50,7 +50,6 @@ void TextureManager::SetGlobalAnisotropy(float level) {
     for (auto& pair : m_Textures) {
         pair.second->SetAnisotropy(level);
     }
-    }
 }
 
 std::vector<std::string> TextureManager::GetTextureNames() const {

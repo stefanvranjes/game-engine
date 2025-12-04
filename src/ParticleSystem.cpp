@@ -79,6 +79,11 @@ void ParticleSystem::SetupQuadMesh() {
     glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, size));
     glVertexAttribDivisor(4, 1);
 
+    // Particle lifeRatio (instanced)
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, lifeRatio));
+    glVertexAttribDivisor(5, 1);
+
     glBindVertexArray(0);
 }
 
@@ -93,8 +98,8 @@ void ParticleSystem::Render(Camera* camera, GBuffer* gbuffer) {
 
     // Render particles grouped by emitter (for texture/blend mode batching)
     m_Shader->Use();
-    m_Shader->SetMat4("u_View", camera->GetViewMatrix().GetData());
-    m_Shader->SetMat4("u_Projection", camera->GetProjectionMatrix().GetData());
+    m_Shader->SetMat4("u_View", camera->GetViewMatrix().m);
+    m_Shader->SetMat4("u_Projection", camera->GetProjectionMatrix().m);
     
     // Soft particles setup
     if (gbuffer) {
@@ -102,6 +107,8 @@ void ParticleSystem::Render(Camera* camera, GBuffer* gbuffer) {
         int width, height;
         glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
         
+        // Bind depth texture
+        glActiveTexture(GL_TEXTURE1);
         // Bind depth texture
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, gbuffer->GetDepthTexture());
@@ -132,7 +139,9 @@ void ParticleSystem::Render(Camera* camera, GBuffer* gbuffer) {
                 data.color[1] = particle.color.y;
                 data.color[2] = particle.color.z;
                 data.color[3] = particle.color.w;
+                data.color[3] = particle.color.w;
                 data.size = particle.size;
+                data.lifeRatio = particle.lifeRatio;
                 m_InstanceData.push_back(data);
             }
         }
@@ -162,6 +171,11 @@ void ParticleSystem::Render(Camera* camera, GBuffer* gbuffer) {
 
         // Draw instances
         glBindVertexArray(m_QuadVAO);
+        
+        // Set atlas uniforms
+        m_Shader->SetFloat("u_AtlasRows", static_cast<float>(emitter->GetAtlasRows()));
+        m_Shader->SetFloat("u_AtlasCols", static_cast<float>(emitter->GetAtlasCols()));
+        
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, static_cast<GLsizei>(m_InstanceData.size()));
     }
 

@@ -114,6 +114,11 @@ void Application::Update(float deltaTime) {
             m_Camera->SetPosition(oldPos);
         }
     }
+    
+    // Update scene (sprites, particles, etc.) with deltaTime
+    if (m_Renderer) {
+        m_Renderer->Update(deltaTime);
+    }
 
     // Scene Management Input
     if (glfwGetKey(m_Window->GetGLFWWindow(), GLFW_KEY_F5) == GLFW_PRESS) {

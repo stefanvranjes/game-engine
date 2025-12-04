@@ -38,6 +38,7 @@ public:
     ~Renderer();
 
     bool Init();
+    void Update(float deltaTime);
     void Render();
     void UpdateShaders(); // Hot-Reload
     void Shutdown();
@@ -186,4 +187,6 @@ private:
     std::vector<Vec4> GetFrustumCornersWorldSpace(const Mat4& proj, const Mat4& view);
     Mat4 GetLightSpaceMatrix(const float nearPlane, const float farPlane);
     Mat4 GetSpotLightMatrix(const Light& light);
+    
+    void UpdateSprites(std::shared_ptr<GameObject> node, float deltaTime);
 };

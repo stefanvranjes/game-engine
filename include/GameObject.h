@@ -5,6 +5,7 @@
 #include "Material.h"
 #include "Model.h"
 #include "Math/Mat4.h"
+#include "Math/Vec2.h"
 #include <vector>
 #include <memory>
 #include <string>
@@ -12,9 +13,9 @@
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
     GameObject(const std::string& name = "GameObject");
-    ~GameObject();
+    virtual ~GameObject();
 
-    void Update(const Mat4& parentMatrix);
+    virtual void Update(const Mat4& parentMatrix);
     void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr, bool forceRender = false);
 
     void AddChild(std::shared_ptr<GameObject> child);
@@ -32,6 +33,12 @@ public:
     std::shared_ptr<Mesh> GetActiveMesh(const Mat4& view) const;
     
     std::vector<std::shared_ptr<GameObject>>& GetChildren() { return m_Children; }
+    
+    // UV manipulation for sprite atlases
+    void SetUVOffset(const Vec2& offset) { m_UVOffset = offset; }
+    void SetUVScale(const Vec2& scale) { m_UVScale = scale; }
+    Vec2 GetUVOffset() const { return m_UVOffset; }
+    Vec2 GetUVScale() const { return m_UVScale; }
     
     // Helper to check collision recursively
     bool CheckCollision(const AABB& bounds);
@@ -73,6 +80,9 @@ private:
     std::shared_ptr<Mesh> m_Mesh;
     std::shared_ptr<Material> m_Material;
     std::shared_ptr<Model> m_Model;
+    
+    Vec2 m_UVOffset;  // UV offset for sprite atlases
+    Vec2 m_UVScale;   // UV scale for sprite atlases
     
     std::vector<LODLevel> m_LODs; // Sorted by distance descending
 

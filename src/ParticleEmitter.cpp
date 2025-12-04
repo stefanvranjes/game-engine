@@ -1,4 +1,5 @@
 #include "ParticleEmitter.h"
+#include "GameObject.h"
 #include <cstdlib>
 #include <ctime>
 #include <cmath>
@@ -24,6 +25,10 @@ ParticleEmitter::ParticleEmitter(const Vec3& position, int maxParticles)
     , m_Parent(nullptr)
     , m_Active(true)
     , m_SpawnAccumulator(0.0f)
+    , m_AtlasRows(1)
+    , m_AtlasCols(1)
+    , m_AnimationSpeed(1.0f)
+    , m_LoopAnimation(true)
 {
     m_Particles.resize(maxParticles);
     static bool seeded = false;
@@ -41,7 +46,7 @@ void ParticleEmitter::Update(float deltaTime) {
     
     // Update position from parent if attached
     if (m_Parent) {
-        m_Position = m_Parent->GetWorldTransform().GetTranslation();
+        m_Position = m_Parent->GetWorldMatrix().GetTranslation();
     }
     
     // Spawn new particles
@@ -71,6 +76,7 @@ void ParticleEmitter::Update(float deltaTime) {
         
         // Interpolate color and size based on age
         float t = particle.age / particle.lifetime;
+        particle.lifeRatio = t;
         particle.color = Vec4(
             m_ColorStart.x + (m_ColorEnd.x - m_ColorStart.x) * t,
             m_ColorStart.y + (m_ColorEnd.y - m_ColorStart.y) * t,

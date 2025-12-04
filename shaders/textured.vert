@@ -11,11 +11,13 @@ out vec4 FragPosLightSpace;
 uniform mat4 u_MVP;
 uniform mat4 u_Model;
 uniform mat4 u_LightSpaceMatrix;
+uniform vec2 u_UVOffset;
+uniform vec2 u_UVScale;
 
 void main()
 {
     gl_Position = u_MVP * vec4(aPos, 1.0);
-    TexCoord = aTexCoord;
+    TexCoord = aTexCoord * u_UVScale + u_UVOffset;
     Normal = mat3(transpose(inverse(u_Model))) * aNormal;
     FragPos = vec3(u_Model * vec4(aPos, 1.0));
     FragPosLightSpace = u_LightSpaceMatrix * vec4(FragPos, 1.0);
