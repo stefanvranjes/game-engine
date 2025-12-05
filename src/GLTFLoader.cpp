@@ -1,14 +1,15 @@
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "tiny_gltf.h"
-
 #include "GLTFLoader.h"
+#include "MaterialNew.h"
 #include "Model.h"
-#include "Material.h"
 #include "Mesh.h"
-#include "GameObject.h"
+#include "Texture.h"
+#include "Math/Vec3.h"
+#include <tiny_gltf.h>
 #include <iostream>
-#include <algorithm>
+#include <memory>
+#include <string>
+#include <vector>
+#include <cmath>
 
 // Helper to convert Quaternion to Euler angles (ZXY order to match Transform)
 static Vec3 QuaternionToEuler(const std::vector<double>& q) {
@@ -141,8 +142,8 @@ private:
             }
 
             // Metallic Roughness
-            material->SetMetallic((float)pbr.metallicFactor);
-            material->SetRoughness((float)pbr.roughnessFactor);
+            material->SetMetalnessX((float)pbr.metallicFactor);
+            material->SetRoughnessX((float)pbr.roughnessFactor);
             if (pbr.metallicRoughnessTexture.index >= 0) {
                 // glTF packs Occlusion (R), Roughness (G), Metallic (B) often, 
                 // but strictly MetallicRoughness is G=Roughness, B=Metallic.
@@ -214,19 +215,6 @@ private:
         // Mesh
         if (node.mesh >= 0) {
             const auto& mesh = model.meshes[node.mesh];
-            
-            // Create a Model to hold primitives
-            // Wait, GameObject holds ONE Mesh and ONE Material?
-            // Or ONE Model?
-            // GameObject::SetModel(shared_ptr<Model>)
-            // Model holds vector<Mesh> and vector<Material>.
-            
-            auto gameModel = std::make_shared<Model>();
-            // We need to add meshes to this model manually.
-            // Model class doesn't expose AddMesh...
-            // It has m_Meshes and m_Materials as private.
-            // We need to modify Model.h to allow adding meshes, or create a constructor.
-            // Or we can create child GameObjects for each primitive.
             
             if (mesh.primitives.size() == 1) {
                 // Single primitive

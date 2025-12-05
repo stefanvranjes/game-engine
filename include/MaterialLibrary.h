@@ -1,16 +1,12 @@
 #pragma once
 
-#include "Material.h"
+#include "MaterialNew.h"
 #include <map>
 #include <string>
 #include <memory>
 
 class MaterialLibrary {
 public:
-    MaterialLibrary();
-    ~MaterialLibrary();
-
-    // Create a new material and register it
     std::shared_ptr<Material> CreateMaterial(const std::string& name);
 
     // Get an existing material by name

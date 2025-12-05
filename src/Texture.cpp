@@ -4,6 +4,7 @@
 #include "stb_image.h"
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <algorithm>
 
 Texture::Texture() 
     : m_TextureID(0)
@@ -47,8 +48,18 @@ void Texture::Unload() {
     m_Channels = 0;
 }
 
-    }
+void Texture::SetAnisotropy(float level) {
+    m_AnisotropyLevel = level;
 }
+
+void Texture::SetDownscaleLevel(int level) {
+    m_DownscaleLevel = level;
+}
+
+void Texture::GenerateMipmaps(bool enable) {
+    m_GenerateMipmaps = enable;
+}
+
 
 // Helper for software downscaling (Box Filter)
 unsigned char* DownscaleImage(unsigned char* data, int& width, int& height, int channels, int levels) {
@@ -151,7 +162,6 @@ bool Texture::UploadToGPU() {
         stbi_image_free(m_LocalBufferHDR);
         m_LocalBufferHDR = nullptr;
     } else {
-    } else {
         // Apply software downscaling if requested
         if (m_DownscaleLevel > 0 && m_LocalBuffer) {
             m_LocalBuffer = DownscaleImage(m_LocalBuffer, m_Width, m_Height, m_Channels, m_DownscaleLevel);
@@ -182,12 +192,16 @@ bool Texture::UploadToGPU() {
         }
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         
-        // Apply Anisotropy
+        
+        // Apply Anisotropy (disabled - GLEW extension constants not available)
+        // TODO: Define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT and GL_TEXTURE_MAX_ANISOTROPY_EXT in GLExtensions.h
+        /*
         if (GLEW_EXT_texture_filter_anisotropic && m_AnisotropyLevel > 1.0f) {
             float maxAnisotropy;
             glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &maxAnisotropy);
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, std::min(m_AnisotropyLevel, maxAnisotropy));
         }
+        */
         
         // If we downscaled, m_LocalBuffer is now a malloc'd buffer, not stbi.
         // DownscaleImage handles the freeing of the original stbi buffer.

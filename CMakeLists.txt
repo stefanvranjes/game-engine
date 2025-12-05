@@ -88,6 +88,7 @@ add_executable(GameEngine
     src/Material.cpp
     src/ParticleEmitter.cpp
     src/ParticleSystem.cpp
+    src/Sprite.cpp
     ${IMGUI_SOURCES}
 )
 

@@ -1,18 +1,6 @@
 #pragma once
 
-#include "Shader.h"
-#include "Texture.h"
-#include "Mesh.h"
-#include "Transform.h"
-#include "Math/AABB.h"
-#include "Math/Vec4.h"
-#include "Material.h"
 #include "Light.h"
-#include "Skybox.h"
-#include "CascadedShadowMap.h"
-#include "ShadowMap.h"
-#include "TextureManager.h"
-#include "MaterialLibrary.h"
 #include "GameObject.h"
 #include "GBuffer.h"
 #include "PostProcessing.h"
@@ -23,6 +11,11 @@
 #include "LightProbe.h"
 #include "ReflectionProbe.h"
 #include "ParticleSystem.h"
+#include "Skybox.h"
+#include "CascadedShadowMap.h"
+#include "ShadowMap.h"
+#include "MaterialLibrary.h"
+#include "TextureManager.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -189,4 +182,8 @@ private:
     Mat4 GetSpotLightMatrix(const Light& light);
     
     void UpdateSprites(std::shared_ptr<GameObject> node, float deltaTime);
+    
+    // Test sprite for transition demo
+    std::shared_ptr<class Sprite> m_TestSprite;
+    float m_TransitionTestTimer;
 };

@@ -13,6 +13,11 @@ uniform bool u_SoftParticles;
 uniform vec2 u_ScreenSize;
 uniform float u_Softness; // Fade distance
 
+// GLSL doesn't have saturate, define it before use
+float saturate(float x) {
+    return clamp(x, 0.0, 1.0);
+}
+
 void main() {
     vec4 texColor = vec4(1.0);
     
@@ -50,9 +55,4 @@ void main() {
     if (FragColor.a < 0.01) {
         discard;
     }
-}
-
-// GLSL doesn't have saturate, define it
-float saturate(float x) {
-    return clamp(x, 0.0, 1.0);
 }

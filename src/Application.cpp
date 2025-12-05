@@ -1,15 +1,3 @@
-#include "Application.h"
-#include <GLFW/glfw3.h>
-#include <iostream>
-#include "Math/AABB.h"
-#include "imgui/imgui.h"
-#include "Material.h"
-#include "Light.h"
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
-Application::Application() 
     : m_Running(false)
     , m_LastFrameTime(0.0f)
     , m_FPS(0.0f)

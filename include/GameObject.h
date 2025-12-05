@@ -2,7 +2,7 @@
 
 #include "Transform.h"
 #include "Mesh.h"
-#include "Material.h"
+#include "MaterialNew.h"
 #include "Model.h"
 #include "Math/Mat4.h"
 #include "Math/Vec2.h"

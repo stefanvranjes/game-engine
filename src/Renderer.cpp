@@ -1,12 +1,3 @@
-#define NOMINMAX
-#include "Renderer.h"
-#include "Frustum.h"
-#include "Camera.h"
-#include "GLExtensions.h"
-#include "Material.h"
-#include "Sprite.h"
-#include <GLFW/glfw3.h>
-#include <iostream>
 #include <fstream>
 #include <sstream>
 #include <limits>
@@ -100,9 +91,9 @@ void Renderer::LoadScene(const std::string& filename) {
         
         // Create default material for loaded object
         auto mat = std::make_shared<Material>();
-        mat->texture = m_Texture;
-        mat->specularMap = m_Texture;
-        if (source != "cube") mat->diffuse = Vec3(1.0f, 1.0f, 0.0f); // Yellow for pyramid
+        mat->SetTexture(m_Texture);
+        mat->SetSpecularMap(m_Texture);
+        if (source != "cube") mat->SetDiffuse(Vec3(1.0f, 1.0f, 0.0f)); // Yellow for pyramid
         obj->SetMaterial(mat);
         
         m_Root->AddChild(obj);
@@ -150,9 +141,9 @@ void Renderer::AddLODTestObject(const Transform& transform) {
     lodObject->GetTransform() = transform;
     
     auto mat = std::make_shared<Material>();
-    mat->texture = m_Texture;
-    mat->specularMap = m_Texture;
-    mat->diffuse = Vec3(1.0f, 1.0f, 0.0f); // Yellow for pyramid
+    mat->SetTexture(m_Texture);
+    mat->SetSpecularMap(m_Texture);
+    mat->SetDiffuse(Vec3(1.0f, 1.0f, 0.0f)); // Yellow for pyramid
     lodObject->SetMaterial(mat);
     
     // LOD 1 (Low detail - Cube at 10m) - Swapped for debugging
@@ -170,10 +161,6 @@ void Renderer::RemoveObject(size_t index) {
         m_Root->RemoveChild(child);
         std::cout << "Removed object at index " << index << std::endl;
     }
-}
-
-    m_PointShadows.clear();
-    m_SpotShadows.clear();
 }
 
 void Renderer::UpdateShaders() {
@@ -400,13 +387,13 @@ bool Renderer::Init() {
     }
     m_ParticleSystem->AddEmitter(fireEmitter);
     
-    // Add a test animated sprite
+    // Add a test animated sprite with Animation Events
     auto testSprite = std::make_shared<Sprite>("TestSprite");
-    testSprite->GetTransform().SetPosition(Vec3(3, 1, 0));
-    testSprite->GetTransform().SetScale(Vec3(2, 2, 1));
+    testSprite->GetTransform().position = Vec3(3, 1, 0);
+    testSprite->GetTransform().scale = Vec3(2, 2, 1);
     
-    // Create a simple quad mesh for the sprite
-    testSprite->SetMesh(Mesh::CreateQuad());
+    // Create a simple quad mesh for the sprite (using cube for now)
+    testSprite->SetMesh(Mesh::CreateCube());
     
     // Create material with the atlas texture
     auto spriteMaterial = std::make_shared<Material>();
@@ -415,14 +402,41 @@ bool Renderer::Init() {
     }
     testSprite->SetMaterial(spriteMaterial);
     
-    // Configure atlas animation
-    testSprite->SetAtlas(6, 16);  // 6 rows, 16 cols
-    testSprite->SetAnimationSpeed(10.0f);  // 10 frames per second
-    testSprite->SetLoop(true);
-    testSprite->Play();
+    // Configure atlas animation (6 rows, 16 cols = 96 frames)
+    testSprite->SetAtlas(6, 16);
+    
+    // Define animation sequences
+    testSprite->AddSequence("idle", 0, 3, 4.0f, true);     // Frames 0-3, 4 fps, looping
+    testSprite->AddSequence("walk", 4, 11, 8.0f, true);    // Frames 4-11, 8 fps, looping
+    
+    // Add Animation Events to demonstrate the system
+    testSprite->AddEventToSequence("walk", 6, "footstep_left", [](const std::string& eventName) {
+        std::cout << "[Animation Event] " << eventName << " triggered!" << std::endl;
+    });
+    
+    testSprite->AddEventToSequence("walk", 10, "footstep_right", [](const std::string& eventName) {
+        std::cout << "[Animation Event] " << eventName << " triggered!" << std::endl;
+    });
+    
+    // Set up callbacks
+    testSprite->SetOnFrameChange([](int frame) {
+        // Uncomment to see frame changes
+        // std::cout << "Frame changed to: " << frame << std::endl;
+    });
+    
+    testSprite->SetOnLoop([]() {
+        std::cout << "[Animation] Loop completed!" << std::endl;
+    });
+    
+    // Start with walk animation to demonstrate events
+    testSprite->PlaySequence("walk");
+    
+    // Store sprite for transition test
+    m_TestSprite = testSprite;
+    m_TransitionTestTimer = 0.0f;
     
     // Add to scene
-    m_RootNode->AddChild(testSprite);
+    m_Root->AddChild(testSprite);
 
     return true;
 }
@@ -677,27 +691,7 @@ void Renderer::RenderSceneForward(Shader* shader) {
     }
 }
 
-void Renderer::Render() {
-    if (!m_Camera) return;
 
-    // Clear transparent items from previous frame
-    m_TransparentItems.clear();
-
-    // Update texture streaming
-    if (m_TextureManager) {
-        m_TextureManager->Update();
-    }
-
-    // Apply TAA jitter if enabled
-    if (m_TAAEnabled && m_Camera) {
-        Vec2 jitter = m_TAA->GetJitter();
-        m_Camera->SetJitter(jitter);
-    } else if (m_Camera) {
-        m_Camera->SetJitter(Vec2(0, 0));
-    }
-    
-    // Update camera matrices (stores previous view-projection)
-}
 
 void Renderer::Update(float deltaTime) {
     // Update camera matrices
@@ -714,6 +708,24 @@ void Renderer::Update(float deltaTime) {
         
         // Update sprites specifically with deltaTime
         UpdateSprites(m_Root, deltaTime);
+        
+        // Test transition blending after 3 seconds
+        if (m_TestSprite) {
+            m_TransitionTestTimer += deltaTime;
+            
+            // Transition from walk to idle after 3 seconds
+            if (m_TransitionTestTimer > 3.0f && m_TransitionTestTimer < 3.1f) {
+                std::cout << "[Transition Test] Starting transition from walk to idle (0.5s)..." << std::endl;
+                m_TestSprite->PlaySequenceWithTransition("idle", 0.5f);
+            }
+            
+            // Transition back to walk after 6 seconds
+            if (m_TransitionTestTimer > 6.0f && m_TransitionTestTimer < 6.1f) {
+                std::cout << "[Transition Test] Starting transition from idle to walk (0.5s)..." << std::endl;
+                m_TestSprite->PlaySequenceWithTransition("walk", 0.5f);
+                m_TransitionTestTimer = 0.0f;  // Reset timer to loop the test
+            }
+        }
     }
     
     // Update particles with actual deltaTime
@@ -1582,6 +1594,9 @@ void Renderer::CollectRenderItems(GameObject* obj, std::map<Material*, std::vect
         } else {
             // Object is inside frustum, proceed to add to batch
             
+            // TODO: Batched rendering for Model objects not yet implemented
+            // GameObject::GetModel() method doesn't exist yet
+            /*
             // Case 1: Object has a Model (multiple meshes/materials)
             auto model = obj->GetModel();
             if (model) {
@@ -1609,8 +1624,9 @@ void Renderer::CollectRenderItems(GameObject* obj, std::map<Material*, std::vect
                     }
                 }
             }
+            */
             // Case 2: Object has a single Mesh and Material
-            else {
+            {
                 auto material = obj->GetMaterial();
                 auto mesh = obj->GetActiveMesh(m_Camera->GetViewMatrix());
                 
@@ -1637,6 +1653,9 @@ void Renderer::CollectRenderItems(GameObject* obj, std::map<Material*, std::vect
     } else {
         // No frustum or forced render, just add it
         
+        // TODO: Batched rendering for Model objects not yet implemented
+        // GameObject::GetModel() method doesn't exist yet
+        /*
         // Case 1: Object has a Model
         auto model = obj->GetModel();
         if (model) {
@@ -1664,8 +1683,9 @@ void Renderer::CollectRenderItems(GameObject* obj, std::map<Material*, std::vect
                 }
             }
         }
+        */
         // Case 2: Object has single Mesh/Material
-        else {
+        {
             auto material = obj->GetMaterial();
             auto mesh = obj->GetActiveMesh(m_Camera->GetViewMatrix());
             
@@ -1798,7 +1818,8 @@ void Renderer::RenderTransparentItems(Shader* shader, const Mat4& view, const Ma
     SortItems(m_TransparentItems, false);
 
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // Default blend equation
+    glBlendEquation(GL_FUNC_ADD);
     
     // Use forward shader (passed as argument, likely m_Shader or similar)
     // Note: Deferred renderer's lighting pass is already done. 
@@ -1817,6 +1838,35 @@ void Renderer::RenderTransparentItems(Shader* shader, const Mat4& view, const Ma
     for (const auto& item : m_TransparentItems) {
         auto material = item.object->GetMaterial();
         if (material) {
+            // Set blend mode
+            Material::BlendMode mode = material->GetBlendMode();
+            switch (mode) {
+                case Material::BlendMode::Alpha:
+                    glBlendEquation(GL_FUNC_ADD);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    break;
+                case Material::BlendMode::Additive:
+                    glBlendEquation(GL_FUNC_ADD);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+                    break;
+                case Material::BlendMode::Multiply:
+                    glBlendEquation(GL_FUNC_ADD);
+                    glBlendFunc(GL_DST_COLOR, GL_ZERO);
+                    break;
+                case Material::BlendMode::Screen:
+                    glBlendEquation(GL_FUNC_ADD);
+                    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+                    break;
+                case Material::BlendMode::Subtractive:
+                    glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+                    break;
+                default: // Opaque or unknown
+                    glBlendEquation(GL_FUNC_ADD);
+                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    break;
+            }
+
             material->Bind(shader);
             
             Mat4 mvp = projection * view * item.worldMatrix;
@@ -1829,6 +1879,9 @@ void Renderer::RenderTransparentItems(Shader* shader, const Mat4& view, const Ma
         }
     }
     
+    // Restore defaults
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_BLEND);
 }
 

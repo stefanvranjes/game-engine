@@ -5,29 +5,40 @@
 #include "Shader.h"
 #include <memory>
 
+class TextureManager;  // Forward declaration
+
 class Material {
 public:
+    enum class BlendMode {
+        Opaque,
+        Alpha,
+        Additive,
+        Multiply,
+        Screen,
+        Subtractive
+    };
+
     enum Property {
         None = 0,
-        Ambient = 1 << 0,
-        Diffuse = 1 << 1,
-        Specular = 1 << 2,
-        Shininess = 1 << 3,
-        Roughness = 1 << 4,
-        Metallic = 1 << 5,
-        HeightScale = 1 << 6,
-        EmissiveColor = 1 << 7,
-        TextureMap = 1 << 8,
-        SpecularMap = 1 << 9,
-        NormalMap = 1 << 10,
-        RoughnessMap = 1 << 11,
-        MetallicMap = 1 << 12,
-        AOMap = 1 << 13,
-        ORMMap = 1 << 14,
-        HeightMap = 1 << 15,
-        EmissiveMap = 1 << 16,
-        Opacity = 1 << 17,
-        Transparent = 1 << 18
+        PropAmbient = 1 << 0,
+        PropDiffuse = 1 << 1,
+        PropSpecular = 1 << 2,
+        PropShininess = 1 << 3,
+        PropRoughness = 1 << 4,
+        PropMetallic = 1 << 5,
+        PropHeightScale = 1 << 6,
+        PropEmissiveColor = 1 << 7,
+        PropTextureMap = 1 << 8,
+        PropSpecularMap = 1 << 9,
+        PropNormalMap = 1 << 10,
+        PropRoughnessMap = 1 << 11,
+        PropMetallicMap = 1 << 12,
+        PropAOMap = 1 << 13,
+        PropORMMap = 1 << 14,
+        PropHeightMap = 1 << 15,
+        PropEmissiveMap = 1 << 16,
+        PropOpacity = 1 << 17,
+        PropTransparent = 1 << 18
     };
 
     Material() 
@@ -41,102 +52,110 @@ public:
         , m_EmissiveColor(0.0f, 0.0f, 0.0f)
         , m_Opacity(1.0f)
         , m_IsTransparent(false)
+        , m_BlendMode(BlendMode::Opaque)
         , m_Overrides(0)
     {
     }
+
+    // Setters (Set value and mark override)
+    void SetAmbient(const Vec3& v);
+    void SetDiffuse(const Vec3& v);
+    void SetSpecular(const Vec3& v);
+    void SetShininess(float v);
+    void SetRoughnessX(float v);
+    void SetMetalnessX(float v);
+    void SetParallaxX(float v);
+    void SetEmissiveColor(const Vec3& v);
+    
+    void SetBlendMode(BlendMode mode) { 
+        m_BlendMode = mode; 
+        if (mode != BlendMode::Opaque) m_IsTransparent = true; 
+    }
+    
+    void SetMyAlpha(float opacity);
+    void SetMyTrans(bool transparent);
 
     // Parent/Child Relationship
     void SetParent(std::shared_ptr<Material> parent) { m_Parent = parent; }
     std::shared_ptr<Material> GetParent() const { return m_Parent; }
 
     // Getters (Resolve Child -> Parent -> Default)
-    Vec3 GetAmbient() const { return (m_Overrides & Ambient) ? m_Ambient : (m_Parent ? m_Parent->GetAmbient() : m_Ambient); }
-    Vec3 GetDiffuse() const { return (m_Overrides & Diffuse) ? m_Diffuse : (m_Parent ? m_Parent->GetDiffuse() : m_Diffuse); }
-    Vec3 GetSpecular() const { return (m_Overrides & Specular) ? m_Specular : (m_Parent ? m_Parent->GetSpecular() : m_Specular); }
-    float GetShininess() const { return (m_Overrides & Shininess) ? m_Shininess : (m_Parent ? m_Parent->GetShininess() : m_Shininess); }
-    float GetRoughness() const { return (m_Overrides & Roughness) ? m_Roughness : (m_Parent ? m_Parent->GetRoughness() : m_Roughness); }
-    float GetMetallic() const { return (m_Overrides & Metallic) ? m_Metallic : (m_Parent ? m_Parent->GetMetallic() : m_Metallic); }
-    float GetHeightScale() const { return (m_Overrides & HeightScale) ? m_HeightScale : (m_Parent ? m_Parent->GetHeightScale() : m_HeightScale); }
-    Vec3 GetEmissiveColor() const { return (m_Overrides & EmissiveColor) ? m_EmissiveColor : (m_Parent ? m_Parent->GetEmissiveColor() : m_EmissiveColor); }
+    Vec3 GetAmbient() const { return (m_Overrides & PropAmbient) ? m_Ambient : (m_Parent ? m_Parent->GetAmbient() : m_Ambient); }
+    Vec3 GetDiffuse() const { return (m_Overrides & PropDiffuse) ? m_Diffuse : (m_Parent ? m_Parent->GetDiffuse() : m_Diffuse); }
+    Vec3 GetSpecular() const { return (m_Overrides & PropSpecular) ? m_Specular : (m_Parent ? m_Parent->GetSpecular() : m_Specular); }
+    float GetShininess() const { return (m_Overrides & PropShininess) ? m_Shininess : (m_Parent ? m_Parent->GetShininess() : m_Shininess); }
+    float GetRoughness() const { return (m_Overrides & PropRoughness) ? m_Roughness : (m_Parent ? m_Parent->GetRoughness() : m_Roughness); }
+    float GetMetallic() const { return (m_Overrides & PropMetallic) ? m_Metallic : (m_Parent ? m_Parent->GetMetallic() : m_Metallic); }
+    float GetHeightScale() const { return (m_Overrides & PropHeightScale) ? m_HeightScale : (m_Parent ? m_Parent->GetHeightScale() : m_HeightScale); }
+    Vec3 GetEmissiveColor() const { return (m_Overrides & PropEmissiveColor) ? m_EmissiveColor : (m_Parent ? m_Parent->GetEmissiveColor() : m_EmissiveColor); }
 
-    std::shared_ptr<Texture> GetTexture() const { return (m_Overrides & TextureMap) ? m_Texture : (m_Parent ? m_Parent->GetTexture() : nullptr); }
-    std::shared_ptr<Texture> GetSpecularMap() const { return (m_Overrides & SpecularMap) ? m_SpecularMap : (m_Parent ? m_Parent->GetSpecularMap() : nullptr); }
-    std::shared_ptr<Texture> GetNormalMap() const { return (m_Overrides & NormalMap) ? m_NormalMap : (m_Parent ? m_Parent->GetNormalMap() : nullptr); }
-    std::shared_ptr<Texture> GetRoughnessMap() const { return (m_Overrides & RoughnessMap) ? m_RoughnessMap : (m_Parent ? m_Parent->GetRoughnessMap() : nullptr); }
-    std::shared_ptr<Texture> GetMetallicMap() const { return (m_Overrides & MetallicMap) ? m_MetallicMap : (m_Parent ? m_Parent->GetMetallicMap() : nullptr); }
-    std::shared_ptr<Texture> GetAOMap() const { return (m_Overrides & AOMap) ? m_AOMap : (m_Parent ? m_Parent->GetAOMap() : nullptr); }
-    std::shared_ptr<Texture> GetORMMap() const { return (m_Overrides & ORMMap) ? m_ORMMap : (m_Parent ? m_Parent->GetORMMap() : nullptr); }
-    std::shared_ptr<Texture> GetHeightMap() const { return (m_Overrides & HeightMap) ? m_HeightMap : (m_Parent ? m_Parent->GetHeightMap() : nullptr); }
-    std::shared_ptr<Texture> GetEmissiveMap() const { return (m_Overrides & EmissiveMap) ? m_EmissiveMap : (m_Parent ? m_Parent->GetEmissiveMap() : nullptr); }
-
-    // Setters (Set value and mark override)
-    void SetAmbient(const Vec3& v) { m_Ambient = v; m_Overrides |= Ambient; }
-    void SetDiffuse(const Vec3& v) { m_Diffuse = v; m_Overrides |= Diffuse; }
-    void SetSpecular(const Vec3& v) { m_Specular = v; m_Overrides |= Specular; }
-    void SetShininess(float v) { m_Shininess = v; m_Overrides |= Shininess; }
-    void SetRoughness(float v) { m_Roughness = v; m_Overrides |= Roughness; }
-    void SetMetallic(float v) { m_Metallic = v; m_Overrides |= Metallic; }
-    void SetHeightScale(float v) { m_HeightScale = v; m_Overrides |= HeightScale; }
-    void SetEmissiveColor(const Vec3& v) { m_EmissiveColor = v; m_Overrides |= EmissiveColor; }
-
-    void SetTexture(std::shared_ptr<Texture> t) { m_Texture = t; m_Overrides |= TextureMap; }
-    void SetSpecularMap(std::shared_ptr<Texture> t) { m_SpecularMap = t; m_Overrides |= SpecularMap; }
-    void SetNormalMap(std::shared_ptr<Texture> t) { m_NormalMap = t; m_Overrides |= NormalMap; }
-    void SetRoughnessMap(std::shared_ptr<Texture> t) { m_RoughnessMap = t; m_Overrides |= RoughnessMap; }
-    void SetMetallicMap(std::shared_ptr<Texture> t) { m_MetallicMap = t; m_Overrides |= MetallicMap; }
-    void SetAOMap(std::shared_ptr<Texture> t) { m_AOMap = t; m_Overrides |= AOMap; }
-    void SetORMMap(std::shared_ptr<Texture> t) { m_ORMMap = t; m_Overrides |= ORMMap; }
-    void SetHeightMap(std::shared_ptr<Texture> t) { m_HeightMap = t; m_Overrides |= HeightMap; }
-    void SetEmissiveMap(std::shared_ptr<Texture> t) { m_EmissiveMap = t; m_Overrides |= EmissiveMap; }
+    std::shared_ptr<Texture> GetTexture() const { return (m_Overrides & PropTextureMap) ? m_Texture : (m_Parent ? m_Parent->GetTexture() : nullptr); }
+    std::shared_ptr<Texture> GetSpecularMap() const { return (m_Overrides & PropSpecularMap) ? m_SpecularMap : (m_Parent ? m_Parent->GetSpecularMap() : nullptr); }
+    std::shared_ptr<Texture> GetNormalMap() const { return (m_Overrides & PropNormalMap) ? m_NormalMap : (m_Parent ? m_Parent->GetNormalMap() : nullptr); }
+    std::shared_ptr<Texture> GetRoughnessMap() const { return (m_Overrides & PropRoughnessMap) ? m_RoughnessMap : (m_Parent ? m_Parent->GetRoughnessMap() : nullptr); }
+    std::shared_ptr<Texture> GetMetallicMap() const { return (m_Overrides & PropMetallicMap) ? m_MetallicMap : (m_Parent ? m_Parent->GetMetallicMap() : nullptr); }
+    std::shared_ptr<Texture> GetAOMap() const { return (m_Overrides & PropAOMap) ? m_AOMap : (m_Parent ? m_Parent->GetAOMap() : nullptr); }
+    std::shared_ptr<Texture> GetORMMap() const { return (m_Overrides & PropORMMap) ? m_ORMMap : (m_Parent ? m_Parent->GetORMMap() : nullptr); }
+    std::shared_ptr<Texture> GetHeightMap() const { return (m_Overrides & PropHeightMap) ? m_HeightMap : (m_Parent ? m_Parent->GetHeightMap() : nullptr); }
+    std::shared_ptr<Texture> GetEmissiveMap() const { return (m_Overrides & PropEmissiveMap) ? m_EmissiveMap : (m_Parent ? m_Parent->GetEmissiveMap() : nullptr); }
     
-    void SetOpacity(float opacity) { m_Opacity = opacity; m_Overrides |= Opacity; }
-    void SetIsTransparent(bool transparent) { m_IsTransparent = transparent; m_Overrides |= Transparent; }
+    BlendMode GetBlendMode() const { return m_BlendMode; }
     
-    float GetOpacity() const { return (m_Overrides & Opacity) ? m_Opacity : (m_Parent ? m_Parent->GetOpacity() : m_Opacity); }
-    bool IsTransparent() const { return (m_Overrides & Transparent) ? m_IsTransparent : (m_Parent ? m_Parent->IsTransparent() : m_IsTransparent); }
+    float GetOpacity() const { return (m_Overrides & PropOpacity) ? m_Opacity : (m_Parent ? m_Parent->GetOpacity() : m_Opacity); }
+    bool IsTransparent() const { return (m_Overrides & PropTransparent) ? m_IsTransparent : (m_Parent ? m_Parent->IsTransparent() : m_IsTransparent); }
 
-    // Preset Save/Load
+    void SetTexture(std::shared_ptr<Texture> t) { m_Texture = t; m_Overrides |= PropTextureMap; }
+    void SetSpecularMap(std::shared_ptr<Texture> t) { m_SpecularMap = t; m_Overrides |= PropSpecularMap; }
+    void SetNormalMap(std::shared_ptr<Texture> t) { m_NormalMap = t; m_Overrides |= PropNormalMap; }
+    void SetRoughnessMap(std::shared_ptr<Texture> t) { m_RoughnessMap = t; m_Overrides |= PropRoughnessMap; }
+    void SetMetallicMap(std::shared_ptr<Texture> t) { m_MetallicMap = t; m_Overrides |= PropMetallicMap; }
+    void SetAOMap(std::shared_ptr<Texture> t) { m_AOMap = t; m_Overrides |= PropAOMap; }
+    void SetORMMap(std::shared_ptr<Texture> t) { m_ORMMap = t; m_Overrides |= PropORMMap; }
+    void SetHeightMap(std::shared_ptr<Texture> t) { m_HeightMap = t; m_Overrides |= PropHeightMap; }
+    void SetEmissiveMap(std::shared_ptr<Texture> t) { m_EmissiveMap = t; m_Overrides |= PropEmissiveMap; }
+    
+    // Material preset save/load
     bool SaveToFile(const std::string& filepath) const;
-    bool LoadFromFile(const std::string& filepath, class TextureManager* texManager);
-
+    bool LoadFromFile(const std::string& filepath, TextureManager* texManager = nullptr);
+    
     // Factory methods for common material presets
     static std::shared_ptr<Material> CreateMetal(float roughness = 0.3f, const Vec3& color = Vec3(0.9f, 0.9f, 0.9f)) {
         auto mat = std::make_shared<Material>();
         mat->SetDiffuse(color);
-        mat->SetRoughness(roughness);
-        mat->SetMetallic(1.0f);  // Fully metallic
+        mat->SetRoughnessX(roughness);
+        mat->SetMetalnessX(1.0f);  // Fully metallic
         return mat;
     }
 
     static std::shared_ptr<Material> CreatePlastic(const Vec3& color = Vec3(0.8f, 0.2f, 0.2f), float roughness = 0.5f) {
         auto mat = std::make_shared<Material>();
         mat->SetDiffuse(color);
-        mat->SetRoughness(roughness);
-        mat->SetMetallic(0.0f);  // Non-metallic
+        mat->SetRoughnessX(roughness);
+        mat->SetMetalnessX(0.0f);  // Non-metallic
         return mat;
     }
 
     static std::shared_ptr<Material> CreateWood(float roughness = 0.8f) {
         auto mat = std::make_shared<Material>();
         mat->SetDiffuse(Vec3(0.6f, 0.4f, 0.2f));  // Brown wood color
-        mat->SetRoughness(roughness);
-        mat->SetMetallic(0.0f);  // Non-metallic
+        mat->SetRoughnessX(roughness);
+        mat->SetMetalnessX(0.0f);  // Non-metallic
         return mat;
     }
 
     static std::shared_ptr<Material> CreateConcrete(float roughness = 0.9f) {
         auto mat = std::make_shared<Material>();
         mat->SetDiffuse(Vec3(0.5f, 0.5f, 0.5f));  // Gray
-        mat->SetRoughness(roughness);
-        mat->SetMetallic(0.0f);  // Non-metallic
+        mat->SetRoughnessX(roughness);
+        mat->SetMetalnessX(0.0f);  // Non-metallic
         return mat;
     }
 
     static std::shared_ptr<Material> CreateGlass(float roughness = 0.0f) {
         auto mat = std::make_shared<Material>();
         mat->SetDiffuse(Vec3(0.95f, 0.95f, 0.95f));  // Clear/white
-        mat->SetRoughness(roughness);
-        mat->SetMetallic(0.0f);  // Non-metallic
+        mat->SetRoughnessX(roughness);
+        mat->SetMetalnessX(0.0f);  // Non-metallic
         return mat;
     }
 
@@ -272,6 +291,7 @@ private:
     Vec3 m_EmissiveColor;
     float m_Opacity;
     bool m_IsTransparent;
+    BlendMode m_BlendMode;
 
     std::shared_ptr<Texture> m_Texture;
     std::shared_ptr<Texture> m_SpecularMap;
