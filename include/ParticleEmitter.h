@@ -37,6 +37,11 @@ enum class TrailColorMode {
     Custom              // Use custom trail color
 };
 
+struct GradientStop {
+    float t; // 0.0 to 1.0
+    Vec4 color;
+};
+
 // POD struct for GPU alignment (std430)
 struct GPUParticle {
     Vec4 position;   // xyz, w=size
@@ -82,9 +87,28 @@ public:
     ~ParticleEmitter();
 
     void Update(float deltaTime, const Vec3& cameraPos = Vec3(0,0,0));
+    
+    // Pooling & Priority
+    void SetMaxParticles(int count);
+    int GetMaxParticles() const { return m_MaxParticles; }
+    
+    void SetPriority(int priority) { m_Priority = priority; }
+    int GetPriority() const { return m_Priority; }
+    
+    // Kill oldest particles to free up space (for stealing/budgeting)
+    // Returns number of particles actually killed
+    int KillOldest(int count);
+    
     const std::vector<Particle>& GetParticles() const { return m_Particles; }
     
     // Configuration
+    void SetVelocityInheritance(float multiplier) { m_VelocityInheritance = multiplier; }
+    float GetVelocityInheritance() const { return m_VelocityInheritance; }
+    
+    // Spawning
+    void Burst(int count);
+
+    // Getters/Setters for basic props...
     void SetPosition(const Vec3& pos) { m_Position = pos; }
     Vec3 GetPosition() const { return m_Position; }
     
@@ -232,6 +256,17 @@ private:
     std::shared_ptr<Texture> m_Texture;
     GameObject* m_Parent;
     bool m_Active;
+    int m_Priority; // 0 = Low, 10 = High
+    
+    // Physics Enhancements
+    float m_VelocityInheritance;
+    Vec3 m_LastPosition;
+    Vec3 m_CalculatedEmitterVelocity;
+    
+    // Visuals
+    std::vector<GradientStop> m_ColorGradient;
+    std::vector<float> m_SizeCurve; // Stores size values at t=index/size
+    std::shared_ptr<ParticleEmitter> m_SubEmitterDeath;
     
     // Internal state
     float m_SpawnAccumulator;

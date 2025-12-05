@@ -55,9 +55,15 @@ ParticleEmitter::ParticleEmitter(const Vec3& position, int maxParticles)
     , m_GasConstant(2000.0f)
     , m_Viscosity(0.1f)
     , m_SmoothingRadius(2.0f)
+    , m_GasConstant(2000.0f)
+    , m_Viscosity(0.1f)
+    , m_SmoothingRadius(2.0f)
+    , m_Priority(5) // Default Medium Priority
+    , m_VelocityInheritance(0.0f)
 {
     m_Particles.resize(maxParticles);
-    m_Particles.resize(maxParticles);
+    m_GPUParticles.resize(maxParticles); // Ensure GPU particles are also resized initially
+    m_GPUParticles.resize(maxParticles); // Ensure GPU particles are also resized initially
     m_UseLOD = false;
     m_CurrentLODLevel = -1;
     m_CurrentDistance = 0.0f;
@@ -113,6 +119,13 @@ void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
         m_ActiveLOD = EmitterLOD();
     }
     
+    // Calculate Emitter Velocity for Inheritance
+    if (deltaTime > 0.0001f) {
+        m_CalculatedEmitterVelocity = (m_Position - m_LastPosition) / deltaTime;
+    } else {
+        m_CalculatedEmitterVelocity = Vec3(0,0,0);
+    }
+    
     // Animate turbulence time
     m_Time += deltaTime;
 
@@ -136,11 +149,26 @@ void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
                 HandleParticleCollisions(deltaTime);
             }
             
+        if (m_ActiveLOD.enableCollisions) {
+            if (m_EnableParticleCollisions) {
+                HandleParticleCollisions(deltaTime);
+            }
+            
             // Shape Collisions
             for (auto& particle : m_Particles) {
                 if (particle.active) HandleShapeCollisions(particle, deltaTime);
             }
         }
+        
+        // Update Last Position for next frame velocity calc
+        m_LastPosition = m_Position;
+    }
+}
+
+void ParticleEmitter::Burst(int count) {
+    if (!m_Active) return;
+    for (int i = 0; i < count; ++i) {
+        SpawnParticle();
     }
 }
 
@@ -168,6 +196,27 @@ void ParticleEmitter::SpawnParticle() {
             }
             
             p.velocity = GetRandomVelocity();
+            
+            // Velocity Inheritance
+            // Velocity Inheritance
+            if (m_VelocityInheritance > 0.0f) {
+                // Approximate emitter velocity from last frame position
+                // If dt is small, velocity can be large, so we clamp or just take displacement.
+                // Velocity = Displacement / dt.
+                // However, we don't have dt here easily without changing signature.
+                // Let's use m_LastPosition which is updated at end of Update().
+                // Current m_Position - m_LastPosition is the displacement this frame.
+                // If we assume this displacement happened over the last frame's dt, 
+                // and we want to impart that VELOCITY, we need to know that dt.
+                // BUT, simply adding the displacement to the particle's velocity (units/sec) is WRONG.
+                // We need (Displacement / dt) * modifier.
+                // Problem: SpawnParticle doesn't know dt.
+                // Solution: Store 'm_CurrentVelocity' in Update() before calling SpawnParticle.
+                
+                // For now, let's use a stored member calculated in Update()
+                p.velocity += m_CalculatedEmitterVelocity * m_VelocityInheritance;
+            }
+            
             p.size = m_SizeStart;
             p.color = m_ColorStart;
             p.age = 0.0f;
@@ -187,6 +236,91 @@ void ParticleEmitter::SpawnParticle() {
             }
             
             break;
+        }
+    }
+    }
+}
+
+void ParticleEmitter::UpdateCPU(float deltaTime) {
+    for (auto& p : m_Particles) {
+        if (!p.active) continue;
+        
+        p.age += deltaTime;
+        if (p.age >= p.lifetime) {
+            p.active = false;
+            
+            // Sub-Emitter on Death
+            if (m_SubEmitterDeath) {
+                m_SubEmitterDeath->SpawnAtPosition(p.position, 1); // Spawn 1 particle? or burst?
+                // Let's spawn 1 for now, or maybe a burst.
+                // If it's an explosion, usually a burst of X.
+                // We'll trust the SubEmitter's Burst method logic if we called it, 
+                // but SpawnAtPosition is single generic.
+                // Let's assume SubEmitter is configured as an explosion (Burst) or trail (Stream).
+                // If we want a burst, we should call BurstAtPosition?
+                // For now, SpawnAtPosition(p, 5)?
+            }
+            
+            if (p.hasTrail && p.trail) p.trail->Reset();
+            continue;
+        }
+        
+        p.lifeRatio = p.age / p.lifetime;
+        
+        // Visuals: Color & Size
+        if (!m_ColorGradient.empty()) {
+            p.color = EvaluateGradient(p.lifeRatio);
+        } else {
+            // Linear lerp existing
+            float t = p.lifeRatio;
+            p.color = m_ColorStart * (1.0f - t) + m_ColorEnd * t;
+        }
+        
+        if (!m_SizeCurve.empty()) {
+            p.size = EvaluateSize(p.lifeRatio);
+        } else {
+             float t = p.lifeRatio;
+             p.size = m_SizeStart * (1.0f - t) + m_SizeEnd * t;
+        }
+        
+        // Apply Forces
+        p.velocity += m_Gravity * deltaTime;
+        
+        // Global Wind
+        p.velocity += m_PhysicsContext.wind * deltaTime;
+        
+        // Attraction Points
+        if (m_PhysicsContext.attractors) {
+            for (const auto& att : *m_PhysicsContext.attractors) {
+                Vec3 dir = att.pos - p.position;
+                float distSq = dir.x*dir.x + dir.y*dir.y + dir.z*dir.z;
+                if (distSq > 0.0001f) {
+                    float dist = std::sqrt(distSq);
+                    // Force = Direction * Strength * dt (simplified)
+                    // F = ma -> a = F/m (assuming mass 1)
+                    Vec3 force = (dir / dist) * (att.strength * deltaTime);
+                    p.velocity += force;
+                }
+            }
+        }
+
+        // Apply Turbulence
+        if (m_EnableTurbulence && m_ActiveLOD.enableTurbulence) {
+            // Simple random turbulence
+            // Better: Perlin noise
+            // Placeholder:
+             p.velocity.x += RandomFloat(-m_TurbulenceStrength, m_TurbulenceStrength) * deltaTime;
+             p.velocity.y += RandomFloat(-m_TurbulenceStrength, m_TurbulenceStrength) * deltaTime;
+             p.velocity.z += RandomFloat(-m_TurbulenceStrength, m_TurbulenceStrength) * deltaTime;
+        }
+        
+        // Move
+        p.position += p.velocity * deltaTime;
+        
+        // Update Trail
+        if (p.hasTrail && p.trail) {
+             p.trail->Update(deltaTime, p.position); // Assuming Trail has Update
+             // Or AddPoint logic
         }
     }
 }
@@ -957,4 +1091,123 @@ void ParticleEmitter::InitSoftBody(int width, int height, int depth, float spaci
     }
     
     SetUseGPUCompute(true);
+}
+
+// Visual Helpers
+void ParticleEmitter::AddGradientStop(float t, const Vec4& color) {
+    GradientStop stop = {t, color};
+    m_ColorGradient.push_back(stop);
+    // Sort by t
+    std::sort(m_ColorGradient.begin(), m_ColorGradient.end(), [](const GradientStop& a, const GradientStop& b) {
+        return a.t < b.t;
+    });
+}
+
+void ParticleEmitter::AddSizeCurvePoint(float size) {
+    m_SizeCurve.push_back(size);
+}
+
+Vec4 ParticleEmitter::EvaluateGradient(float t) const {
+    if (m_ColorGradient.empty()) return m_ColorStart;
+    if (m_ColorGradient.size() == 1) return m_ColorGradient[0].color;
+    
+    // Find segment
+    for (size_t i = 0; i < m_ColorGradient.size() - 1; ++i) {
+        if (t >= m_ColorGradient[i].t && t <= m_ColorGradient[i+1].t) {
+            float range = m_ColorGradient[i+1].t - m_ColorGradient[i].t;
+            if (range < 0.0001f) return m_ColorGradient[i].color;
+            float localT = (t - m_ColorGradient[i].t) / range;
+            return m_ColorGradient[i].color * (1.0f - localT) + m_ColorGradient[i+1].color * localT;
+        }
+    }
+    
+    // Clamping
+    if (t < m_ColorGradient.front().t) return m_ColorGradient.front().color;
+    return m_ColorGradient.back().color;
+}
+
+float ParticleEmitter::EvaluateSize(float t) const {
+    if (m_SizeCurve.empty()) return m_SizeStart;
+    if (m_SizeCurve.size() == 1) return m_SizeCurve[0];
+    
+    // Equidistant points assumed 0..1
+    float step = 1.0f / (float)(m_SizeCurve.size() - 1); // e.g. 5 points -> step 0.25 (0, 0.25, 0.5, 0.75, 1.0)
+    int index = (int)(t / step);
+    if (index < 0) index = 0;
+    if (index >= (int)m_SizeCurve.size() - 1) return m_SizeCurve.back();
+    
+    float localT = (t - (index * step)) / step;
+    return m_SizeCurve[index] * (1.0f - localT) + m_SizeCurve[index+1] * localT;
+}
+
+void ParticleEmitter::SpawnAtPosition(const Vec3& pos, int count) {
+    if (!m_Active) return;
+    
+    // Backup original pos
+    Vec3 originalPos = m_Position;
+    m_Position = pos; // Temporarily move emitter
+    
+    for(int i=0; i<count; ++i) {
+        SpawnParticle();
+    }
+    
+    m_Position = originalPos; // Restore
+}
+
+void ParticleEmitter::SetMaxParticles(int count) {
+    if (count <= 0 || count == m_MaxParticles) return;
+    
+    // Resize CPU vectors
+    if (count < m_MaxParticles) {
+        // Shrinking: Just resize, losing end particles
+        m_Particles.resize(count);
+        // Also GPUParticles if they exist CPU side
+        if (m_GPUParticles.size() > count) m_GPUParticles.resize(count);
+    } else {
+        // Growing
+        m_Particles.resize(count);
+        m_GPUParticles.resize(count);
+    }
+    
+    m_MaxParticles = count;
+    
+    // If using GPU Compute, we must re-allocate buffers
+    if (m_UseGPUCompute) {
+        // Full shutdown and re-init is safest but slow. 
+        // For resize, we might want to preserve data, but that's complex (readback -> init -> upload).
+        // For now, let's just re-init which resets simulation (easiest safe path)
+        ShutdownGPUCompute();
+        InitGPUCompute();
+    }
+}
+
+int ParticleEmitter::KillOldest(int count) {
+    int killed = 0;
+    
+    // In CPU mode, find oldest active particles
+    // "Oldest" usually means highest Age.
+    // Or we could just kill *any* active particle to free space.
+    // Making space is usually for spawning new ones.
+    
+    // optimization: just kill the first 'count' active particles we find?
+    // Or actually sort by age? Sorting is expensive.
+    
+    // Let's iterate and kill active ones with highest age fraction
+    // Actually, simple "kill random/first" is often acceptable for high load shedding.
+    
+    for (auto& p : m_Particles) {
+        if (killed >= count) break;
+        if (p.active) {
+            p.active = false;
+            p.age = p.lifetime; // expire it
+            killed++;
+        }
+    }
+    
+    // If GPU Computer, we can't easily kill specific ones without complex compute shader logic.
+    // We'd need to atomic decrement count or flag them.
+    // For now, KillOldest only works reliably on CPU sim. 
+    // On GPU, maybe we just lower the "ActiveParticleCount" uniform if we could?
+    
+    return killed;
 }

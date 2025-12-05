@@ -669,6 +669,43 @@ void Application::RenderEditorUI() {
     
     auto particleSystem = m_Renderer->GetParticleSystem();
     if (particleSystem) {
+        // Global Stats & Settings
+        ImGui::Text("Global Active Particles: %d", particleSystem->GetTotalActiveParticles());
+        int globalLimit = particleSystem->GetGlobalParticleLimit();
+        if (ImGui::DragInt("Global Limit", &globalLimit, 1000, 1000, 2000000)) {
+            particleSystem->SetGlobalParticleLimit(globalLimit);
+        }
+        
+        // Physics Global Env
+        ImGui::Separator();
+        ImGui::Text("Global Physics");
+        Vec3 wind = particleSystem->GetGlobalWind();
+        if (ImGui::DragFloat3("Global Wind", &wind.x, 0.1f)) {
+            particleSystem->SetGlobalWind(wind);
+        }
+        
+        // Attractors
+        auto& attractors = particleSystem->GetAttractors();
+        if (ImGui::TreeNode("Attractors")) {
+            for (size_t i = 0; i < attractors.size(); ++i) {
+                ImGui::PushID((int)i);
+                ImGui::Text("Attractor %d", (int)i);
+                ImGui::DragFloat3("Pos", &attractors[i].position.x, 0.1f);
+                ImGui::DragFloat("Strength", &attractors[i].strength, 1.0f, -100.0f, 100.0f);
+                if (ImGui::Button("Remove")) {
+                    attractors.erase(attractors.begin() + i);
+                    i--;
+                }
+                ImGui::PopID();
+            }
+            if (ImGui::Button("Add Attractor")) {
+                particleSystem->AddAttractor({Vec3(0,5,0), 10.0f});
+            }
+            ImGui::TreePop();
+        }
+        
+        ImGui::Separator();
+        
         auto& emitters = particleSystem->GetEmitters();
         static int selectedEmitterIndex = -1;
         
@@ -689,6 +726,104 @@ void Application::RenderEditorUI() {
         
         if (selectedEmitterIndex >= 0 && selectedEmitterIndex < (int)emitters.size()) {
             auto emitter = emitters[selectedEmitterIndex];
+            
+            // Pooling & Priority Settings
+            ImGui::Text("Emitter Settings");
+            int priority = emitter->GetPriority();
+            if (ImGui::SliderInt("Priority", &priority, 0, 10)) {
+                emitter->SetPriority(priority);
+            }
+            
+            int maxParticles = emitter->GetMaxParticles();
+            if (ImGui::InputInt("Max Particles", &maxParticles)) {
+                 // Debounce resizing ideally, but for now apply on enter
+                 if (maxParticles > 0) emitter->SetMaxParticles(maxParticles);
+            if (ImGui::InputInt("Max Particles", &maxParticles)) {
+                 // Debounce resizing ideally, but for now apply on enter
+                 if (maxParticles > 0) emitter->SetMaxParticles(maxParticles);
+            }
+            
+            // Physics Props
+            float velInherit = emitter->GetVelocityInheritance();
+            if (ImGui::SliderFloat("Velocity Inheritance", &velInherit, 0.0f, 5.0f)) {
+                emitter->SetVelocityInheritance(velInherit);
+            }
+            
+            // Spawning
+            static int burstCount = 50;
+            ImGui::InputInt("Burst Count", &burstCount);
+            ImGui::SameLine();
+            if (ImGui::Button("Burst!")) {
+                emitter->Burst(burstCount);
+            }
+            
+                emitter->Burst(burstCount);
+            }
+            
+            // Visuals
+            if (ImGui::TreeNode("Visuals")) {
+                // Gradient
+                ImGui::Text("Color Gradient");
+                auto& gradient = emitter->GetGradient();
+                for (size_t i = 0; i < gradient.size(); ++i) {
+                     ImGui::PushID((int)i);
+                     ImGui::DragFloat("T", &gradient[i].t, 0.01f, 0.0f, 1.0f);
+                     ImGui::ColorEdit4("Color", &gradient[i].color.r);
+                     if (ImGui::Button("X")) {
+                         gradient.erase(gradient.begin() + i);
+                         i--;
+                     }
+                     ImGui::PopID();
+                }
+                if (ImGui::Button("Add Stop")) {
+                    emitter->AddGradientStop(1.0f, Vec4(1,1,1,1));
+                }
+                
+                ImGui::Separator();
+                
+                // Size Curve
+                ImGui::Text("Size Curve (Equidistant)");
+                auto& curve = emitter->GetSizeCurve();
+                // Plot
+                if (!curve.empty()) {
+                    ImGui::PlotLines("Curve", curve.data(), (int)curve.size(), 0, nullptr, 0.0f, 5.0f, ImVec2(0, 80));
+                }
+                // Edit points
+                for (size_t i = 0; i < curve.size(); ++i) {
+                     ImGui::PushID((int)i + 100);
+                     std::string label = "Pt " + std::to_string(i);
+                     ImGui::SliderFloat(label.c_str(), &curve[i], 0.0f, 5.0f);
+                     ImGui::PopID();
+                }
+                if (ImGui::Button("Add Point")) {
+                    emitter->AddSizeCurvePoint(1.0f);
+                }
+                if (ImGui::Button("Clear Curve")) {
+                    curve.clear();
+                }
+                
+                ImGui::TreePop();
+            }
+            
+            // Sub Emitters
+            if (ImGui::TreeNode("Sub-Emitters")) {
+                auto currentDeath = emitter->GetSubEmitterDeath();
+                std::string currentName = currentDeath ? "Linked" : "None";
+                if (ImGui::BeginCombo("On Death", currentName.c_str())) {
+                    if (ImGui::Selectable("None", !currentDeath)) {
+                        emitter->SetSubEmitterDeath(nullptr);
+                    }
+                    for (size_t i = 0; i < emitters.size(); ++i) {
+                        if (emitters[i] == emitter) continue; // Don't link self (infinite loop risk)
+                        std::string label = "Emitter " + std::to_string(i);
+                        if (ImGui::Selectable(label.c_str(), currentDeath == emitters[i])) {
+                            emitter->SetSubEmitterDeath(emitters[i]);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::TreePop();
+            }
             
             bool useLOD = emitter->GetUseLOD();
             if (ImGui::Checkbox("Use LOD System", &useLOD)) {

@@ -27,9 +27,32 @@ public:
         float lifeRatio;
     };
     std::vector<InstanceData> m_InstanceData;
+    
+    // Global Budget
+    void SetGlobalParticleLimit(int limit) { m_GlobalParticleLimit = limit; }
+    int GetGlobalParticleLimit() const { return m_GlobalParticleLimit; }
+    int GetTotalActiveParticles() const { return m_TotalActiveParticles; }
+
+    // Physics Enhancements
+    void SetGlobalWind(const Vec3& wind) { m_GlobalWind = wind; }
+    Vec3 GetGlobalWind() const { return m_GlobalWind; }
+    
+    struct Attractor {
+        Vec3 position;
+        float strength; // Positive = Pull, Negative = Push
+    };
+    void AddAttractor(const Attractor& attractor) { m_Attractors.push_back(attractor); }
+    void ClearAttractors() { m_Attractors.clear(); }
+    std::vector<Attractor>& GetAttractors() { return m_Attractors; }
 
 private:
     std::vector<std::shared_ptr<ParticleEmitter>> m_Emitters;
+    int m_GlobalParticleLimit = 100000;
+    int m_TotalActiveParticles = 0;
+    
+    // Physics
+    Vec3 m_GlobalWind = Vec3(0,0,0);
+    std::vector<Attractor> m_Attractors;
     
     // Shaders
     std::unique_ptr<Shader> m_Shader;

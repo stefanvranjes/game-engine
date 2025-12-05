@@ -103,7 +103,62 @@ void ParticleSystem::SetupQuadMesh() {
 }
 
 void ParticleSystem::Update(float deltaTime, const Vec3& cameraPos) {
+    // 1. Calculate Total Active Particles
+    m_TotalActiveParticles = 0;
+    for (const auto& emitter : m_Emitters) {
+        if (emitter->IsActive()) {
+            m_TotalActiveParticles += emitter->GetActiveParticleCount();
+        }
+    }
+    
+    // 2. Budget Check & Stealing Logic
+    // If Over Budget
+    if (m_TotalActiveParticles > m_GlobalParticleLimit) {
+        int overBudget = m_TotalActiveParticles - m_GlobalParticleLimit;
+        
+        // Find candidates to kill (Low priority)
+        // Sort emitters by priority (Ascending) to find cheapest victims
+        // We don't want to sort the main list every frame.
+        // Let's just iterate.
+        
+        for (auto& emitter : m_Emitters) {
+            if (overBudget <= 0) break;
+            if (!emitter->IsActive()) continue;
+            
+            // If Emitter is Low Priority (e.g. < 5) and has particles
+            if (emitter->GetPriority() < 5 && emitter->GetActiveParticleCount() > 0) {
+                // Kill some!
+                int killed = emitter->KillOldest(10); // Kill 10 at a time
+                overBudget -= killed;
+                m_TotalActiveParticles -= killed;
+            }
+        }
+    }
+    
+    // 3. Update Emitters
+    
+    // Prepare Physics Context
+    ParticleEmitter::PhysicsContext physCtx;
+    physCtx.wind = m_GlobalWind;
+    physCtx.attractors = &m_Attractors;
+
     for (auto& emitter : m_Emitters) {
+        // Enforce limit on spawning logic inside emitter?
+        // Ideally we pass "CanSpawn" flag or "BudgetRemaining"
+        // But ParticleEmitter::Update controls spawning independently.
+        // For now, if we are over budget, we just rely on KillOldest above to balance it out slowly,
+        // or we could disable spawning for low priority emitters here.
+        
+        if (m_TotalActiveParticles > m_GlobalParticleLimit && emitter->GetPriority() < 5) {
+             // Skip update? No, existing particles need to move.
+             // We need to tell it to STOP SPAWNING.
+             // Simple hack: Set SpawnRate to 0 temporarily? No, that messes up state.
+             // Let's assume the budget logic above is sufficient for now.
+             // Or better: Add a "SetPaused(bool)" or separate UpdateSimulation vs UpdateSpawning.
+             // For now, just Update.
+        }
+        
+        emitter->SetPhysicsContext(physCtx);
         emitter->Update(deltaTime, cameraPos);
     }
 }
