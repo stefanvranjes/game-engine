@@ -1,0 +1,55 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct SpatialSortElement {
+    uint cellHash;
+    uint particleIndex;
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SpatialSortElement sortElements[];
+};
+
+// Grid Buffer: Stores Start and End indices for each cell hash
+// We use a simple layout: uint grid[GRID_SIZE * 2];
+// index * 2 + 0 = Start Index
+// index * 2 + 1 = End Index
+// We could also use two separate buffers, but interleaved is fine.
+// Actually, using atomicMin/Max might be needed if we were parallelizing excessively,
+// but since the list is SORTED, we can find boundaries easily.
+// One thread per Sort Element? OR One thread per Cell?
+// Better: One thread per Sort Element (Particle).
+// If `sortElements[i].cellHash != sortElements[i-1].cellHash`, then `i` is a Start of cell `hash[i]`
+// and `i-1` is End of cell `hash[i-1]`.
+layout(std430, binding = 3) buffer GridBuffer {
+    uint gridIndices[]; // Size: u_GridSize * 2 (Start, End)
+    // Initialized to 0xFFFFFFFF
+};
+
+uniform uint u_NumParticles;
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_NumParticles) return;
+
+    uint activeHash = sortElements[id].cellHash;
+    
+    // If inactive (hash == MAX_UINT), ignore
+    if (activeHash == 0xFFFFFFFFu) return;
+    
+    uint prevHash = (id == 0) ? 0xFFFFFFFFu : sortElements[id - 1].cellHash;
+    uint nextHash = (id == u_NumParticles - 1) ? 0xFFFFFFFFu : sortElements[id + 1].cellHash;
+    
+    // Check for Cell Start
+    if (activeHash != prevHash) {
+        gridIndices[activeHash * 2 + 0] = id;
+    }
+    
+    // Check for Cell End (Inclusive)
+    // Actually, distinct cell values imply:
+    // [Start, End] inclusive logic
+    if (activeHash != nextHash) {
+        gridIndices[activeHash * 2 + 1] = id;
+    }
+}

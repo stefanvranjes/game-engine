@@ -1,0 +1,96 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct SortElement {
+    float distanceSq;
+    uint particleIndex;
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SortElement sortElements[];
+};
+
+uniform uint j;
+uniform uint k;
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    uint j_val = j;
+    uint k_val = k;
+
+    uint ixj = i ^ j_val;
+
+    // The threads are launched for ALL elements.
+    // However, we only want one thread to handle the pair (i, ixj).
+    // Usually we launch N/2 threads or handle uniqueness check.
+    // Standard approach: if (ixj > i) return;
+    
+    if (ixj > i) return;
+
+    // Load elements
+    SortElement a = sortElements[i];
+    SortElement b = sortElements[ixj];
+
+    // Determine direction
+    // For sorting descending (Back-to-Front), we want Larger Values at Lower Indices.
+    // Bitonic sort direction depends on (i & k).
+    
+    bool dir = (i & k_val) == 0; // standard ascending/descending switch pattern
+    
+    // If we want overall DESCENDING (max first):
+    // When dir is TRUE (active block), we want DESCENDING order ?
+    // Let's verify standard bitonic sort logic.
+    // Standard: (i&k)==0 => Sort Ascending.
+    // We want Descending output.
+    // So we invoke with simple comparison swap.
+    
+    // Let's stick to standard logic:
+    // (i & k) == 0 => Low -> High (Ascending). 
+    // (i & k) != 0 => High -> Low (Descending).
+    // BUT this creates the "Hill" shape locally. 
+    // At the final stage (k == N), everything should be sorted in ONE direction.
+    // If we want Descending result, we might need to invert the check or swap `a` and `b`.
+    
+    // Instead of complex logic, simple check:
+    // We want output: [Max, ..., Min]
+    // So if i < ixj, we want sortElements[i] > sortElements[ixj].
+    
+    // Standard Bitonic Merge:
+    // if ((i & k) == 0) {
+    //      if (a > b) swap; // Sorts Ascending
+    // } else {
+    //      if (a < b) swap; // Sorts Descending
+    // }
+    
+    // However, this depends on how we loop on CPU.
+    // If we want Descending result, the Final Merge (when k=N or 2N?) must produce Descending.
+    // Let's implement standard logic, and then if we need Global Descending, we just flip the final compare?
+    // Actually, simpler: Use `distanceSq` as key.
+    
+    // To sort Descending globally:
+    // ((i & k) == 0) should be Descending.
+    // ((i & k) != 0) should be Ascending.
+    // effectively flipping the standard.
+    
+    if ((i & k_val) == 0) {
+        // Sort Descending (Desired order)
+        // We want a > b at low index.
+        if (a.distanceSq < b.distanceSq) {
+            SortElement temp = a;
+            a = b;
+            b = temp;
+        }
+    } else {
+        // Sort Ascending
+        if (a.distanceSq > b.distanceSq) {
+            SortElement temp = a;
+            a = b;
+            b = temp;
+        }
+    }
+
+    // Write back
+    sortElements[i] = a;
+    sortElements[ixj] = b;
+}

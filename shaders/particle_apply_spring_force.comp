@@ -1,0 +1,57 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;   // .xyz = pos, .w = size
+    vec4 velocity;   // .xyz = vel, .w = lifetime
+    vec4 color;      // rgba
+    vec4 properties; // .x = age, .y = lifeRatio, .z = active, .w = density
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 5) buffer ForceBuffer {
+    int forceInts[]; // xyz * 3
+};
+
+uniform uint u_MaxParticles;
+uniform float u_DeltaTime;
+uniform float u_Mass; // Assume uniform mass for now? Or stored in particle?
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_MaxParticles) return;
+    
+    Particle p = particles[id];
+    if (p.properties.z < 0.5) return;
+    
+    // Read accumulated fixed-point force
+    float scale = 1000.0;
+    vec3 force;
+    force.x = float(forceInts[id * 3 + 0]) / scale;
+    force.y = float(forceInts[id * 3 + 1]) / scale;
+    force.z = float(forceInts[id * 3 + 2]) / scale;
+    
+    // Reset Force Buffer for next frame (Critical!)
+    forceInts[id * 3 + 0] = 0;
+    forceInts[id * 3 + 1] = 0;
+    forceInts[id * 3 + 2] = 0;
+    
+    // Apply Force
+    // a = F / m
+    float mass = u_Mass > 0.0 ? u_Mass : 1.0;
+    vec3 accel = force / mass;
+    
+    p.velocity.xyz += accel * u_DeltaTime;
+    
+    // Pinned particle hack:
+    // If we want pinning, we could use mass=0 or a flag.
+    // Let's use p.properties.w as "InverseMass" if not using SPH?
+    // Or just check if mass is infinite.
+    // For now, let's assume all move.
+    
+    particles[id] = p;
+}

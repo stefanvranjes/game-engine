@@ -736,7 +736,8 @@ void Renderer::Update(float deltaTime) {
     
     // Update particles with actual deltaTime
     if (m_ParticleSystem) {
-        m_ParticleSystem->Update(deltaTime);
+        Vec3 camPos = m_Camera ? m_Camera->GetPosition() : Vec3(0,0,0);
+        m_ParticleSystem->Update(deltaTime, camPos);
     }
 }
 

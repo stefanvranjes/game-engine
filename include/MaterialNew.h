@@ -58,14 +58,21 @@ public:
     }
 
     // Setters (Set value and mark override)
-    void SetAmbient(const Vec3& v);
-    void SetDiffuse(const Vec3& v);
-    void SetSpecular(const Vec3& v);
-    void SetShininess(float v);
-    void SetRoughnessX(float v);
-    void SetMetalnessX(float v);
-    void SetParallaxX(float v);
-    void SetEmissiveColor(const Vec3& v);
+    void SetAmbient(const Vec3& v) { m_Ambient = v; m_Overrides |= PropAmbient; }
+    void SetDiffuse(const Vec3& v) { m_Diffuse = v; m_Overrides |= PropDiffuse; }
+    void SetSpecular(const Vec3& v) { m_Specular = v; m_Overrides |= PropSpecular; }
+    void SetShininess(float v) { m_Shininess = v; m_Overrides |= PropShininess; }
+    void SetRoughness(float v) { m_Roughness = v; m_Overrides |= PropRoughness; }
+    void SetMetallic(float v) { m_Metallic = v; m_Overrides |= PropMetallic; }
+    void SetHeightScale(float v) { m_HeightScale = v; m_Overrides |= PropHeightScale; }
+    void SetOpacity(float v) { m_Opacity = v; m_Overrides |= PropOpacity; }
+    void SetIsTransparent(bool v) { m_IsTransparent = v; m_Overrides |= PropTransparent; }
+    
+    // Legacy/Unused or aliases keeping them for compatibility if needed or redirecting
+    void SetRoughnessX(float v) { SetRoughness(v); }
+    void SetMetalnessX(float v) { SetMetallic(v); }
+    void SetParallaxX(float v) { SetHeightScale(v); }
+    void SetEmissiveColor(const Vec3& v) { m_EmissiveColor = v; m_Overrides |= PropEmissiveColor; }
     
     void SetBlendMode(BlendMode mode) { 
         m_BlendMode = mode; 

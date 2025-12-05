@@ -2,11 +2,12 @@
 #include "ImGuiManager.h"
 #include "GLTFLoader.h"
 #include <iostream>
+#include <algorithm>
 #include <GLFW/glfw3.h>
 #include "imgui/imgui.h"
 
 Application::Application()
-    , m_LastFrameTime(0.0f)
+    : m_LastFrameTime(0.0f)
     , m_FPS(0.0f)
     , m_FrameCount(0.0f)
     , m_FPSTimer(0.0f)
@@ -575,6 +576,170 @@ void Application::RenderEditorUI() {
                 if (ImGui::SliderFloat("SSAO Bias", &bias, 0.001f, 0.1f)) {
                     ssao->SetBias(bias);
                 }
+            }
+        }
+    }
+    
+    ImGui::End();
+    
+    // Physics Demos Panel
+    ImGui::Begin("Physics Demos (Advanced)");
+    
+    static int clothWidth = 20;
+    static int clothHeight = 20;
+    static float clothSpacing = 0.2f;
+    static float clothStiffness = 100.0f; // High stiffness for stability
+    static float clothDamping = 0.5f;
+    
+    ImGui::Text("Cloth Simulation");
+    ImGui::SliderInt("Width", &clothWidth, 10, 100);
+    ImGui::SliderInt("Height", &clothHeight, 10, 100);
+    ImGui::SliderFloat("Spacing", &clothSpacing, 0.05f, 0.5f);
+    ImGui::SliderFloat("Stiffness", &clothStiffness, 10.0f, 500.0f);
+    ImGui::SliderFloat("Damping", &clothDamping, 0.0f, 2.0f);
+    
+    if (ImGui::Button("Spawn Cloth")) {
+        // Create emitter at a high position
+        auto emitter = std::make_shared<ParticleEmitter>(Vec3(0, 10, 0), clothWidth * clothHeight);
+        
+        // Use default texture if available
+        auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); // Or some particle tex
+        if (tex) emitter->SetTexture(tex);
+        
+        emitter->SetColorRange(Vec4(1, 1, 1, 1), Vec4(1, 1, 1, 1));
+        emitter->SetSizeRange(0.1f, 0.1f);
+        
+        emitter->InitCloth(clothWidth, clothHeight, clothSpacing, clothStiffness, clothDamping);
+        m_Renderer->GetParticleSystem()->AddEmitter(emitter);
+        std::cout << "Spawned Cloth Emitter" << std::endl;
+    }
+    
+    ImGui::Separator();
+    
+    static int sbWidth = 10;
+    static int sbHeight = 10;
+    static int sbDepth = 10;
+    
+    ImGui::Text("Soft Body Simulation");
+    ImGui::SliderInt("SB Width", &sbWidth, 5, 20);
+    ImGui::SliderInt("SB Height", &sbHeight, 5, 20);
+    ImGui::SliderInt("SB Depth", &sbDepth, 5, 20);
+    
+    if (ImGui::Button("Spawn Soft Body")) {
+        auto emitter = std::make_shared<ParticleEmitter>(Vec3(2, 10, 0), sbWidth * sbHeight * sbDepth);
+         // Use default texture if available
+        auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); 
+        if (tex) emitter->SetTexture(tex);
+        
+        emitter->SetColorRange(Vec4(0, 1, 0, 1), Vec4(0, 1, 0, 1)); // Green
+        emitter->SetSizeRange(0.1f, 0.1f);
+        
+        emitter->InitSoftBody(sbWidth, sbHeight, sbDepth, 0.2f, 200.0f, 0.5f);
+        m_Renderer->GetParticleSystem()->AddEmitter(emitter);
+        std::cout << "Spawned Soft Body Emitter" << std::endl;
+    }
+    
+    ImGui::Separator();
+    
+    ImGui::Text("Fluid Simulation (SPH)");
+    static int fluidParticles = 4096;
+    ImGui::SliderInt("Particle Count", &fluidParticles, 1024, 65536);
+    
+    if (ImGui::Button("Spawn Fluid")) {
+         auto emitter = std::make_shared<ParticleEmitter>(Vec3(-2, 5, 0), fluidParticles);
+         
+         auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); 
+         if (tex) emitter->SetTexture(tex);
+         
+         emitter->SetPhysicsMode(PhysicsMode::SPHFluid);
+         emitter->SetColorRange(Vec4(0, 0.5f, 1.0f, 0.8f), Vec4(0, 0.5f, 1.0f, 0.8f)); // Blue
+         emitter->SetSizeRange(0.1f, 0.1f);
+         emitter->SetSpawnRate(5000.0f); // Dump them fast
+         emitter->SetParticleLifetime(99999.0f);
+         emitter->SetUseGPUCompute(true);
+         
+         m_Renderer->GetParticleSystem()->AddEmitter(emitter);
+         std::cout << "Spawned Fluid Emitter" << std::endl;
+    }
+    
+    ImGui::End();
+
+    // Particle System Manager
+    ImGui::Begin("Particle Manager");
+    
+    auto particleSystem = m_Renderer->GetParticleSystem();
+    if (particleSystem) {
+        auto& emitters = particleSystem->GetEmitters();
+        static int selectedEmitterIndex = -1;
+        
+        ImGui::Text("Active Emitters: %d", (int)emitters.size());
+        
+        // List Emitters
+        for (size_t i = 0; i < emitters.size(); ++i) {
+            std::string label = "Emitter " + std::to_string(i);
+            if (emitters[i]->GetParent()) {
+                label += " (Attached to " + emitters[i]->GetParent()->GetName() + ")";
+            }
+            if (ImGui::Selectable(label.c_str(), selectedEmitterIndex == (int)i)) {
+                selectedEmitterIndex = (int)i;
+            }
+        }
+        
+        ImGui::Separator();
+        
+        if (selectedEmitterIndex >= 0 && selectedEmitterIndex < (int)emitters.size()) {
+            auto emitter = emitters[selectedEmitterIndex];
+            
+            bool useLOD = emitter->GetUseLOD();
+            if (ImGui::Checkbox("Use LOD System", &useLOD)) {
+                emitter->SetUseLOD(useLOD);
+            }
+            
+            if (useLOD) {
+                ImGui::Text("Current Distance: %.1f m", emitter->GetCurrentDistance());
+                ImGui::Text("Current Level: %d", emitter->GetCurrentLODLevel());
+                
+                ImGui::Separator();
+                ImGui::Text("LOD Levels (Distance -> Settings)");
+                
+                auto& lods = emitter->GetLODs();
+                for (size_t i = 0; i < lods.size(); ++i) {
+                    ImGui::PushID((int)i);
+                    ImGui::Text("Level %d", (int)i);
+                    ImGui::DragFloat("Distance >", &lods[i].distance, 1.0f, 0.0f, 1000.0f);
+                    ImGui::SliderFloat("Emission Mult", &lods[i].emissionMultiplier, 0.0f, 1.0f);
+                    ImGui::Checkbox("Turbulence", &lods[i].enableTurbulence);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Collisions", &lods[i].enableCollisions);
+                    ImGui::Checkbox("Trails", &lods[i].enableTrails);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Shadows", &lods[i].enableShadows);
+                    
+                    if (ImGui::Button("Remove")) {
+                        lods.erase(lods.begin() + i);
+                        i--;
+                    }
+                    ImGui::Separator();
+                    ImGui::PopID();
+                }
+                
+                if (ImGui::Button("Add LOD Level")) {
+                    EmitterLOD newLOD;
+                    // Auto-guess distance
+                    if (!lods.empty()) newLOD.distance = lods.back().distance + 10.0f;
+                    else newLOD.distance = 10.0f;
+                    
+                    lods.push_back(newLOD);
+                }
+                
+                ImGui::SameLine();
+                if (ImGui::Button("Sort by Distance")) {
+                    std::sort(lods.begin(), lods.end(), [](const EmitterLOD& a, const EmitterLOD& b) {
+                        return a.distance < b.distance;
+                    });
+                }
+            } else {
+                 ImGui::TextDisabled("Enable LOD to configure levels.");
             }
         }
     }

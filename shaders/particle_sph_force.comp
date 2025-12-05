@@ -1,0 +1,148 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;   // .xyz = pos, .w = size
+    vec4 velocity;   // .xyz = vel, .w = lifetime
+    vec4 color;      // rgba
+    vec4 properties; // .x = age, .y = lifeRatio, .z = active, .w = DENSITY
+};
+
+struct SpatialSortElement {
+    uint cellHash;
+    uint particleIndex;
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SpatialSortElement sortElements[];
+};
+
+layout(std430, binding = 3) buffer GridBuffer {
+    uint gridIndices[]; // Start, End
+};
+
+uniform uint u_MaxParticles;
+uniform uint u_GridSize;
+uniform float u_CellSize;
+uniform float u_SmoothingRadius; // h
+uniform float u_SpikyCoef;       // -45 / (PI * h^6)
+uniform float u_ViscosityCoef;   // 45 / (PI * h^6) ... usually different, Laplacian uses 45.
+                                 // Let's use separate uniform for coeff if needed, or pass full precalc.
+                                 // Standard Spiky Gradient: -45 / (PI * h^6) * (h-r)^2 * r_norm
+                                 // Viscosity (Laplacian Poly6? Or Viscosity kernel?): 45 / (PI * h^6) * (h-r)
+                                 
+uniform float u_RestDensity;
+uniform float u_GasConstant;     // k
+uniform float u_Viscosity;       // mu
+uniform float u_DeltaTime;
+
+uint GetGridHashFromIndices(int x, int y, int z) {
+    uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u) ^ (uint(z) * 83492791u);
+    return h % u_GridSize;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_MaxParticles) return;
+    
+    Particle p = particles[id];
+    if (p.properties.z < 0.5) return;
+    
+    vec3 pos = p.position.xyz;
+    vec3 vel = p.velocity.xyz;
+    float density = p.properties.w;
+    float pressure = u_GasConstant * (density - u_RestDensity);
+    
+    vec3 pressureForce = vec3(0.0);
+    vec3 viscosityForce = vec3(0.0);
+    
+    float h = u_SmoothingRadius;
+    float h2 = h * h;
+    
+    // Find my cell
+    int cx = int(floor(pos.x / u_CellSize));
+    int cy = int(floor(pos.y / u_CellSize));
+    int cz = int(floor(pos.z / u_CellSize));
+    
+    for (int z = -1; z <= 1; ++z) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int x = -1; x <= 1; ++x) {
+                uint neighborHash = GetGridHashFromIndices(cx + x, cy + y, cz + z);
+                uint startIndex = gridIndices[neighborHash * 2 + 0];
+                uint endIndex = gridIndices[neighborHash * 2 + 1];
+                
+                if (startIndex == 0xFFFFFFFFu) continue;
+                
+                for (uint i = startIndex; i <= endIndex; ++i) {
+                    uint otherIndex = sortElements[i].particleIndex;
+                    
+                    if (otherIndex == id) continue; // Skip self
+                    
+                    Particle other = particles[otherIndex];
+                    if (other.properties.z < 0.5) continue;
+                    
+                    vec3 diff = pos - other.position.xyz;
+                    float r2 = dot(diff, diff);
+                    
+                    if (r2 < h2 && r2 > 0.00001) {
+                        float r = sqrt(r2);
+                        float hr = h - r;
+                        
+                        // Pressure Force
+                        // F_p = -m * (P_i + P_j) / (2 * rho_j) * GradientW
+                        // Spiky Kernel Gradient: -45 / (PI * h^6) * (h-r)^2 * (diff / r)
+                        // Note: p.properties.w is rho. Memory layout might require check.
+                        
+                        float otherDensity = other.properties.w;
+                        float otherPressure = u_GasConstant * (otherDensity - u_RestDensity);
+                        
+                        // Average pressure term * gradient
+                        // u_SpikyCoef includes the constant factor
+                        float pressTerm = (pressure + otherPressure) / (2.0 * otherDensity * density); // SPH formulations vary. 
+                                                                                        // Simplest: (p_i + p_j) / (2 * rho_j) ? No, actually Force_i <- sum( m * (pi/rhoi^2 + pj/rhoj^2)...)
+                                                                                        // Let's use Mueller et al 2003:
+                                                                                        // f_press = - mass * (pi + pj) / (2 * rhoj) * W_spiky_grad
+                                                                                        // Here we compute acceleration directly? Or Force?
+                                                                                        // Let's assume Unit Mass for now.
+                        
+                        vec3 gradW = normalize(diff) * u_SpikyCoef * hr * hr;
+                        pressureForce -= gradW * (pressure + otherPressure) / (2.0 * otherDensity); 
+                        // Note: density of 'self' is in denominator of F=ma => a = F/m.
+                        // Wait, classical eqn:
+                        // a_pressure = - sum( m_j * (p_i/rho_i^2 + p_j/rho_j^2) * gradW )
+                        
+                        // Viscosity Force
+                        // Viscosity Kernel Laplacian: 45 / (PI * h^6) * (h-r)
+                        // f_visc = mu * sum( m_j * (v_j - v_i) / rho_j * LaplacianW )
+                        // Using u_SpikyCoef/h? No, need separate Viscosity Coef.
+                        // Let's approximate Viscosity Coef roughly same magnitude as Spiky for now, just passed as uniform.
+                        
+                        // Reuse Spiky Coef / h? No.
+                        // Let's assume u_ViscosityCoef is passed correctly.
+                        // LaplacianW = u_ViscosityCoef * hr
+                        
+                        vec3 velDiff = other.velocity.xyz - vel;
+                        viscosityForce += (velDiff / otherDensity) * u_ViscosityCoef * hr;
+                        
+                    }
+                }
+            }
+        }
+    }
+    
+    // Apply Forces
+    // a = F / rho ? Or if derived from Navier Stokes, we already have specific forces?
+    // The standard summations above give forces per unit mass (accelerations) if we assume unit mass.
+    // If not unit mass, we multiply by mass.
+    // Let's assume mass = 1.
+    
+    vec3 totalAcceleration = pressureForce + viscosityForce * u_Viscosity;
+    
+    // Apply to velocity
+    particles[id].velocity.xyz += totalAcceleration * u_DeltaTime;
+}

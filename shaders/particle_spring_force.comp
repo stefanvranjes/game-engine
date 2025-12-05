@@ -1,0 +1,106 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;   // .xyz = pos, .w = size
+    vec4 velocity;   // .xyz = vel, .w = lifetime
+    vec4 color;      // rgba
+    vec4 properties; // .x = age, .y = lifeRatio, .z = active, .w = density/padding
+};
+
+struct Spring {
+    uint p1;         // Index of particle 1
+    uint p2;         // Index of particle 2
+    float restLength;
+    float stiffness;
+    float damping;
+    uint padding1;
+    uint padding2;
+    uint padding3;
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 4) buffer SpringBuffer {
+    Spring springs[];
+};
+
+uniform uint u_NumSprings;
+uniform float u_DeltaTime;
+
+// Use atomic operations on separate force buffer?
+// OR use a "Scatter-Gather" approach?
+// Scatter: Threads = Springs. Each spring adds force to p1 and p2. 
+// Requires atomicAdd for floats. GLSL 4.3 supports atomicAdd only for int/uint.
+// For floats, we need atomicExchange/CompSwap loop, which is slow.
+// ALTERNATIVE:
+// 1. Calculate Forces per Spring -> Write to "ForceBuffer" (One per Spring? No).
+// 2. Iterate Springs? No.
+
+// ALTERNATIVE "Gather":
+// Threads = Particles. Each particle knows its neighbors.
+// But topology varies.
+// We can store a "Neighbor List" for bounded degree (e.g. max 12 neighbors).
+// Cloth: Grid, max 12 (Structural, Shear, Bend).
+// SoftBody: Grid/Tetrahedral, max ~10-20.
+// If we limit to fixed neighbors in Particle struct or auxiliary buffer, we can do Gather.
+
+// BUT, to keep it simple and generic, let's use the SCATTER approach with Int-based Atomic Add.
+// We scale float force to fixed-point int, atomic add, then convert back.
+// 1000.0 precision is usually enough.
+
+layout(std430, binding = 5) buffer ForceBuffer {
+    int forceInts[]; // xyz * 3 per particle.
+};
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_NumSprings) return;
+    
+    Spring s = springs[id];
+    
+    Particle p1 = particles[s.p1];
+    Particle p2 = particles[s.p2];
+    
+    if (p1.properties.z < 0.5 || p2.properties.z < 0.5) return;
+    
+    vec3 pos1 = p1.position.xyz;
+    vec3 pos2 = p2.position.xyz;
+    
+    vec3 diff = pos1 - pos2;
+    float dist = length(diff);
+    
+    if (dist <= 0.0001) return;
+    
+    vec3 dir = diff / dist;
+    
+    // Hooke's Law: F = -k * (currentLength - restLength)
+    float forceMag = -s.stiffness * (dist - s.restLength);
+    
+    // Damping: F_d = -d * (v1 - v2) . dir
+    vec3 relVel = p1.velocity.xyz - p2.velocity.xyz;
+    float dampingForce = -s.damping * dot(relVel, dir);
+    
+    float totalForceMag = forceMag + dampingForce;
+    vec3 force = dir * totalForceMag;
+    
+    // Apply to p1 (Positive direction because diff = p1 - p2, so if compressed (dist < rest), force is positive (repel))
+    // Wait, F = -k * x. If dist < rest, x is neg, F is pos. Pushes apart. Correct.
+    // So Force on 1 is `force`. Force on 2 is `-force`.
+    
+    // Fixed point conversion factor
+    float scale = 1000.0;
+    
+    // Atomic Add for P1
+    atomicAdd(forceInts[s.p1 * 3 + 0], int(force.x * scale));
+    atomicAdd(forceInts[s.p1 * 3 + 1], int(force.y * scale));
+    atomicAdd(forceInts[s.p1 * 3 + 2], int(force.z * scale));
+    
+    // Atomic Add for P2
+    atomicAdd(forceInts[s.p2 * 3 + 0], int(-force.x * scale));
+    atomicAdd(forceInts[s.p2 * 3 + 1], int(-force.y * scale));
+    atomicAdd(forceInts[s.p2 * 3 + 2], int(-force.z * scale));
+}

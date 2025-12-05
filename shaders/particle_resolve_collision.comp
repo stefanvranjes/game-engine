@@ -1,0 +1,139 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;   // .xyz = pos, .w = size
+    vec4 velocity;   // .xyz = vel, .w = lifetime
+    vec4 color;      // rgba
+    vec4 properties; // .x = age, .y = lifeRatio, .z = active (float), .w = padding
+};
+
+struct SpatialSortElement {
+    uint cellHash;
+    uint particleIndex;
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SpatialSortElement sortElements[];
+};
+
+layout(std430, binding = 3) buffer GridBuffer {
+    uint gridIndices[]; // Start, End
+};
+
+uniform uint u_MaxParticles;
+uniform uint u_GridSize;
+uniform float u_CellSize;
+uniform float u_CollisionRadius; // Multiplier? Or fixed? Usually p.size * factor
+uniform float u_Restitution;     // Bounciness (0..1)
+uniform float u_Friction;        // Friction (0..1)
+
+uint GetGridHash(vec3 pos) {
+    int x = int(floor(pos.x / u_CellSize));
+    int y = int(floor(pos.y / u_CellSize));
+    int z = int(floor(pos.z / u_CellSize));
+    uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u) ^ (uint(z) * 83492791u);
+    return h % u_GridSize;
+}
+
+uint GetGridHashFromIndices(int x, int y, int z) {
+    uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u) ^ (uint(z) * 83492791u);
+    return h % u_GridSize;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_MaxParticles) return;
+
+    // We process particles by their ORIGINAL index (ParticleBuffer order)
+    // Or we could process by Sorted Order. Sorted order is better for cache incoherency 
+    // when reading neighbors? Maybe. But we write to ParticleBuffer, so random writes there.
+    // Let's stick to reading ParticleBuffer[id] to keep writing linear.
+    // Neighbors will be random reads anyway.
+    
+    Particle p = particles[id];
+    if (p.properties.z < 0.5) return; // Inactive
+    
+    vec3 pos = p.position.xyz;
+    vec3 vel = p.velocity.xyz;
+    float mySize = p.position.w; // Radius or Size? Assuming size is diameter? Let's assume diameter -> radius = size * 0.5
+    float myRadius = mySize * 0.5 * u_CollisionRadius; 
+
+    // Find my cell
+    int cx = int(floor(pos.x / u_CellSize));
+    int cy = int(floor(pos.y / u_CellSize));
+    int cz = int(floor(pos.z / u_CellSize));
+    
+    vec3 force = vec3(0.0);
+    vec3 separation = vec3(0.0);
+    uint collisionCount = 0;
+
+    // Iterate neighbors (3x3x3)
+    for (int z = -1; z <= 1; ++z) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int x = -1; x <= 1; ++x) {
+                uint neighborHash = GetGridHashFromIndices(cx + x, cy + y, cz + z);
+                
+                uint startIndex = gridIndices[neighborHash * 2 + 0];
+                uint endIndex = gridIndices[neighborHash * 2 + 1];
+                
+                if (startIndex == 0xFFFFFFFFu) continue; // Empty cell
+                
+                // Iterate particles in this cell
+                for (uint i = startIndex; i <= endIndex; ++i) {
+                    uint otherIndex = sortElements[i].particleIndex;
+                    
+                    if (otherIndex == id) continue; // It's me
+                    
+                    Particle other = particles[otherIndex];
+                    if (other.properties.z < 0.5) continue; // Should not happen if sorted correctly but safety check
+
+                    vec3 diff = pos - other.position.xyz;
+                    float dist2 = dot(diff, diff);
+                    
+                    float otherRadius = other.position.w * 0.5 * u_CollisionRadius;
+                    float minDist = myRadius + otherRadius;
+                    
+                    if (dist2 < minDist * minDist && dist2 > 0.0001) {
+                        float dist = sqrt(dist2);
+                        vec3 normal = diff / dist;
+                        float penetration = minDist - dist;
+                        
+                        // Positional correction (Separation)
+                        // We apply 50% to each (or weighted by mass, but assuming equal mass)
+                        separation += normal * (penetration * 0.5);
+                        
+                        // Velocity Impulse
+                        vec3 relVel = vel - other.velocity.xyz;
+                        float velAlongNormal = dot(relVel, normal);
+                        
+                        if (velAlongNormal < 0.0) { // Moving towards each other
+                            // Simple elastic collision
+                           // j = -(1 + e) * v_rel . n
+                           float j = -(1.0 + u_Restitution) * velAlongNormal;
+                           j /= 2.0; // Assume equal mass
+                           
+                           // Apply impulse
+                           vel += normal * j;
+                           // We don't write to 'other', we let 'other' thread handle its own update 
+                           // But this creates race conditions or asymmetry?
+                           // Actually, for identical particles, both will calculate symetric impulse.
+                           // So we just update 'vel' here.
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Apply changes
+    p.position.xyz += separation;
+    p.velocity.xyz = vel; // Dampen?
+    
+    particles[id] = p;
+}

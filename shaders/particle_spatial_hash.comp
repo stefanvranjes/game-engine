@@ -1,0 +1,64 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;   // .xyz = pos, .w = size
+    vec4 velocity;   // .xyz = vel, .w = lifetime
+    vec4 color;      // rgba
+    vec4 properties; // .x = age, .y = lifeRatio, .z = active (float), .w = padding
+};
+
+struct SpatialSortElement {
+    uint cellHash;
+    uint particleIndex;
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SpatialSortElement sortElements[];
+};
+
+// Use binding 2 for atomic counter if needed, or just use maxParticles
+layout(binding = 2, offset = 0) uniform atomic_uint activeCount;
+
+uniform uint u_MaxParticles;
+uniform float u_CellSize;
+uniform uint u_GridSize; // Total cells in hash table
+
+uint GetGridHash(vec3 pos) {
+    int x = int(floor(pos.x / u_CellSize));
+    int y = int(floor(pos.y / u_CellSize));
+    int z = int(floor(pos.z / u_CellSize));
+    
+    // Optimized spatial hash (Primes: 73856093, 19349663, 83492791)
+    // We cast to uint to allow wrapping
+    uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u) ^ (uint(z) * 83492791u);
+    return h % u_GridSize;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_MaxParticles) return;
+
+    SpatialSortElement element;
+    element.particleIndex = id;
+    
+    // Check if particle is effectively active
+    // We treat all slots as potential sort candidates, but inactive ones get pushed to end
+    // or just given a "dummy" hash.
+    // However, for sorting to pack active ones, we usually sort by activity first or
+    // just let valid particles have valid hashes and invalid ones have MAX_UINT.
+    
+    Particle p = particles[id];
+    if (p.properties.z > 0.5) { // Active
+        element.cellHash = GetGridHash(p.position.xyz);
+    } else {
+        element.cellHash = 0xFFFFFFFFu; // Max uint to sort to the end
+    }
+
+    sortElements[id] = element;
+}

@@ -1,0 +1,83 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec3 position;
+    float life;
+    vec3 velocity;
+    float size;
+    vec4 color;
+    float rotation;
+    float angularVelocity;
+    float mass;
+    float atlasIndex;
+};
+
+struct SortElement {
+    float distanceSq;
+    uint particleIndex;
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SortElement sortElements[];
+};
+
+// Use binding 2 to read active count directly from atomic counter buffer if available,
+// or pass as uniform. Getting it from atomic counter is safer for consistency.
+layout(binding = 2, offset = 0) uniform atomic_uint activeCount;
+
+uniform vec3 u_CameraPosition;
+uniform uint u_MaxParticles; // The nominal max particles
+uniform uint u_SortBufferSize; // Power of 2 size
+
+uniform vec4 u_FrustumPlanes[6];
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_SortBufferSize) return;
+
+    // Get current active count
+    uint count = atomicCounter(activeCount);
+    
+    // Default "invalid" element (sorted to end)
+    SortElement element;
+    element.distanceSq = -1.0;
+    element.particleIndex = 0xFFFFFFFF; // Invalid index
+
+    // Only process valid particles within the active count AND max particles
+    if (id < count && id < u_MaxParticles) {
+        Particle p = particles[id];
+        
+        if (p.life > 0.0) {
+            // Frustum Culling
+            bool inside = true;
+            for (int i = 0; i < 6; ++i) {
+                // Plane equation: Ax + By + Cz + D = 0
+                // Distance = dot(plane, vec4(pos, 1.0))
+                // If distance < -radius, particle is outside
+                float dist = dot(u_FrustumPlanes[i], vec4(p.position, 1.0));
+                
+                // Assuming particle radius/size.
+                // p.size might be diameter or radius. Let's assume diameter, so radius = size * 0.5.
+                // Or just use size to be safe.
+                if (dist < -p.size) { 
+                    inside = false;
+                    break;
+                }
+            }
+            
+            if (inside) {
+                vec3 diff = p.position - u_CameraPosition;
+                element.distanceSq = dot(diff, diff);
+                element.particleIndex = id;
+            }
+        }
+    }
+
+    sortElements[id] = element;
+}

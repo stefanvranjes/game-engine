@@ -17,11 +17,21 @@ layout(std430, binding = 0) buffer ParticleBuffer {
     Particle particles[];
 };
 
+struct SortElement {
+    float distanceSq;
+    uint particleIndex;
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SortElement sortElements[];
+};
+
 // Uniforms
 uniform mat4 u_View;
 uniform mat4 u_Projection;
 uniform float u_AtlasRows;
 uniform float u_AtlasCols;
+uniform int u_UseSort;
 
 // Outputs to fragment shader
 out vec2 v_TexCoord;
@@ -30,8 +40,20 @@ out vec4 v_Color;
 void main() {
     // Calculate particle index and vertex index within the quad
     // We draw 6 vertices per particle (2 triangles)
-    uint particleIndex = gl_VertexID / 6;
+    uint quadIndex = gl_VertexID / 6;
     uint vertexIndex = gl_VertexID % 6;
+    
+    uint particleIndex = quadIndex;
+    
+    if (u_UseSort != 0) {
+        particleIndex = sortElements[quadIndex].particleIndex;
+        
+        // Check for invalid index (padding from sort)
+        if (particleIndex == 0xFFFFFFFF) {
+            gl_Position = vec4(0.0); // Discard
+            return;
+        }
+    }
     
     Particle p = particles[particleIndex];
     

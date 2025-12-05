@@ -1,0 +1,92 @@
+#version 430 core
+
+layout(local_size_x = 256, local_size_y = 1, local_size_z = 1) in;
+
+struct Particle {
+    vec4 position;   // .xyz = pos, .w = size
+    vec4 velocity;   // .xyz = vel, .w = lifetime
+    vec4 color;      // rgba
+    vec4 properties; // .x = age, .y = lifeRatio, .z = active, .w = DENSITY (was padding)
+};
+
+struct SpatialSortElement {
+    uint cellHash;
+    uint particleIndex;
+};
+
+layout(std430, binding = 0) buffer ParticleBuffer {
+    Particle particles[];
+};
+
+layout(std430, binding = 1) buffer SortBuffer {
+    SpatialSortElement sortElements[];
+};
+
+layout(std430, binding = 3) buffer GridBuffer {
+    uint gridIndices[]; // Start, End
+};
+
+uniform uint u_MaxParticles;
+uniform uint u_GridSize;
+uniform float u_CellSize;
+uniform float u_SmoothingRadius; // h
+uniform float u_Poly6Coef;       // Precomputed: 315 / (64 * PI * h^9)
+
+uint GetGridHashFromIndices(int x, int y, int z) {
+    uint h = (uint(x) * 73856093u) ^ (uint(y) * 19349663u) ^ (uint(z) * 83492791u);
+    return h % u_GridSize;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= u_MaxParticles) return;
+    
+    Particle p = particles[id];
+    if (p.properties.z < 0.5) {
+        particles[id].properties.w = 0.0;
+        return;
+    }
+    
+    vec3 pos = p.position.xyz;
+    float density = 0.0;
+    float h2 = u_SmoothingRadius * u_SmoothingRadius;
+    
+    // Find my cell
+    int cx = int(floor(pos.x / u_CellSize));
+    int cy = int(floor(pos.y / u_CellSize));
+    int cz = int(floor(pos.z / u_CellSize));
+    
+    // Iterate neighbors
+    for (int z = -1; z <= 1; ++z) {
+        for (int y = -1; y <= 1; ++y) {
+            for (int x = -1; x <= 1; ++x) {
+                uint neighborHash = GetGridHashFromIndices(cx + x, cy + y, cz + z);
+                uint startIndex = gridIndices[neighborHash * 2 + 0];
+                uint endIndex = gridIndices[neighborHash * 2 + 1];
+                
+                if (startIndex == 0xFFFFFFFFu) continue;
+                
+                for (uint i = startIndex; i <= endIndex; ++i) {
+                    uint otherIndex = sortElements[i].particleIndex;
+                    Particle other = particles[otherIndex];
+                    if (other.properties.z < 0.5) continue;
+                    
+                    vec3 diff = pos - other.position.xyz;
+                    float r2 = dot(diff, diff);
+                    
+                    if (r2 < h2) {
+                        float diff2 = h2 - r2;
+                        density += diff2 * diff2 * diff2;
+                    }
+                }
+            }
+        }
+    }
+    
+    // Apply Poly6 coefficient (+ self density if not included, but loop includes self)
+    // Loop includes self because we iterate neighbors including (0,0,0) and current cell includes self.
+    density *= u_Poly6Coef;
+    
+    // Avoid zero density
+    particles[id].properties.w = max(density, 1.0); // Default density ?
+}

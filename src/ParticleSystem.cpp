@@ -33,13 +33,6 @@ bool ParticleSystem::Init() {
         std::cerr << "Failed to load trail shader" << std::endl;
         return false;
     }
-    
-    // Load GPU particle shader (vertex pulling)
-    m_GPUShader = std::make_unique<Shader>();
-    if (!m_GPUShader->LoadFromFiles("shaders/particle_gpu.vert", "shaders/particle.frag")) {
-        std::cerr << "Failed to load GPU particle shader" << std::endl;
-        // Don't fail init, just warn
-    }
 
     SetupQuadMesh();
     
@@ -88,30 +81,30 @@ void ParticleSystem::SetupQuadMesh() {
 
     // Particle position (instanced)
     glEnableVertexAttribArray(2);
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, position));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, sizeof(ParticleSystem::InstanceData), (void*)offsetof(ParticleSystem::InstanceData, position));
     glVertexAttribDivisor(2, 1);
 
     // Particle color (instanced)
     glEnableVertexAttribArray(3);
-    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, color));
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(ParticleSystem::InstanceData), (void*)offsetof(ParticleSystem::InstanceData, color));
     glVertexAttribDivisor(3, 1);
 
     // Particle size (instanced)
     glEnableVertexAttribArray(4);
-    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, size));
+    glVertexAttribPointer(4, 1, GL_FLOAT, GL_FALSE, sizeof(ParticleSystem::InstanceData), (void*)offsetof(ParticleSystem::InstanceData, size));
     glVertexAttribDivisor(4, 1);
 
     // Particle lifeRatio (instanced)
     glEnableVertexAttribArray(5);
-    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(InstanceData), (void*)offsetof(InstanceData, lifeRatio));
+    glVertexAttribPointer(5, 1, GL_FLOAT, GL_FALSE, sizeof(ParticleSystem::InstanceData), (void*)offsetof(ParticleSystem::InstanceData, lifeRatio));
     glVertexAttribDivisor(5, 1);
 
     glBindVertexArray(0);
 }
 
-void ParticleSystem::Update(float deltaTime) {
+void ParticleSystem::Update(float deltaTime, const Vec3& cameraPos) {
     for (auto& emitter : m_Emitters) {
-        emitter->Update(deltaTime);
+        emitter->Update(deltaTime, cameraPos);
     }
 }
 
@@ -216,13 +209,35 @@ void ParticleSystem::Render(Camera* camera, GBuffer* gbuffer) {
     glDisable(GL_BLEND);
 }
 
-void ParticleSystem::RenderFromGPU(const std::shared_ptr<ParticleEmitter>& emitter, Camera* camera) {
-    if (!m_GPUShader) return;
+
+void ParticleSystem::SortParticlesGPU(const std::shared_ptr<ParticleEmitter>& emitter, Camera* camera) {
+    if (!m_SortInitShader || !m_SortStepShader) return;
+    
+    unsigned int particleSSBO = emitter->GetParticleSSBO();
+    unsigned int sortSSBO = emitter->GetSortSSBO();
+    unsigned int atomicCounter = emitter->GetAtomicCounterBuffer();
+    unsigned int sortBufferSize = emitter->GetSortBufferSize();
+    
+    if (sortSSBO == 0 || particleSSBO == 0) return;
+
+    // 1. Initialize Sort Buffer
+    m_SortInitShader->Use();
+    m_SortInitShader->SetVec3("u_CameraPosition", camera->GetPosition().x, camera->GetPosition().y, camera->GetPosition().z);
+    m_SortInitShader->SetInt("u_MaxParticles", static_cast<int>(emitter->GetParticles().size())); 
+    m_SortInitShader->SetInt("u_SortBufferSize", static_cast<int>(sortBufferSize));
+    
+    
+    // 2. Bitonic Sort
+    m_SortStepShader->Use();
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, sortSSBO);
     
     unsigned int ssbo = emitter->GetParticleSSBO();
     unsigned int activeCount = emitter->GetActiveParticleCount();
     
     if (ssbo == 0 || activeCount == 0) return;
+    
+    // Sort particles
+    SortParticlesGPU(emitter, camera);
     
     m_GPUShader->Use();
     m_GPUShader->SetMat4("u_View", camera->GetViewMatrix().m);
@@ -249,13 +264,30 @@ void ParticleSystem::RenderFromGPU(const std::shared_ptr<ParticleEmitter>& emitt
     m_GPUShader->SetFloat("u_AtlasRows", static_cast<float>(emitter->GetAtlasRows()));
     m_GPUShader->SetFloat("u_AtlasCols", static_cast<float>(emitter->GetAtlasCols()));
     
-    // Bind SSBO
+    // Bind SSBOs
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbo);
+    if (sortSSBO != 0) {
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, sortSSBO);
+        m_GPUShader->SetInt("u_UseSort", 1);
+    } else {
+        m_GPUShader->SetInt("u_UseSort", 0);
+    }
     
-    // Draw using vertex pulling (no VBO needed for attributes, but we need a VAO bound)
-    // We draw 6 vertices per particle (quad)
-    glBindVertexArray(m_QuadVAO); // Reuse QuadVAO just to have something bound
-    glDrawArrays(GL_TRIANGLES, 0, activeCount * 6);
+    // Draw using vertex pulling
+    glBindVertexArray(m_QuadVAO); 
+    
+    // Check for Indirect Draw
+    unsigned int indirectBuffer = emitter->GetIndirectBuffer();
+    if (indirectBuffer != 0) {
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer);
+        glDrawArraysIndirect(GL_TRIANGLES, 0);
+        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+    } else {
+        // Fallback to CPU readback
+        // (activeCount was readback earlier in UpdateGPU if fallback)
+        glDrawArrays(GL_TRIANGLES, 0, activeCount * 6);
+    }
+    
     glBindVertexArray(0);
 }
 
@@ -304,187 +336,19 @@ void ParticleSystem::ClearEmitters() {
 void ParticleSystem::RenderTrails(Camera* camera) {
     if (!camera || !m_TrailShader) return;
     
-    m_TrailShader->Use();
-    m_TrailShader->SetMat4("view", camera->GetViewMatrix().m);
-    m_TrailShader->SetMat4("projection", camera->GetProjectionMatrix().m);
-    
-    Vec3 cameraPos = camera->GetPosition();
-    
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // Disable depth write for transparent trails
     glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Default, can be overridden per emitter
     
     for (const auto& emitter : m_Emitters) {
-        if (!emitter->GetEnableTrails()) continue;
+        if (!emitter->IsActive() || !emitter->GetEnableTrails()) continue;
         
-        // Collect all trail geometry for this emitter
-        std::vector<float> vertices;
-        std::vector<unsigned int> indices;
-        
-        GenerateTrailGeometry(emitter.get(), cameraPos, vertices, indices);
-        
-        if (vertices.empty() || indices.empty()) continue;
-        
-        // Upload geometry to GPU
-        glBindVertexArray(m_TrailVAO);
-        
-        glBindBuffer(GL_ARRAY_BUFFER, m_TrailVBO);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_DYNAMIC_DRAW);
-        
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_TrailEBO);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_DYNAMIC_DRAW);
-        
-        // Setup vertex attributes
-        // Position (3 floats)
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)0);
-        
-        // TexCoord (2 floats)
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(3 * sizeof(float)));
-        
-        // Color (4 floats)
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, 9 * sizeof(float), (void*)(5 * sizeof(float)));
-        
-        // Bind texture if available
-        auto trailTexture = emitter->GetTrailTexture();
-        if (trailTexture) {
-            trailTexture->Bind(0);
-            m_TrailShader->SetInt("trailTexture", 0);
-            m_TrailShader->SetInt("useTexture", 1);
-        } else {
-            m_TrailShader->SetInt("useTexture", 0);
+        if (emitter->GetUseGPUCompute()) {
+            RenderTrailsGPU(emitter, camera);
         }
-        
-        // Draw trails
-        glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, 0);
     }
     
-    glBindVertexArray(0);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
-}
-
-void ParticleSystem::GenerateTrailGeometry(const ParticleEmitter* emitter,
-                                           const Vec3& cameraPos,
-                                           std::vector<float>& vertices,
-                                           std::vector<unsigned int>& indices) {
-    const auto& particles = emitter->GetParticles();
-    unsigned int vertexOffset = 0;
-    
-    for (const auto& particle : particles) {
-        if (!particle.active || !particle.hasTrail || !particle.trail) continue;
-        
-        const auto& points = particle.trail->GetPoints();
-        if (points.size() < 2) continue; // Need at least 2 points for a trail
-        
-        // Generate ribbon geometry
-        for (size_t i = 0; i < points.size() - 1; ++i) {
-            const TrailPoint& p1 = points[i];
-            const TrailPoint& p2 = points[i + 1];
-            
-            // Calculate perpendicular vector for ribbon width
-            Vec3 forward = p2.position - p1.position;
-            float length = sqrtf(forward.x * forward.x + forward.y * forward.y + forward.z * forward.z);
-            if (length < 0.001f) continue; // Skip degenerate segments
-            
-            forward.x /= length;
-            forward.y /= length;
-            forward.z /= length;
-            
-            // Get vector to camera for billboarding
-            Vec3 toCamera = cameraPos - p1.position;
-            
-            // Cross product to get perpendicular (right) vector
-            Vec3 right;
-            right.x = forward.y * toCamera.z - forward.z * toCamera.y;
-            right.y = forward.z * toCamera.x - forward.x * toCamera.z;
-            right.z = forward.x * toCamera.y - forward.y * toCamera.x;
-            
-            float rightLength = sqrtf(right.x * right.x + right.y * right.y + right.z * right.z);
-            if (rightLength < 0.001f) {
-                // Fallback if vectors are parallel
-                right = Vec3(0, 1, 0);
-                rightLength = 1.0f;
-            }
-            
-            right.x /= rightLength;
-            right.y /= rightLength;
-            right.z /= rightLength;
-            
-            // Calculate fade based on trail color mode
-            Vec4 color1 = p1.color;
-            Vec4 color2 = p2.color;
-            
-            if (emitter->GetTrailColorMode() == TrailColorMode::FadeToTransparent) {
-                // Fade alpha based on age
-                color1.w *= (1.0f - p1.lifeRatio);
-                color2.w *= (1.0f - p2.lifeRatio);
-            }
-            
-            // Create quad vertices (two triangles)
-            float halfWidth1 = p1.width * 0.5f;
-            float halfWidth2 = p2.width * 0.5f;
-            
-            // Vertex 1 (p1 - right)
-            Vec3 v1 = p1.position - right * halfWidth1;
-            vertices.push_back(v1.x);
-            vertices.push_back(v1.y);
-            vertices.push_back(v1.z);
-            vertices.push_back(static_cast<float>(i) / (points.size() - 1)); // U coord
-            vertices.push_back(0.0f); // V coord
-            vertices.push_back(color1.x);
-            vertices.push_back(color1.y);
-            vertices.push_back(color1.z);
-            vertices.push_back(color1.w);
-            
-            // Vertex 2 (p1 + right)
-            Vec3 v2 = p1.position + right * halfWidth1;
-            vertices.push_back(v2.x);
-            vertices.push_back(v2.y);
-            vertices.push_back(v2.z);
-            vertices.push_back(static_cast<float>(i) / (points.size() - 1));
-            vertices.push_back(1.0f);
-            vertices.push_back(color1.x);
-            vertices.push_back(color1.y);
-            vertices.push_back(color1.z);
-            vertices.push_back(color1.w);
-            
-            // Vertex 3 (p2 - right)
-            Vec3 v3 = p2.position - right * halfWidth2;
-            vertices.push_back(v3.x);
-            vertices.push_back(v3.y);
-            vertices.push_back(v3.z);
-            vertices.push_back(static_cast<float>(i + 1) / (points.size() - 1));
-            vertices.push_back(0.0f);
-            vertices.push_back(color2.x);
-            vertices.push_back(color2.y);
-            vertices.push_back(color2.z);
-            vertices.push_back(color2.w);
-            
-            // Vertex 4 (p2 + right)
-            Vec3 v4 = p2.position + right * halfWidth2;
-            vertices.push_back(v4.x);
-            vertices.push_back(v4.y);
-            vertices.push_back(v4.z);
-            vertices.push_back(static_cast<float>(i + 1) / (points.size() - 1));
-            vertices.push_back(1.0f);
-            vertices.push_back(color2.x);
-            vertices.push_back(color2.y);
-            vertices.push_back(color2.z);
-            vertices.push_back(color2.w);
-            
-            // Create indices for two triangles
-            indices.push_back(vertexOffset + 0);
-            indices.push_back(vertexOffset + 1);
-            indices.push_back(vertexOffset + 2);
-            
-            indices.push_back(vertexOffset + 1);
-            indices.push_back(vertexOffset + 3);
-            indices.push_back(vertexOffset + 2);
-            
-            vertexOffset += 4;
-        }
-    }
 }

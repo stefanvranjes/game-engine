@@ -25,6 +25,9 @@ public:
     
     void UpdateMatrices();
     
+    // Frustum planes: Left, Right, Bottom, Top, Near, Far
+    void GetFrustumPlanes(Vec4 planes[6]) const;
+    
 private:
     Vec3 m_Position;
     Vec3 m_Front;

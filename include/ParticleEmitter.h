@@ -17,6 +17,14 @@ enum class EmitterShape {
     Box
 };
 
+enum class PhysicsMode {
+    Simple,
+    Standard, // Collisions
+    SPHFluid,
+    Cloth,
+    SoftBody
+};
+
 enum class BlendMode {
     Additive,
     Alpha
@@ -29,12 +37,51 @@ enum class TrailColorMode {
     Custom              // Use custom trail color
 };
 
+// POD struct for GPU alignment (std430)
+struct GPUParticle {
+    Vec4 position;   // xyz, w=size
+    Vec4 velocity;   // xyz, w=lifetime
+    Vec4 color;      // rgba
+    Vec4 properties; // x=age, y=lifeMax, z=active, w=density/pad
+};
+
+struct Spring {
+    unsigned int p1;
+    unsigned int p2;
+    float restLength;
+    float stiffness;
+    float damping;
+    unsigned int active; // padding/flag
+    unsigned int padding2;
+    unsigned int padding3;
+};
+
+struct EmitterLOD {
+    float distance;            // Min distance for this level
+    float emissionMultiplier;  // 0.0-1.0
+    bool enableTurbulence;
+    bool enableCollisions;
+    bool enableTrails;
+    bool enableLighting;
+    bool enableShadows;
+    
+    EmitterLOD() 
+        : distance(0.0f)
+        , emissionMultiplier(1.0f)
+        , enableTurbulence(true)
+        , enableCollisions(true)
+        , enableTrails(true)
+        , enableLighting(true)
+        , enableShadows(true)
+    {}
+};
+
 class ParticleEmitter {
 public:
     ParticleEmitter(const Vec3& position, int maxParticles = 1000);
     ~ParticleEmitter();
 
-    void Update(float deltaTime);
+    void Update(float deltaTime, const Vec3& cameraPos = Vec3(0,0,0));
     const std::vector<Particle>& GetParticles() const { return m_Particles; }
     
     // Configuration
@@ -84,26 +131,20 @@ public:
     void SetParticleRestitution(float restitution) { m_DefaultRestitution = restitution; }
     void SetParticleFriction(float friction) { m_DefaultFriction = friction; }
     
+    // Advanced Physics (SPH)
+    void SetPhysicsMode(PhysicsMode mode) { m_PhysicsMode = mode; }
+    PhysicsMode GetPhysicsMode() const { return m_PhysicsMode; }
+    
+    void SetRestDensity(float rho) { m_RestDensity = rho; }
+    void SetGasConstant(float k) { m_GasConstant = k; }
+    void SetViscosity(float mu) { m_Viscosity = mu; }
+    void SetSmoothingRadius(float h) { m_SmoothingRadius = h; }
+    
     // Trail configuration
     void SetEnableTrails(bool enable) { m_EnableTrails = enable; }
     bool GetEnableTrails() const { return m_EnableTrails; }
     
     void SetTrailLength(int maxPoints) { m_TrailLength = maxPoints; }
-    int GetTrailLength() const { return m_TrailLength; }
-    
-    void SetTrailLifetime(float lifetime) { m_TrailLifetime = lifetime; }
-    float GetTrailLifetime() const { return m_TrailLifetime; }
-    
-    void SetTrailWidth(float width) { m_TrailWidth = width; }
-    float GetTrailWidth() const { return m_TrailWidth; }
-    
-    void SetTrailMinDistance(float distance) { m_TrailMinDistance = distance; }
-    float GetTrailMinDistance() const { return m_TrailMinDistance; }
-    
-    void SetTrailTexture(std::shared_ptr<Texture> texture) { m_TrailTexture = texture; }
-    std::shared_ptr<Texture> GetTrailTexture() const { return m_TrailTexture; }
-    
-    void SetTrailColorMode(TrailColorMode mode) { m_TrailColorMode = mode; }
     TrailColorMode GetTrailColorMode() const { return m_TrailColorMode; }
     
     void SetTrailColor(const Vec4& color) { m_TrailColor = color; }
@@ -118,6 +159,18 @@ public:
     
     void SetTrailTurbulenceSpeed(float speed) { m_TrailTurbulenceSpeed = speed; }
     float GetTrailTurbulenceSpeed() const { return m_TrailTurbulenceSpeed; }
+
+    // LOD System
+    void AddLOD(const EmitterLOD& lod) { m_LODs.push_back(lod); }
+    void ClearLODs() { m_LODs.clear(); }
+    const std::vector<EmitterLOD>& GetLODs() const { return m_LODs; }
+    std::vector<EmitterLOD>& GetLODs() { return m_LODs; } // Mutable access for UI
+    
+    void SetUseLOD(bool use) { m_UseLOD = use; }
+    bool GetUseLOD() const { return m_UseLOD; }
+    int GetCurrentLODLevel() const { return m_CurrentLODLevel; }
+    float GetCurrentDistance() const { return m_CurrentDistance; }
+
     
     // GPU Compute
     void SetUseGPUCompute(bool enable);
@@ -130,14 +183,22 @@ public:
     
     // Get SSBO ID for rendering
     unsigned int GetParticleSSBO() const { return m_ParticleSSBO; }
+    unsigned int GetSortSSBO() const { return m_SortSSBO; }
+    unsigned int GetTrailSSBO() const { return m_TrailSSBO; }
     unsigned int GetAtomicCounterBuffer() const { return m_AtomicCounterBuffer; }
     unsigned int GetActiveParticleCount() const { return m_ActiveParticleCount; }
+    unsigned int GetSortBufferSize() const { return m_SortBufferSize; }
     
     // Presets
     static std::shared_ptr<ParticleEmitter> CreateFire(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateSmoke(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateSparks(const Vec3& position);
+    static std::shared_ptr<ParticleEmitter> CreateSparks(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateMagic(const Vec3& position);
+    
+    // Cloth/SoftBody Initialization
+    void InitCloth(int width, int height, float spacing, float stiffness, float damping);
+    void InitSoftBody(int width, int height, int depth, float spacing, float stiffness, float damping);
 
 private:
     void SpawnParticle();
@@ -149,6 +210,7 @@ private:
     float RandomFloat(float min, float max);
     
     std::vector<Particle> m_Particles;
+    std::vector<GPUParticle> m_GPUParticles;
     int m_MaxParticles;
     
     // Emitter properties
@@ -202,6 +264,44 @@ private:
         }
     };
     SpatialGrid m_SpatialGrid;
+
+    // GPU Collision System
+    std::unique_ptr<class Shader> m_SpatialHashShader;
+    std::unique_ptr<class Shader> m_BitonicSortShader;
+    std::unique_ptr<class Shader> m_GridBuildShader;
+    std::unique_ptr<class Shader> m_CollisionShader;
+
+    unsigned int m_GridSSBO;
+    unsigned int m_CollisionGridSize; // Total number of cells (e.g. 1M)
+    float m_CollisionCellSize;        // Size of each cell
+    
+    // SPH Shaders
+    std::unique_ptr<class Shader> m_SphDensityShader;
+    std::unique_ptr<class Shader> m_SphForceShader;
+    
+    PhysicsMode m_PhysicsMode;
+    float m_RestDensity;
+    float m_GasConstant;
+    float m_Viscosity;
+    float m_SmoothingRadius;
+
+    void InitGPUCollision();
+    void DispatchGPUCollision(float deltaTime);
+    
+    unsigned int GetIndirectBuffer() const { return m_IndirectBuffer; }
+    
+    float m_SmoothingRadius;
+
+    // Spring System (Cloth/SoftBody)
+    std::unique_ptr<class Shader> m_SpringForceShader;
+    std::unique_ptr<class Shader> m_ApplySpringForceShader;
+    std::vector<Spring> m_Springs;
+    unsigned int m_SpringSSBO;
+    unsigned int m_ForceSSBO; // Atomic accumulation buffer
+    
+    // Indirect Draw
+    unsigned int m_IndirectBuffer;
+    std::unique_ptr<class Shader> m_IndirectArgsShader;
     
     // Trail settings
     bool m_EnableTrails;
@@ -217,12 +317,24 @@ private:
     float m_TrailTurbulenceSpeed;
     float m_Time; // For animated turbulence
     
+    // LOD System
+    std::vector<EmitterLOD> m_LODs;
+    bool m_UseLOD;
+    int m_CurrentLODLevel;
+    float m_CurrentDistance;
+    EmitterLOD m_ActiveLOD; // Currently active settings
+    
+    void UpdateLOD(float distance);
+
     // GPU Compute
     bool m_UseGPUCompute;
     bool m_GPUPersistent;
     unsigned int m_ParticleSSBO;
+    unsigned int m_SortSSBO;
+    unsigned int m_TrailSSBO;
     unsigned int m_AtomicCounterBuffer;
     unsigned int m_ActiveParticleCount;
+    unsigned int m_SortBufferSize;
     std::unique_ptr<class Shader> m_ComputeShader;
     void InitGPUCompute();
     void ShutdownGPUCompute();

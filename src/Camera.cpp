@@ -99,3 +99,56 @@ void Camera::UpdateCameraVectors() {
     m_Right = m_Front.Cross(m_WorldUp).Normalized();
     m_Up = m_Right.Cross(m_Front).Normalized();
 }
+
+void Camera::GetFrustumPlanes(Vec4 planes[6]) const {
+    Mat4 viewProj = GetProjectionMatrix() * GetViewMatrix();
+    const float* m = viewProj.m;
+    
+    // Gribb-Hartmann method
+    // Left
+    planes[0].x = m[3] + m[0];
+    planes[0].y = m[7] + m[4];
+    planes[0].z = m[11] + m[8];
+    planes[0].w = m[15] + m[12];
+    
+    // Right
+    planes[1].x = m[3] - m[0];
+    planes[1].y = m[7] - m[4];
+    planes[1].z = m[11] - m[8];
+    planes[1].w = m[15] - m[12];
+    
+    // Bottom
+    planes[2].x = m[3] + m[1];
+    planes[2].y = m[7] + m[5];
+    planes[2].z = m[11] + m[9];
+    planes[2].w = m[15] + m[13];
+    
+    // Top
+    planes[3].x = m[3] - m[1];
+    planes[3].y = m[7] - m[5];
+    planes[3].z = m[11] - m[9];
+    planes[3].w = m[15] - m[13];
+    
+    // Near
+    planes[4].x = m[3] + m[2];
+    planes[4].y = m[7] + m[6];
+    planes[4].z = m[11] + m[10];
+    planes[4].w = m[15] + m[14];
+    
+    // Far
+    planes[5].x = m[3] - m[2];
+    planes[5].y = m[7] - m[6];
+    planes[5].z = m[11] - m[10];
+    planes[5].w = m[15] - m[14];
+    
+    // Normalize planes
+    for (int i = 0; i < 6; ++i) {
+        float length = std::sqrt(planes[i].x * planes[i].x + planes[i].y * planes[i].y + planes[i].z * planes[i].z);
+        if (length > 0.0f) {
+            planes[i].x /= length;
+            planes[i].y /= length;
+            planes[i].z /= length;
+            planes[i].w /= length;
+        }
+    }
+}
