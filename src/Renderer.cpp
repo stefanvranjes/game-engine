@@ -1,8 +1,14 @@
+#include "Renderer.h"
+#include "Sprite.h"
+#include "Frustum.h"
+#include "GLExtensions.h"
 #include <fstream>
 #include <sstream>
+#include <iostream>
 #include <limits>
 #include <algorithm>
 #include <cmath>
+#include <GLFW/glfw3.h>
 
 Renderer::Renderer() 
     : m_Camera(nullptr)

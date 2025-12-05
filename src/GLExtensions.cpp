@@ -61,6 +61,20 @@ PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
 PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = nullptr;
 PFNGLDRAWELEMENTSINSTANCEDPROC glDrawElementsInstanced = nullptr;
+PFNGLBLENDEQUATIONPROC glBlendEquation = nullptr;
+
+// Compute Shader function pointers
+PFNGLDISPATCHCOMPUTEPROC glDispatchCompute = nullptr;
+PFNGLDISPATCHCOMPUTEINDIRECTPROC glDispatchComputeIndirect = nullptr;
+PFNGLMEMORYBARRIERPROC glMemoryBarrier = nullptr;
+PFNGLBINDBUFFERBASEPROC glBindBufferBase = nullptr;
+PFNGLGETPROGRAMINTERFACEIVPROC glGetProgramInterfaceiv = nullptr;
+PFNGLGETINTEGERI_VPROC glGetIntegeri_v = nullptr;
+
+// Buffer mapping functions
+PFNGLMAPBUFFERPROC glMapBuffer = nullptr;
+PFNGLUNMAPBUFFERPROC glUnmapBuffer = nullptr;
+PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData = nullptr;
 
 
 bool LoadGLExtensions() {
@@ -123,6 +137,28 @@ bool LoadGLExtensions() {
     glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress("glVertexAttribDivisor");
     glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
     glDrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)wglGetProcAddress("glDrawElementsInstanced");
+    glBlendEquation = (PFNGLBLENDEQUATIONPROC)wglGetProcAddress("glBlendEquation");
+
+    // Load Compute Shader functions (OpenGL 4.3+, optional)
+    glDispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)wglGetProcAddress("glDispatchCompute");
+    glDispatchComputeIndirect = (PFNGLDISPATCHCOMPUTEINDIRECTPROC)wglGetProcAddress("glDispatchComputeIndirect");
+    glMemoryBarrier = (PFNGLMEMORYBARRIERPROC)wglGetProcAddress("glMemoryBarrier");
+    glBindBufferBase = (PFNGLBINDBUFFERBASEPROC)wglGetProcAddress("glBindBufferBase");
+    glGetProgramInterfaceiv = (PFNGLGETPROGRAMINTERFACEIVPROC)wglGetProcAddress("glGetProgramInterfaceiv");
+    glGetIntegeri_v = (PFNGLGETINTEGERI_VPROC)wglGetProcAddress("glGetIntegeri_v");
+    
+    // Load buffer mapping functions
+    glMapBuffer = (PFNGLMAPBUFFERPROC)wglGetProcAddress("glMapBuffer");
+    glUnmapBuffer = (PFNGLUNMAPBUFFERPROC)wglGetProcAddress("glUnmapBuffer");
+    glGetBufferSubData = (PFNGLGETBUFFERSUBDATAPROC)wglGetProcAddress("glGetBufferSubData");
+    
+    // Note: Compute shader functions are optional (OpenGL 4.3+)
+    // We don't fail if they're not available, but log a warning
+    if (!glDispatchCompute || !glMemoryBarrier || !glBindBufferBase) {
+        std::cout << "Warning: Compute shader support not available (OpenGL 4.3+ required)" << std::endl;
+    } else {
+        std::cout << "Compute shader support detected" << std::endl;
+    }
 
 
     // Check if all functions were loaded

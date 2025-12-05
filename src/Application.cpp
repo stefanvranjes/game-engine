@@ -1,4 +1,11 @@
-    : m_Running(false)
+#include "Application.h"
+#include "ImGuiManager.h"
+#include "GLTFLoader.h"
+#include <iostream>
+#include <GLFW/glfw3.h>
+#include "imgui/imgui.h"
+
+Application::Application()
     , m_LastFrameTime(0.0f)
     , m_FPS(0.0f)
     , m_FrameCount(0.0f)

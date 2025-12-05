@@ -2,10 +2,13 @@
 
 #include "Particle.h"
 #include "Texture.h"
+#include "CollisionShape.h"
+#include "ParticleTrail.h"
 #include "Math/Vec3.h"
 #include "Math/Vec4.h"
 #include <vector>
 #include <memory>
+#include <unordered_map>
 
 enum class EmitterShape {
     Point,
@@ -17,6 +20,13 @@ enum class EmitterShape {
 enum class BlendMode {
     Additive,
     Alpha
+};
+
+enum class TrailColorMode {
+    ParticleColor,      // Use particle's current color
+    FadeToTransparent,  // Fade from particle color to transparent
+    GradientToEnd,      // Gradient from start to end color
+    Custom              // Use custom trail color
 };
 
 class ParticleEmitter {
@@ -58,6 +68,71 @@ public:
     bool IsActive() const { return m_Active; }
     void SetActive(bool active) { m_Active = active; }
     
+    // Collision configuration
+    void AddCollisionShape(std::shared_ptr<CollisionShape> shape);
+    void RemoveCollisionShape(std::shared_ptr<CollisionShape> shape);
+    void ClearCollisionShapes();
+    const std::vector<std::shared_ptr<CollisionShape>>& GetCollisionShapes() const { return m_CollisionShapes; }
+    
+    void SetEnableParticleCollisions(bool enable) { m_EnableParticleCollisions = enable; }
+    bool GetEnableParticleCollisions() const { return m_EnableParticleCollisions; }
+    
+    void SetParticleCollisionRadius(float radius) { m_ParticleCollisionRadius = radius; }
+    float GetParticleCollisionRadius() const { return m_ParticleCollisionRadius; }
+    
+    void SetParticleMass(float mass) { m_DefaultMass = mass; }
+    void SetParticleRestitution(float restitution) { m_DefaultRestitution = restitution; }
+    void SetParticleFriction(float friction) { m_DefaultFriction = friction; }
+    
+    // Trail configuration
+    void SetEnableTrails(bool enable) { m_EnableTrails = enable; }
+    bool GetEnableTrails() const { return m_EnableTrails; }
+    
+    void SetTrailLength(int maxPoints) { m_TrailLength = maxPoints; }
+    int GetTrailLength() const { return m_TrailLength; }
+    
+    void SetTrailLifetime(float lifetime) { m_TrailLifetime = lifetime; }
+    float GetTrailLifetime() const { return m_TrailLifetime; }
+    
+    void SetTrailWidth(float width) { m_TrailWidth = width; }
+    float GetTrailWidth() const { return m_TrailWidth; }
+    
+    void SetTrailMinDistance(float distance) { m_TrailMinDistance = distance; }
+    float GetTrailMinDistance() const { return m_TrailMinDistance; }
+    
+    void SetTrailTexture(std::shared_ptr<Texture> texture) { m_TrailTexture = texture; }
+    std::shared_ptr<Texture> GetTrailTexture() const { return m_TrailTexture; }
+    
+    void SetTrailColorMode(TrailColorMode mode) { m_TrailColorMode = mode; }
+    TrailColorMode GetTrailColorMode() const { return m_TrailColorMode; }
+    
+    void SetTrailColor(const Vec4& color) { m_TrailColor = color; }
+    Vec4 GetTrailColor() const { return m_TrailColor; }
+    
+    // Trail turbulence
+    void SetTrailTurbulence(float strength) { m_TrailTurbulence = strength; }
+    float GetTrailTurbulence() const { return m_TrailTurbulence; }
+    
+    void SetTrailTurbulenceFrequency(float freq) { m_TrailTurbulenceFrequency = freq; }
+    float GetTrailTurbulenceFrequency() const { return m_TrailTurbulenceFrequency; }
+    
+    void SetTrailTurbulenceSpeed(float speed) { m_TrailTurbulenceSpeed = speed; }
+    float GetTrailTurbulenceSpeed() const { return m_TrailTurbulenceSpeed; }
+    
+    // GPU Compute
+    void SetUseGPUCompute(bool enable);
+    bool GetUseGPUCompute() const { return m_UseGPUCompute; }
+    bool IsGPUComputeAvailable() const;
+    
+    // Persistent GPU mode (keeps data on GPU, no CPU readback)
+    void SetGPUPersistent(bool enable);
+    bool GetGPUPersistent() const { return m_GPUPersistent; }
+    
+    // Get SSBO ID for rendering
+    unsigned int GetParticleSSBO() const { return m_ParticleSSBO; }
+    unsigned int GetAtomicCounterBuffer() const { return m_AtomicCounterBuffer; }
+    unsigned int GetActiveParticleCount() const { return m_ActiveParticleCount; }
+    
     // Presets
     static std::shared_ptr<ParticleEmitter> CreateFire(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateSmoke(const Vec3& position);
@@ -67,6 +142,10 @@ public:
 private:
     void SpawnParticle();
     Vec3 GetRandomVelocity();
+    void HandleShapeCollisions(Particle& particle, float deltaTime);
+    void HandleParticleCollisions(float deltaTime);
+    void BuildSpatialGrid();
+    void ResolveParticleCollision(Particle& p1, Particle& p2);
     float RandomFloat(float min, float max);
     
     std::vector<Particle> m_Particles;
@@ -100,4 +179,53 @@ private:
     int m_AtlasCols;
     float m_AnimationSpeed;
     bool m_LoopAnimation;
+    
+    // Collision system
+    std::vector<std::shared_ptr<CollisionShape>> m_CollisionShapes;
+    bool m_EnableParticleCollisions;
+    float m_ParticleCollisionRadius;
+    float m_DefaultMass;
+    float m_DefaultRestitution;
+    float m_DefaultFriction;
+    
+    // Spatial grid for particle-to-particle collisions
+    struct SpatialGrid {
+        std::unordered_map<int, std::vector<Particle*>> cells;
+        float cellSize;
+        
+        int GetCellIndex(const Vec3& pos) const {
+            int x = static_cast<int>(pos.x / cellSize);
+            int y = static_cast<int>(pos.y / cellSize);
+            int z = static_cast<int>(pos.z / cellSize);
+            // Simple hash function
+            return x * 73856093 ^ y * 19349663 ^ z * 83492791;
+        }
+    };
+    SpatialGrid m_SpatialGrid;
+    
+    // Trail settings
+    bool m_EnableTrails;
+    int m_TrailLength;
+    float m_TrailLifetime;
+    float m_TrailWidth;
+    float m_TrailMinDistance;
+    std::shared_ptr<Texture> m_TrailTexture;
+    TrailColorMode m_TrailColorMode;
+    Vec4 m_TrailColor;
+    float m_TrailTurbulence;
+    float m_TrailTurbulenceFrequency;
+    float m_TrailTurbulenceSpeed;
+    float m_Time; // For animated turbulence
+    
+    // GPU Compute
+    bool m_UseGPUCompute;
+    bool m_GPUPersistent;
+    unsigned int m_ParticleSSBO;
+    unsigned int m_AtomicCounterBuffer;
+    unsigned int m_ActiveParticleCount;
+    std::unique_ptr<class Shader> m_ComputeShader;
+    void InitGPUCompute();
+    void ShutdownGPUCompute();
+    void UpdateGPU(float deltaTime);
+    void UpdateCPU(float deltaTime);
 };

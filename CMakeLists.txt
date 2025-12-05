@@ -86,9 +86,13 @@ add_executable(GameEngine
     src/GLTFLoader.cpp
     src/PreviewRenderer.cpp
     src/Material.cpp
+    src/CollisionShape.cpp
+    src/CollisionDemo.cpp
+    src/ParticleTrail.cpp
     src/ParticleEmitter.cpp
     src/ParticleSystem.cpp
     src/Sprite.cpp
+    src/SSBO.cpp
     ${IMGUI_SOURCES}
 )
 

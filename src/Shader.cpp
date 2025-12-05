@@ -6,7 +6,7 @@
 #include <iostream>
 #include <algorithm>
 
-Shader::Shader() : m_ProgramID(0) {
+Shader::Shader() : m_ProgramID(0), m_IsComputeShader(false) {
 }
 
 Shader::~Shader() {
@@ -138,6 +138,8 @@ bool Shader::LoadFromFiles(const std::string& vertexPath, const std::string& fra
     if (!geometryPath.empty()) {
         m_LastWriteTime = std::max(m_LastWriteTime, GetFileTimestamp(geometryPath));
     }
+    
+    m_IsComputeShader = false;
 
     std::cout << "Shader program created successfully" << std::endl;
     return true;
@@ -152,31 +154,130 @@ long long Shader::GetFileTimestamp(const std::string& filepath) {
 }
 
 void Shader::CheckForUpdates() {
-    long long currentMaxTime = GetFileTimestamp(m_VertexPath);
-    currentMaxTime = std::max(currentMaxTime, GetFileTimestamp(m_FragmentPath));
-    if (!m_GeometryPath.empty()) {
-        currentMaxTime = std::max(currentMaxTime, GetFileTimestamp(m_GeometryPath));
-    }
-    
-    if (currentMaxTime > m_LastWriteTime) {
-        std::cout << "Reloading shader..." << std::endl;
+    if (m_IsComputeShader) {
+        // Check compute shader for updates
+        long long currentTime = GetFileTimestamp(m_ComputePath);
         
-        // Keep old ID in case reload fails
-        unsigned int oldProgram = m_ProgramID;
+        if (currentTime > m_LastWriteTime) {
+            std::cout << "Reloading compute shader..." << std::endl;
+            
+            unsigned int oldProgram = m_ProgramID;
+            
+            if (LoadComputeShader(m_ComputePath)) {
+                glDeleteProgram(oldProgram);
+                std::cout << "Compute shader reloaded successfully!" << std::endl;
+            } else {
+                m_ProgramID = oldProgram;
+                std::cerr << "Compute shader reload failed! Keeping old shader." << std::endl;
+                m_LastWriteTime = currentTime;
+            }
+        }
+    } else {
+        // Check regular shaders for updates
+        long long currentMaxTime = GetFileTimestamp(m_VertexPath);
+        currentMaxTime = std::max(currentMaxTime, GetFileTimestamp(m_FragmentPath));
+        if (!m_GeometryPath.empty()) {
+            currentMaxTime = std::max(currentMaxTime, GetFileTimestamp(m_GeometryPath));
+        }
         
-        // Attempt reload
-        if (LoadFromFiles(m_VertexPath, m_FragmentPath, m_GeometryPath)) {
-            // Success! Delete old program
-            glDeleteProgram(oldProgram);
-            std::cout << "Shader reloaded successfully!" << std::endl;
-        } else {
-            // Failed! Restore old program
-            m_ProgramID = oldProgram;
-            std::cerr << "Shader reload failed! Keeping old shader." << std::endl;
-            // Update timestamp anyway to avoid loop
-            m_LastWriteTime = currentMaxTime;
+        if (currentMaxTime > m_LastWriteTime) {
+            std::cout << "Reloading shader..." << std::endl;
+            
+            // Keep old ID in case reload fails
+            unsigned int oldProgram = m_ProgramID;
+            
+            // Attempt reload
+            if (LoadFromFiles(m_VertexPath, m_FragmentPath, m_GeometryPath)) {
+                // Success! Delete old program
+                glDeleteProgram(oldProgram);
+                std::cout << "Shader reloaded successfully!" << std::endl;
+            } else {
+                // Failed! Restore old program
+                m_ProgramID = oldProgram;
+                std::cerr << "Shader reload failed! Keeping old shader." << std::endl;
+                // Update timestamp anyway to avoid loop
+                m_LastWriteTime = currentMaxTime;
+            }
         }
     }
+}
+
+bool Shader::LoadComputeShader(const std::string& computePath) {
+    // Check if compute shaders are supported
+    if (!glDispatchCompute || !glMemoryBarrier) {
+        std::cerr << "Compute shaders not supported (OpenGL 4.3+ required)" << std::endl;
+        return false;
+    }
+    
+    // Read shader source code
+    std::string computeCode = ReadFile(computePath);
+    
+    if (computeCode.empty()) {
+        return false;
+    }
+    
+    // Create compute shader
+    unsigned int computeShader = glCreateShader(GL_COMPUTE_SHADER);
+    
+    // Compile shader
+    if (!CompileShader(computeShader, computeCode, "COMPUTE")) {
+        glDeleteShader(computeShader);
+        return false;
+    }
+    
+    // Create program and link
+    m_ProgramID = glCreateProgram();
+    glAttachShader(m_ProgramID, computeShader);
+    
+    if (!LinkProgram()) {
+        glDeleteShader(computeShader);
+        glDeleteProgram(m_ProgramID);
+        m_ProgramID = 0;
+        return false;
+    }
+    
+    // Clean up shader (it's linked into the program now)
+    glDeleteShader(computeShader);
+    
+    // Store path and timestamp
+    m_ComputePath = computePath;
+    m_LastWriteTime = GetFileTimestamp(computePath);
+    m_IsComputeShader = true;
+    
+    std::cout << "Compute shader program created successfully" << std::endl;
+    return true;
+}
+
+void Shader::Dispatch(unsigned int numGroupsX, unsigned int numGroupsY, unsigned int numGroupsZ) const {
+    if (!m_IsComputeShader) {
+        std::cerr << "Error: Dispatch called on non-compute shader" << std::endl;
+        return;
+    }
+    
+    if (!glDispatchCompute) {
+        std::cerr << "Error: glDispatchCompute not available" << std::endl;
+        return;
+    }
+    
+    glDispatchCompute(numGroupsX, numGroupsY, numGroupsZ);
+}
+
+void Shader::GetWorkGroupSize(int& x, int& y, int& z) const {
+    if (!m_IsComputeShader) {
+        std::cerr << "Error: GetWorkGroupSize called on non-compute shader" << std::endl;
+        x = y = z = 0;
+        return;
+    }
+    
+    if (!glGetIntegeri_v) {
+        std::cerr << "Error: glGetIntegeri_v not available" << std::endl;
+        x = y = z = 0;
+        return;
+    }
+    
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &x);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &y);
+    glGetIntegeri_v(GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &z);
 }
 
 void Shader::Use() const {

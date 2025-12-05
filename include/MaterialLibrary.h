@@ -7,6 +7,9 @@
 
 class MaterialLibrary {
 public:
+    MaterialLibrary();
+    ~MaterialLibrary();
+    
     std::shared_ptr<Material> CreateMaterial(const std::string& name);
 
     // Get an existing material by name

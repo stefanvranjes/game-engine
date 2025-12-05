@@ -1,0 +1,55 @@
+#version 430 core
+
+// Work group size (8x8 = 64 threads per work group)
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// Input and output textures
+layout(rgba16f, binding = 0) uniform readonly image2D inputImage;
+layout(rgba16f, binding = 1) uniform writeonly image2D outputImage;
+
+// Uniforms
+uniform int kernelSize; // Should be odd number (3, 5, 7, etc.)
+uniform float sigma; // Gaussian blur strength
+
+// Gaussian weight calculation
+float gaussian(float x, float sigma) {
+    return exp(-(x * x) / (2.0 * sigma * sigma)) / (sigma * sqrt(2.0 * 3.14159265));
+}
+
+void main() {
+    ivec2 texCoord = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 imageSize = imageSize(inputImage);
+    
+    // Bounds check
+    if (texCoord.x >= imageSize.x || texCoord.y >= imageSize.y) {
+        return;
+    }
+    
+    vec4 result = vec4(0.0);
+    float weightSum = 0.0;
+    
+    int halfKernel = kernelSize / 2;
+    
+    // Apply Gaussian blur
+    for (int y = -halfKernel; y <= halfKernel; y++) {
+        for (int x = -halfKernel; x <= halfKernel; x++) {
+            ivec2 sampleCoord = texCoord + ivec2(x, y);
+            
+            // Clamp to image bounds
+            sampleCoord = clamp(sampleCoord, ivec2(0), imageSize - ivec2(1));
+            
+            // Calculate Gaussian weight
+            float distance = length(vec2(x, y));
+            float weight = gaussian(distance, sigma);
+            
+            // Sample and accumulate
+            vec4 sample = imageLoad(inputImage, sampleCoord);
+            result += sample * weight;
+            weightSum += weight;
+        }
+    }
+    
+    // Normalize and write output
+    result /= weightSum;
+    imageStore(outputImage, texCoord, result);
+}

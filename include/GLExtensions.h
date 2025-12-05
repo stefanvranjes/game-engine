@@ -70,7 +70,41 @@
 #define GL_RG16F 0x822F
 #define GL_SRGB 0x8C40
 #define GL_SRGB_ALPHA 0x8C42
+#define GL_FUNC_ADD 0x8006
+#define GL_FUNC_SUBTRACT 0x800A
+#define GL_FUNC_REVERSE_SUBTRACT 0x800B
+#define GL_ONE 1
 
+// OpenGL 4.3+ Compute Shader constants
+#define GL_COMPUTE_SHADER 0x91B9
+#define GL_SHADER_STORAGE_BUFFER 0x90D2
+#define GL_SHADER_STORAGE_BUFFER_BINDING 0x90D3
+#define GL_SHADER_STORAGE_BARRIER_BIT 0x00002000
+#define GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT 0x00000001
+#define GL_ELEMENT_ARRAY_BARRIER_BIT 0x00000002
+#define GL_UNIFORM_BARRIER_BIT 0x00000004
+#define GL_TEXTURE_FETCH_BARRIER_BIT 0x00000008
+#define GL_COMMAND_BARRIER_BIT 0x00000040
+#define GL_PIXEL_BUFFER_BARRIER_BIT 0x00000080
+#define GL_TEXTURE_UPDATE_BARRIER_BIT 0x00000100
+#define GL_BUFFER_UPDATE_BARRIER_BIT 0x00000200
+#define GL_FRAMEBUFFER_BARRIER_BIT 0x00000400
+#define GL_TRANSFORM_FEEDBACK_BARRIER_BIT 0x00000800
+#define GL_ATOMIC_COUNTER_BARRIER_BIT 0x00001000
+#define GL_ALL_BARRIER_BITS 0xFFFFFFFF
+#define GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS 0x90EB
+#define GL_MAX_COMPUTE_WORK_GROUP_COUNT 0x91BE
+#define GL_MAX_COMPUTE_WORK_GROUP_SIZE 0x91BF
+#define GL_DISPATCH_INDIRECT_BUFFER 0x90EE
+
+// Buffer access modes
+#define GL_READ_ONLY 0x88B8
+#define GL_WRITE_ONLY 0x88B9
+#define GL_READ_WRITE 0x88BA
+
+// Atomic counters
+#define GL_ATOMIC_COUNTER_BUFFER 0x92C0
+#define GL_ATOMIC_COUNTER_BARRIER_BIT 0x00001000
 
 // OpenGL 3.3 types
 typedef char GLchar;
@@ -214,6 +248,38 @@ extern PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
 
 typedef void (APIENTRYP PFNGLDRAWELEMENTSINSTANCEDPROC) (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
 extern PFNGLDRAWELEMENTSINSTANCEDPROC glDrawElementsInstanced;
+
+typedef void (APIENTRYP PFNGLBLENDEQUATIONPROC) (GLenum mode);
+extern PFNGLBLENDEQUATIONPROC glBlendEquation;
+
+// Compute Shader function pointers
+typedef void (APIENTRYP PFNGLDISPATCHCOMPUTEPROC) (GLuint num_groups_x, GLuint num_groups_y, GLuint num_groups_z);
+extern PFNGLDISPATCHCOMPUTEPROC glDispatchCompute;
+
+typedef void (APIENTRYP PFNGLDISPATCHCOMPUTEINDIRECTPROC) (GLintptr indirect);
+extern PFNGLDISPATCHCOMPUTEINDIRECTPROC glDispatchComputeIndirect;
+
+typedef void (APIENTRYP PFNGLMEMORYBARRIERPROC) (GLbitfield barriers);
+extern PFNGLMEMORYBARRIERPROC glMemoryBarrier;
+
+typedef void (APIENTRYP PFNGLBINDBUFFERBASEPROC) (GLenum target, GLuint index, GLuint buffer);
+extern PFNGLBINDBUFFERBASEPROC glBindBufferBase;
+
+typedef void (APIENTRYP PFNGLGETPROGRAMINTERFACEIVPROC) (GLuint program, GLenum programInterface, GLenum pname, GLint *params);
+extern PFNGLGETPROGRAMINTERFACEIVPROC glGetProgramInterfaceiv;
+
+typedef void (APIENTRYP PFNGLGETINTEGERI_VPROC) (GLenum target, GLuint index, GLint *data);
+extern PFNGLGETINTEGERI_VPROC glGetIntegeri_v;
+
+// Buffer mapping functions
+typedef void* (APIENTRYP PFNGLMAPBUFFERPROC) (GLenum target, GLenum access);
+extern PFNGLMAPBUFFERPROC glMapBuffer;
+
+typedef GLboolean (APIENTRYP PFNGLUNMAPBUFFERPROC) (GLenum target);
+extern PFNGLUNMAPBUFFERPROC glUnmapBuffer;
+
+typedef void (APIENTRYP PFNGLGETBUFFERSUBDATAPROC) (GLenum target, GLintptr offset, GLsizeiptr size, void *data);
+extern PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData;
 
 
 // Function to load OpenGL extensions

@@ -9,7 +9,9 @@ public:
     ~Shader();
 
     bool LoadFromFiles(const std::string& vertexPath, const std::string& fragmentPath, const std::string& geometryPath = "");
+    bool LoadComputeShader(const std::string& computePath);
     void Use() const;
+    void Dispatch(unsigned int numGroupsX, unsigned int numGroupsY, unsigned int numGroupsZ) const;
     
     // Uniform setters
     void SetInt(const std::string& name, int value);
@@ -20,6 +22,8 @@ public:
     void SetMat4(const std::string& name, const float* value);
 
     unsigned int GetProgramID() const { return m_ProgramID; }
+    bool IsComputeShader() const { return m_IsComputeShader; }
+    void GetWorkGroupSize(int& x, int& y, int& z) const;
     
     // Hot-Reload
     void CheckForUpdates();
@@ -33,10 +37,12 @@ private:
 
     unsigned int m_ProgramID;
     std::unordered_map<std::string, int> m_UniformLocationCache;
+    bool m_IsComputeShader;
     
     // Hot-Reload State
     std::string m_VertexPath;
     std::string m_FragmentPath;
     std::string m_GeometryPath;
+    std::string m_ComputePath;
     long long m_LastWriteTime;
 };
