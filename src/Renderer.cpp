@@ -2,6 +2,7 @@
 #include "Sprite.h"
 #include "Frustum.h"
 #include "GLExtensions.h"
+#include "GLTFLoader.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -19,6 +20,7 @@ Renderer::Renderer()
     , m_SSREnabled(false)
     , m_TAAEnabled(false)
     , m_BatchedRenderingEnabled(true)  // Enable by default
+    , m_AnimBlendTestTimer(0.0f)
 {
     m_TextureManager = std::make_unique<TextureManager>();
     m_MaterialLibrary = std::make_unique<MaterialLibrary>();
@@ -201,6 +203,40 @@ void Renderer::SetupScene() {
     floor->SetMaterial(mat);
     
     if (m_Root) m_Root->AddChild(floor);
+    
+    // Load animated GLTF model for testing
+    try {
+        auto animatedModel = GLTFLoader::Load("assets/RiggedSimple.gltf", m_TextureManager.get());
+        if (animatedModel) {
+            // Position the model at a visible location
+            animatedModel->GetTransform().position = Vec3(-4, 0, 0);
+            animatedModel->GetTransform().scale = Vec3(1, 1, 1);
+            
+            if (m_Root) {
+                m_Root->AddChild(animatedModel);
+                m_TestAnimatedModel = animatedModel;  // Store for blend testing
+                
+                std::cout << "Loaded animated GLTF model: RiggedSimple.gltf" << std::endl;
+                
+                // Print animator info if present
+                if (animatedModel->GetAnimator()) {
+                    auto animator = animatedModel->GetAnimator();
+                    std::cout << "  Animator attached with " 
+                              << animator->GetAnimationCount() 
+                              << " animations" << std::endl;
+                    
+                    // If multiple animations, set up for blend testing
+                    if (animator->GetAnimationCount() > 1) {
+                        std::cout << "  Blend test enabled: Will cycle through animations every 5 seconds" << std::endl;
+                    }
+                }
+            }
+        } else {
+            std::cout << "Failed to load RiggedSimple.gltf" << std::endl;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Exception loading GLTF model: " << e.what() << std::endl;
+    }
     
     // Add lights
     // First light must be Directional with shadows for CSM to work
@@ -715,6 +751,9 @@ void Renderer::Update(float deltaTime) {
         // Update sprites specifically with deltaTime
         UpdateSprites(m_Root, deltaTime);
         
+        // Update animators with deltaTime
+        m_Root->UpdateAnimator(deltaTime);
+        
         // Test transition blending after 3 seconds
         if (m_TestSprite) {
             m_TransitionTestTimer += deltaTime;
@@ -730,6 +769,37 @@ void Renderer::Update(float deltaTime) {
                 std::cout << "[Transition Test] Starting transition from idle to walk (0.5s)..." << std::endl;
                 m_TestSprite->PlaySequenceWithTransition("walk", 0.5f);
                 m_TransitionTestTimer = 0.0f;  // Reset timer to loop the test
+            }
+        }
+        
+        // Test animation blending - cycle through animations
+        if (m_TestAnimatedModel && m_TestAnimatedModel->GetAnimator()) {
+            auto animator = m_TestAnimatedModel->GetAnimator();
+            int animCount = animator->GetAnimationCount();
+            
+            if (animCount > 1) {
+                m_AnimBlendTestTimer += deltaTime;
+                
+                // Cycle through animations every 5 seconds with 0.5s blend
+                int currentCycle = static_cast<int>(m_AnimBlendTestTimer / 5.0f);
+                int nextAnimIndex = currentCycle % animCount;
+                float cycleTime = fmod(m_AnimBlendTestTimer, 5.0f);
+                
+                // Trigger transition at the start of each cycle (with small window to avoid multiple triggers)
+                if (cycleTime < deltaTime * 2.0f) {
+                    std::cout << "[Animation Blend Test] Transitioning to animation " << nextAnimIndex 
+                              << " with 0.5s blend..." << std::endl;
+                    animator->TransitionToAnimation(nextAnimIndex, 0.5f);
+                }
+                
+                // Print blend progress during first second of blend
+                if (animator->IsBlending() && cycleTime < 1.0f) {
+                    if (fmod(cycleTime, 0.2f) < deltaTime) {  // Print every 0.2s
+                        std::cout << "  Blend progress: " 
+                                  << static_cast<int>(animator->GetBlendProgress() * 100.0f) 
+                                  << "%" << std::endl;
+                    }
+                }
             }
         }
     }
@@ -825,6 +895,22 @@ void Renderer::Render() {
         lightSpaceMatrices = GetLightSpaceMatrices();
         
         m_DepthShader->Use();
+        
+        // Upload bone matrices for animated shadows
+        if (m_Root && m_Root->GetAnimator()) {
+            auto animator = m_Root->GetAnimator();
+            const auto& boneMatrices = animator->GetBoneMatrices();
+            
+            for (size_t i = 0; i < boneMatrices.size() && i < 100; ++i) {
+                std::string uniformName = "u_BoneMatrices[" + std::to_string(i) + "]";
+                m_DepthShader->SetMat4(uniformName, boneMatrices[i].m);
+            }
+            
+            m_DepthShader->SetInt("u_Skinned", 1);
+        } else {
+            m_DepthShader->SetInt("u_Skinned", 0);
+        }
+        
         glViewport(0, 0, m_CSM->GetWidth(), m_CSM->GetHeight());
         
         for (unsigned int i = 0; i < 3; ++i) {
@@ -944,6 +1030,22 @@ void Renderer::Render() {
     // Set view position for parallax occlusion mapping
     Vec3 viewPos = m_Camera->GetPosition();
     m_GeometryShader->SetVec3("u_ViewPos", viewPos.x, viewPos.y, viewPos.z);
+    
+    // Upload bone matrices if root has an animator
+    if (m_Root && m_Root->GetAnimator()) {
+        auto animator = m_Root->GetAnimator();
+        const auto& boneMatrices = animator->GetBoneMatrices();
+        
+        // Upload bone matrices to shader
+        for (size_t i = 0; i < boneMatrices.size() && i < 100; ++i) {
+            std::string uniformName = "u_BoneMatrices[" + std::to_string(i) + "]";
+            m_GeometryShader->SetMat4(uniformName, boneMatrices[i].m);
+        }
+        
+        m_GeometryShader->SetInt("u_Skinned", 1);
+    } else {
+        m_GeometryShader->SetInt("u_Skinned", 0);
+    }
 
     // Render scene to G-Buffer
     if (m_Root) {

@@ -186,4 +186,8 @@ private:
     // Test sprite for transition demo
     std::shared_ptr<class Sprite> m_TestSprite;
     float m_TransitionTestTimer;
+    
+    // Test animated model for blend demo
+    std::shared_ptr<GameObject> m_TestAnimatedModel;
+    float m_AnimBlendTestTimer;
 };

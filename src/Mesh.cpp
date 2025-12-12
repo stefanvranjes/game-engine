@@ -73,7 +73,7 @@ void Mesh::SetupMesh(const std::vector<float>& vertices, const std::vector<unsig
         Vec3 minBounds(vertices[0], vertices[1], vertices[2]);
         Vec3 maxBounds(vertices[0], vertices[1], vertices[2]);
 
-        for (size_t i = 0; i < vertices.size(); i += 8) {
+        for (size_t i = 0; i < vertices.size(); i += 16) {
             float x = vertices[i];
             float y = vertices[i + 1];
             float z = vertices[i + 2];
@@ -98,16 +98,24 @@ void Mesh::SetupMesh(const std::vector<float>& vertices, const std::vector<unsig
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), indices.data(), GL_STATIC_DRAW);
 
     // Position attribute (location 0)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
     // Normal attribute (location 2)
-    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+    glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
     // Texture coordinate attribute (location 1)
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(1);
+    
+    // Bone IDs attribute (location 3)
+    glVertexAttribIPointer(3, 4, GL_INT, 16 * sizeof(float), (void*)(8 * sizeof(float)));
+    glEnableVertexAttribArray(3);
+    
+    // Bone Weights attribute (location 4)
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 16 * sizeof(float), (void*)(12 * sizeof(float)));
+    glEnableVertexAttribArray(4);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);

@@ -16,6 +16,7 @@ public:
     virtual ~GameObject();
 
     virtual void Update(const Mat4& parentMatrix);
+    void UpdateAnimator(float deltaTime);  // Update animation state
     void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr, bool forceRender = false);
 
     void AddChild(std::shared_ptr<GameObject> child);
@@ -45,6 +46,10 @@ public:
     
     // Get World Space AABB
     AABB GetWorldAABB() const;
+    
+    // Animation
+    void SetAnimator(std::shared_ptr<class Animator> animator) { m_Animator = animator; }
+    std::shared_ptr<class Animator> GetAnimator() const { return m_Animator; }
 
     // LOD System
     struct LODLevel {
@@ -99,4 +104,7 @@ private:
 
     std::vector<std::shared_ptr<GameObject>> m_Children;
     std::weak_ptr<GameObject> m_Parent;
+    
+    // Animation
+    std::shared_ptr<class Animator> m_Animator;
 };

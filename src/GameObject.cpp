@@ -1,6 +1,7 @@
 #include "GameObject.h"
 #include "Frustum.h"
 #include "GLExtensions.h"
+#include "Animator.h"
 #include <algorithm>
 #include <iostream>
 
@@ -39,6 +40,18 @@ void GameObject::Update(const Mat4& parentMatrix) {
     // Update children
     for (auto& child : m_Children) {
         child->Update(m_WorldMatrix);
+    }
+}
+
+void GameObject::UpdateAnimator(float deltaTime) {
+    // Update animator if present
+    if (m_Animator) {
+        m_Animator->Update(deltaTime);
+    }
+    
+    // Update children animators
+    for (auto& child : m_Children) {
+        child->UpdateAnimator(deltaTime);
     }
 }
 

@@ -4,6 +4,9 @@
 #include "Mesh.h"
 #include "Texture.h"
 #include "Math/Vec3.h"
+#include "Animation.h"
+#include "Bone.h"
+#include "Animator.h"
 #include <tiny_gltf.h>
 #include <iostream>
 #include <memory>
@@ -77,6 +80,10 @@ public:
 
         // Load materials
         LoadMaterials(model);
+        
+        // Load skeletons and animations
+        LoadSkeletons(model);
+        LoadAnimations(model);
 
         // Create root object
         auto root = std::make_shared<GameObject>("GLTF_Root");
@@ -89,6 +96,25 @@ public:
                 root->AddChild(child);
             }
         }
+        
+        // Attach animator if we have skeleton and animations
+        if (!m_Skeletons.empty() && !m_Animations.empty()) {
+            auto animator = std::make_shared<Animator>();
+            animator->SetSkeleton(m_Skeletons[0]);  // Use first skeleton
+            
+            // Add all animations
+            for (auto& anim : m_Animations) {
+                animator->AddAnimation(anim);
+            }
+            
+            // Play first animation by default
+            if (!m_Animations.empty()) {
+                animator->PlayAnimation(0, true);
+            }
+            
+            root->SetAnimator(animator);
+            std::cout << "Attached animator with " << m_Animations.size() << " animations to root" << std::endl;
+        }
 
         return root;
     }
@@ -97,6 +123,9 @@ private:
     TextureManager* m_TexManager;
     std::vector<std::shared_ptr<Texture>> m_Textures;
     std::vector<std::shared_ptr<Material>> m_Materials;
+    std::vector<std::shared_ptr<Skeleton>> m_Skeletons;
+    std::vector<std::shared_ptr<Animation>> m_Animations;
+    std::map<int, int> m_NodeToJointIndex;  // Map GLTF node index to joint index
 
     void LoadTextures(const tinygltf::Model& model) {
         m_Textures.resize(model.textures.size());
@@ -183,6 +212,174 @@ private:
             }
 
             m_Materials[i] = material;
+        }
+    }
+    
+    void LoadSkeletons(const tinygltf::Model& model) {
+        m_Skeletons.resize(model.skins.size());
+        
+        for (size_t skinIdx = 0; skinIdx < model.skins.size(); ++skinIdx) {
+            const auto& skin = model.skins[skinIdx];
+            auto skeleton = std::make_shared<Skeleton>();
+            
+            // Get inverse bind matrices
+            std::vector<Mat4> inverseBindMatrices;
+            if (skin.inverseBindMatrices >= 0) {
+                const auto& accessor = model.accessors[skin.inverseBindMatrices];
+                const auto& bufferView = model.bufferViews[accessor.bufferView];
+                const auto& buffer = model.buffers[bufferView.buffer];
+                const float* matrices = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+                
+                for (size_t i = 0; i < accessor.count; ++i) {
+                    Mat4 mat;
+                    // GLTF stores matrices in column-major order, same as our Mat4
+                    memcpy(mat.m, &matrices[i * 16], 16 * sizeof(float));
+                    inverseBindMatrices.push_back(mat);
+                }
+            }
+            
+            // Build bone hierarchy
+            for (size_t jointIdx = 0; jointIdx < skin.joints.size(); ++jointIdx) {
+                int nodeIdx = skin.joints[jointIdx];
+                const auto& node = model.nodes[nodeIdx];
+                
+                Bone bone;
+                bone.name = node.name.empty() ? ("Joint_" + std::to_string(jointIdx)) : node.name;
+                
+                // Set inverse bind matrix
+                if (jointIdx < inverseBindMatrices.size()) {
+                    bone.inverseBindMatrix = inverseBindMatrices[jointIdx];
+                } else {
+                    bone.inverseBindMatrix = Mat4::Identity();
+                }
+                
+                // Find parent bone
+                bone.parentIndex = -1;
+                for (size_t parentJointIdx = 0; parentJointIdx < skin.joints.size(); ++parentJointIdx) {
+                    int parentNodeIdx = skin.joints[parentJointIdx];
+                    const auto& parentNode = model.nodes[parentNodeIdx];
+                    
+                    // Check if this node is a child of the parent node
+                    for (int childIdx : parentNode.children) {
+                        if (childIdx == nodeIdx) {
+                            bone.parentIndex = static_cast<int>(parentJointIdx);
+                            break;
+                        }
+                    }
+                    if (bone.parentIndex >= 0) break;
+                }
+                
+                // Set local transform from node TRS
+                Mat4 translation = Mat4::Identity();
+                Mat4 rotation = Mat4::Identity();
+                Mat4 scale = Mat4::Identity();
+                
+                if (node.translation.size() == 3) {
+                    translation = Mat4::Translation(Vec3(node.translation[0], node.translation[1], node.translation[2]));
+                }
+                if (node.rotation.size() == 4) {
+                    Quaternion q(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]);
+                    rotation = q.ToMatrix();
+                }
+                if (node.scale.size() == 3) {
+                    scale = Mat4::Scale(Vec3(node.scale[0], node.scale[1], node.scale[2]));
+                }
+                
+                bone.localTransform = translation * rotation * scale;
+                
+                skeleton->AddBone(bone);
+                m_NodeToJointIndex[nodeIdx] = static_cast<int>(jointIdx);
+            }
+            
+            m_Skeletons[skinIdx] = skeleton;
+            std::cout << "Loaded skeleton with " << skeleton->GetBoneCount() << " bones" << std::endl;
+        }
+    }
+    
+    void LoadAnimations(const tinygltf::Model& model) {
+        m_Animations.resize(model.animations.size());
+        
+        for (size_t animIdx = 0; animIdx < model.animations.size(); ++animIdx) {
+            const auto& gltfAnim = model.animations[animIdx];
+            auto animation = std::make_shared<Animation>(gltfAnim.name.empty() ? ("Animation_" + std::to_string(animIdx)) : gltfAnim.name);
+            
+            float maxTime = 0.0f;
+            
+            // Process each channel
+            for (const auto& channel : gltfAnim.channels) {
+                const auto& sampler = gltfAnim.samplers[channel.sampler];
+                int targetNode = channel.target_node;
+                
+                // Find joint index for this node
+                auto it = m_NodeToJointIndex.find(targetNode);
+                if (it == m_NodeToJointIndex.end()) {
+                    continue; // Not a bone node, skip
+                }
+                int jointIndex = it->second;
+                
+                // Get time values
+                const auto& timeAccessor = model.accessors[sampler.input];
+                const auto& timeBufferView = model.bufferViews[timeAccessor.bufferView];
+                const auto& timeBuffer = model.buffers[timeBufferView.buffer];
+                const float* times = reinterpret_cast<const float*>(&timeBuffer.data[timeBufferView.byteOffset + timeAccessor.byteOffset]);
+                
+                // Get output values
+                const auto& outputAccessor = model.accessors[sampler.output];
+                const auto& outputBufferView = model.bufferViews[outputAccessor.bufferView];
+                const auto& outputBuffer = model.buffers[outputBufferView.buffer];
+                const float* values = reinterpret_cast<const float*>(&outputBuffer.data[outputBufferView.byteOffset + outputAccessor.byteOffset]);
+                
+                // Find or create animation channel for this bone
+                AnimationChannel* animChannel = nullptr;
+                for (auto& ch : const_cast<std::vector<AnimationChannel>&>(animation->GetChannels())) {
+                    if (ch.boneIndex == jointIndex) {
+                        animChannel = &ch;
+                        break;
+                    }
+                }
+                
+                if (!animChannel) {
+                    AnimationChannel newChannel;
+                    newChannel.boneIndex = jointIndex;
+                    animation->AddChannel(newChannel);
+                    animChannel = const_cast<AnimationChannel*>(&animation->GetChannels().back());
+                }
+                
+                // Parse keyframes based on target path
+                for (size_t i = 0; i < timeAccessor.count; ++i) {
+                    float time = times[i];
+                    maxTime = std::max(maxTime, time);
+                    
+                    // Find or create keyframe at this time
+                    Keyframe* keyframe = nullptr;
+                    for (auto& kf : animChannel->keyframes) {
+                        if (std::abs(kf.time - time) < 0.0001f) {
+                            keyframe = &kf;
+                            break;
+                        }
+                    }
+                    
+                    if (!keyframe) {
+                        Keyframe newKeyframe;
+                        newKeyframe.time = time;
+                        animChannel->keyframes.push_back(newKeyframe);
+                        keyframe = &animChannel->keyframes.back();
+                    }
+                    
+                    // Set values based on target path
+                    if (channel.target_path == "translation") {
+                        keyframe->position = Vec3(values[i * 3 + 0], values[i * 3 + 1], values[i * 3 + 2]);
+                    } else if (channel.target_path == "rotation") {
+                        keyframe->rotation = Quaternion(values[i * 4 + 0], values[i * 4 + 1], values[i * 4 + 2], values[i * 4 + 3]);
+                    } else if (channel.target_path == "scale") {
+                        keyframe->scale = Vec3(values[i * 3 + 0], values[i * 3 + 1], values[i * 3 + 2]);
+                    }
+                }
+            }
+            
+            animation->SetDuration(maxTime);
+            m_Animations[animIdx] = animation;
+            std::cout << "Loaded animation '" << animation->GetName() << "' with duration " << maxTime << "s" << std::endl;
         }
     }
 
@@ -281,10 +478,28 @@ private:
             const auto& buffer = model.buffers[bufferView.buffer];
             texCoords = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
         }
+        
+        // Bone Joints (IDs)
+        const unsigned short* joints = nullptr;
+        if (primitive.attributes.find("JOINTS_0") != primitive.attributes.end()) {
+            const auto& accessor = model.accessors[primitive.attributes.at("JOINTS_0")];
+            const auto& bufferView = model.bufferViews[accessor.bufferView];
+            const auto& buffer = model.buffers[bufferView.buffer];
+            joints = reinterpret_cast<const unsigned short*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+        }
+        
+        // Bone Weights
+        const float* weights = nullptr;
+        if (primitive.attributes.find("WEIGHTS_0") != primitive.attributes.end()) {
+            const auto& accessor = model.accessors[primitive.attributes.at("WEIGHTS_0")];
+            const auto& bufferView = model.bufferViews[accessor.bufferView];
+            const auto& buffer = model.buffers[bufferView.buffer];
+            weights = reinterpret_cast<const float*>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+        }
 
-        // Interleave vertices
+        // Interleave vertices (now 16 floats per vertex: pos(3) + normal(3) + uv(2) + boneIDs(4) + weights(4))
         std::vector<float> vertices;
-        vertices.reserve(vertexCount * 8);
+        vertices.reserve(vertexCount * 16);
         for (size_t i = 0; i < vertexCount; ++i) {
             // Position
             vertices.push_back(positions ? positions[i * 3 + 0] : 0.0f);
@@ -299,6 +514,32 @@ private:
             // TexCoord
             vertices.push_back(texCoords ? texCoords[i * 2 + 0] : 0.0f);
             vertices.push_back(texCoords ? texCoords[i * 2 + 1] : 0.0f);
+            
+            // Bone IDs (stored as floats, will be reinterpreted as ints in shader)
+            if (joints) {
+                vertices.push_back(static_cast<float>(joints[i * 4 + 0]));
+                vertices.push_back(static_cast<float>(joints[i * 4 + 1]));
+                vertices.push_back(static_cast<float>(joints[i * 4 + 2]));
+                vertices.push_back(static_cast<float>(joints[i * 4 + 3]));
+            } else {
+                vertices.push_back(0.0f);
+                vertices.push_back(0.0f);
+                vertices.push_back(0.0f);
+                vertices.push_back(0.0f);
+            }
+            
+            // Bone Weights
+            if (weights) {
+                vertices.push_back(weights[i * 4 + 0]);
+                vertices.push_back(weights[i * 4 + 1]);
+                vertices.push_back(weights[i * 4 + 2]);
+                vertices.push_back(weights[i * 4 + 3]);
+            } else {
+                vertices.push_back(0.0f);
+                vertices.push_back(0.0f);
+                vertices.push_back(0.0f);
+                vertices.push_back(0.0f);
+            }
         }
 
         // Indices
