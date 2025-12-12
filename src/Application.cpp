@@ -1,6 +1,8 @@
 #include "Application.h"
 #include "ImGuiManager.h"
 #include "GLTFLoader.h"
+#include "BlendTreeEditor.h"
+#include "AudioSystem.h"
 #include <iostream>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -16,6 +18,7 @@ Application::Application()
 }
 
 Application::~Application() {
+    AudioSystem::Get().Shutdown();
 }
 
 bool Application::Init() {
@@ -60,6 +63,15 @@ bool Application::Init() {
     if (!m_PreviewRenderer->Init(512, 512)) {
         std::cerr << "Failed to initialize PreviewRenderer" << std::endl;
         return false;
+    }
+
+    // Initialize Blend Tree Editor
+    m_BlendTreeEditor = std::make_unique<BlendTreeEditor>();
+
+    // Audio System
+    if (!AudioSystem::Get().Initialize()) {
+        std::cerr << "Failed to initialize Audio System" << std::endl;
+        // Check if critical? maybe just log
     }
 
     m_Running = true;
@@ -109,6 +121,29 @@ void Application::Update(float deltaTime) {
             // Ideally we would slide along the wall, but this prevents walking through objects
             m_Camera->SetPosition(oldPos);
         }
+        
+        Vec3 listenerPos = m_Camera->GetPosition();
+        Vec3 listenerFwd = m_Camera->GetFront();
+        Vec3 listenerVel = Vec3(0,0,0);
+        
+        // Calculate camera velocity for fallback
+        if (deltaTime > 0.0001f) {
+            listenerVel = (listenerPos - m_LastCameraPosition) / deltaTime;
+        }
+        m_LastCameraPosition = listenerPos;
+
+        // Check for active override
+        AudioListener* activeListener = AudioSystem::Get().GetActiveListener();
+        if (activeListener && activeListener->IsEnabled()) {
+             listenerPos = activeListener->GetPosition();
+             listenerFwd = activeListener->GetForward();
+             listenerVel = activeListener->GetVelocity();
+        }
+
+        AudioSystem::Get().SetListenerPosition(listenerPos);
+        AudioSystem::Get().SetListenerDirection(listenerFwd);
+        AudioSystem::Get().SetListenerVelocity(listenerVel);
+    }
     }
     
     // Update scene (sprites, particles, etc.) with deltaTime
@@ -241,6 +276,29 @@ void Application::RenderEditorUI() {
         ImGui::DragFloat("Z##scl", &transform.scale.z, 0.1f, 0.1f, 10.0f);
         
         ImGui::Separator();
+
+            // Audio System Global Settings (Reverb)
+            if (ImGui::CollapsingHeader("Audio Environment")) {
+                static float roomSize = 0.5f;
+                static float damping = 0.5f;
+                static float wet = 0.3f;
+                static float dry = 1.0f;
+                
+                bool changed = false;
+                changed |= ImGui::SliderFloat("Reverb Room Size", &roomSize, 0.0f, 1.0f);
+                changed |= ImGui::SliderFloat("Reverb Damping", &damping, 0.0f, 1.0f);
+                changed |= ImGui::SliderFloat("Reverb Mix (Wet)", &wet, 0.0f, 1.0f);
+                changed |= ImGui::SliderFloat("Dry Level", &dry, 0.0f, 1.0f);
+                
+                if (changed) {
+                    AudioSystem::ReverbProperties props;
+                    props.roomSize = roomSize;
+                    props.damping = damping;
+                    props.wetVolume = wet;
+                    props.dryVolume = dry;
+                    AudioSystem::Get().SetReverbProperties(props);
+                }
+            }
 
         // Material Inspector
         auto mat = object->GetMaterial();
@@ -578,6 +636,20 @@ void Application::RenderEditorUI() {
                 }
             }
         }
+    }
+    
+    
+    // Blend Tree Editor
+    if (m_BlendTreeEditor) {
+        // Try to update binding if selection changed
+        if (root && m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(root->GetChildren().size())) {
+            auto object = root->GetChildren()[m_SelectedObjectIndex];
+            m_BlendTreeEditor->SetAnimator(object->GetAnimator().get());
+        } else {
+             m_BlendTreeEditor->SetAnimator(nullptr);
+        }
+        
+        m_BlendTreeEditor->Render();
     }
     
     ImGui::End();

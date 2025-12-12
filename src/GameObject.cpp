@@ -33,14 +33,78 @@ GameObject::~GameObject() {
     }
 }
 
-void GameObject::Update(const Mat4& parentMatrix) {
+void GameObject::Update(const Mat4& parentMatrix, float deltaTime) {
     // Calculate world matrix based on parent and local transform
     m_WorldMatrix = parentMatrix * m_Transform.GetModelMatrix();
     
+    // Velocity Calculation
+    Vec3 currentPos = m_WorldMatrix.GetTranslation();
+    
+    // Calculate velocity (units per second)
+    if (deltaTime > 0.0001f) {
+        m_Velocity = (currentPos - m_LastPosition) / deltaTime;
+    } else {
+        m_Velocity = Vec3(0, 0, 0);
+    }
+    
+    m_LastPosition = currentPos;
+
+    // Update AudioSource position and velocity
+    for (auto& source : m_AudioSources) {
+        if (source) {
+            source->SetPosition(currentPos);
+            source->SetVelocity(m_Velocity);
+        }
+    }
+    
+    // Update AudioListener if present
+    if (m_AudioListener) {
+        // Assume forward is Z for now, or extract from matrix
+        // m_WorldMatrix has Forward in 3rd column (usually)
+        Vec3 forward = Vec3(m_WorldMatrix.m[8], m_WorldMatrix.m[9], m_WorldMatrix.m[10]).Normalized();
+        // Or cleaner: (m_WorldMatrix * Vec4(0,0,1,0)).xyz
+        
+        m_AudioListener->UpdateState(currentPos, forward, m_Velocity);
+    }
+    
     // Update children
     for (auto& child : m_Children) {
-        child->Update(m_WorldMatrix);
+        child->Update(m_WorldMatrix, deltaTime);
     }
+}
+
+void GameObject::AddAudioSource(std::shared_ptr<AudioSource> source) {
+    if (source) {
+        m_AudioSources.push_back(source);
+    }
+}
+
+void GameObject::RemoveAudioSource(std::shared_ptr<AudioSource> source) {
+    m_AudioSources.erase(
+        std::remove(m_AudioSources.begin(), m_AudioSources.end(), source),
+        m_AudioSources.end()
+    );
+}
+
+void GameObject::RemoveAudioSource(int index) {
+    if (index >= 0 && index < m_AudioSources.size()) {
+        m_AudioSources.erase(m_AudioSources.begin() + index);
+    }
+}
+
+void GameObject::SetAudioSource(std::shared_ptr<AudioSource> source) {
+    // Compatibility: Clear and add
+    m_AudioSources.clear();
+    if (source) {
+        AddAudioSource(source);
+    }
+}
+
+std::shared_ptr<AudioSource> GameObject::GetAudioSource() const {
+    if (!m_AudioSources.empty()) {
+        return m_AudioSources[0];
+    }
+    return nullptr;
 }
 
 void GameObject::UpdateAnimator(float deltaTime) {

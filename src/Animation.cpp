@@ -140,7 +140,7 @@ void AnimationChannel::GetTransform(float time, Vec3& outPosition, Quaternion& o
 
 // Animation implementation
 Animation::Animation(const std::string& name) 
-    : m_Name(name), m_Duration(0.0f) {
+    : m_Name(name), m_SyncGroup(""), m_Duration(0.0f) {
 }
 
 Animation::~Animation() {

@@ -1,11 +1,17 @@
-#pragma once
-
 #include "Animation.h"
 #include "Bone.h"
 #include "BlendCurve.h"
 #include "Math/Mat4.h"
+#include "Math/Vec2.h"
+#include "Math/Vec3.h"
 #include <memory>
 #include <vector>
+#include "IK.h"
+#include "AnimationStateMachine.h"
+
+class BlendTree1D;
+class BlendTree2D;
+class BlendTree3D;
 
 class Animator {
 public:
@@ -60,14 +66,61 @@ public:
     void SetLayerMask(int layerIndex, const class BoneMask& mask);
     int GetLayerCount() const;
     
+    // Add Blend Tree Layers
+    int AddBlendTreeLayer1D(int treeIndex, const class BoneMask& mask, float weight = 1.0f, bool additive = false);
+    int AddBlendTreeLayer2D(int treeIndex, const class BoneMask& mask, float weight = 1.0f, bool additive = false);
+    int AddBlendTreeLayer3D(int treeIndex, const class BoneMask& mask, float weight = 1.0f, bool additive = false);
+    
     // Layer transitions (blend within a layer)
     void TransitionLayerToAnimation(int layerIndex, int animationIndex, float blendTime = -1.0f, BlendCurve curve = BlendCurve::Linear);
+    void TransitionLayerToBlendTree(int layerIndex, int treeIndex, int type, float blendTime = -1.0f, BlendCurve curve = BlendCurve::Linear); // type cast from LayerType
     bool IsLayerBlending(int layerIndex) const;
     float GetLayerBlendProgress(int layerIndex) const;
+    float GetLayerNormalizedTime(int layerIndex) const;
+    
+    // State Machine
+    AnimationStateMachine* GetStateMachine() { return &m_StateMachine; }
+    void UpdateStateMachine(float deltaTime) { m_StateMachine.Update(deltaTime); }
     
     // Convenience layer methods
     int AddUpperBodyLayer(int animationIndex, const std::string& spineBoneName, float weight = 1.0f);
     int AddAdditiveLayer(int animationIndex, const class BoneMask& mask, float weight = 1.0f);
+    
+    // Blend Tree management
+    int CreateBlendTree1D();
+    int CreateBlendTree2D();
+    int CreateBlendTree3D();
+    void AddBlendTreeNode1D(int treeIndex, int animationIndex, float parameter);
+    void AddBlendTreeNode2D(int treeIndex, int animationIndex, Vec2 parameter);
+    void AddBlendTreeNode3D(int treeIndex, int animationIndex, Vec3 parameter);
+    void SetBlendTreeParameter1D(int treeIndex, float value);
+    void SetBlendTreeParameterSmooth1D(int treeIndex, float value, float smoothTime);
+    void SetBlendTreeParameter2D(int treeIndex, Vec2 value);
+    void SetBlendTreeParameterSmooth2D(int treeIndex, Vec2 value, float smoothTime);
+    void SetBlendTreeParameter3D(int treeIndex, Vec3 value);
+    void SetBlendTreeParameterSmooth3D(int treeIndex, Vec3 value, float smoothTime);
+    
+    // Play blend tree on a layer
+    // Overloads SetLayerAnimation to support blend trees
+    void SetLayerBlendTree1D(int layerIndex, int treeIndex);
+    void SetLayerBlendTree2D(int layerIndex, int treeIndex);
+    void SetLayerBlendTree3D(int layerIndex, int treeIndex);
+    
+    void SetLayerBlendTree3D(int layerIndex, int treeIndex);
+    
+    // Editor Helpers
+    int GetBlendTree1DCount() const { return static_cast<int>(m_BlendTrees1D.size()); }
+    int GetBlendTree2DCount() const { return static_cast<int>(m_BlendTrees2D.size()); }
+    int GetBlendTree3DCount() const { return static_cast<int>(m_BlendTrees3D.size()); }
+    
+    // Convenience Blend Tree methods
+    int CreateLocomotionBlendTree1D(int idleAnim, int walkAnim, int runAnim);
+    int CreateDirectionalBlendTree2D(const std::vector<int>& animIndices, const std::vector<Vec2>& positions);
+    
+    // Inverse Kinematics
+    int AddIKChain(const std::string& rootBone, const std::string& effectorBone);
+    void SetIKTarget(int chainIndex, Vec3 targetPos);
+    void SetIKWeight(int chainIndex, float weight);
     
 private:
     std::shared_ptr<Skeleton> m_Skeleton;
@@ -104,8 +157,19 @@ private:
     std::vector<Mat4> m_FromBoneMatrices;  // Cached matrices from source animation during blend
     
     // Animation layers for partial blending
+    enum class LayerType {
+        SingleAnimation,
+        BlendTree1D,
+        BlendTree1D,
+        BlendTree2D,
+        BlendTree3D
+    };
+    
     struct AnimationLayer {
-        int animationIndex;
+        LayerType type;
+        int animationIndex;        // Used if type == SingleAnimation
+        int blendTreeIndex;        // Used if type == BlendTree...
+        
         float currentTime;
         float weight;              // Overall layer weight [0,1]
         class BoneMask mask;      // Which bones this layer affects
@@ -114,29 +178,54 @@ private:
         bool loop;
         
         // Layer-specific blending
+        // Layer-specific blending
         bool isBlending;
+        
+        // From state
+        LayerType fromType;
         int fromAnimationIndex;
+        int fromBlendTreeIndex;
+        std::vector<Mat4> fromBoneMatrices;
+        
+        // To state
+        LayerType toType;
         int toAnimationIndex;
+        int toBlendTreeIndex;
+        
         float blendTime;
         float currentBlendTime;
         BlendCurve blendCurve;
-        std::vector<Mat4> fromBoneMatrices;
         
-        AnimationLayer() : animationIndex(-1), currentTime(0.0f), weight(1.0f), 
+        AnimationLayer() : type(LayerType::SingleAnimation), animationIndex(-1), blendTreeIndex(-1), 
+                          currentTime(0.0f), weight(1.0f), 
                           isAdditive(false), isPlaying(false), loop(true),
-                          isBlending(false), fromAnimationIndex(-1), toAnimationIndex(-1),
+                          isBlending(false), 
+                          fromType(LayerType::SingleAnimation), fromAnimationIndex(-1), fromBlendTreeIndex(-1),
+                          toType(LayerType::SingleAnimation), toAnimationIndex(-1), toBlendTreeIndex(-1),
                           blendTime(0.0f), currentBlendTime(0.0f), blendCurve(BlendCurve::SmoothStep) {}
     };
     
     std::vector<AnimationLayer> m_Layers;
     std::vector<Mat4> m_LayerBoneMatrices;  // Temp storage for layer bone matrices
     
+    // Blend Trees storage
+    std::vector<std::unique_ptr<BlendTree1D>> m_BlendTrees1D;
+    std::vector<std::unique_ptr<BlendTree2D>> m_BlendTrees2D;
+    std::vector<std::unique_ptr<BlendTree3D>> m_BlendTrees3D;
+    
+    // Inverse Kinematics
+    std::vector<IKChain> m_IKChains;
+
+    // State Machine
+    AnimationStateMachine m_StateMachine;
+    
     // Update bone transforms based on current animation time
     void UpdateBoneTransforms();
-    void UpdateLayerTransforms(AnimationLayer& layer, std::vector<Mat4>& outMatrices);
+    void UpdateLayerTransforms(AnimationLayer& layer, float deltaTime, std::vector<Mat4>& outMatrices);
     void BlendBoneMatrices(const std::vector<Mat4>& from, const std::vector<Mat4>& to, 
                            float t, std::vector<Mat4>& result);
     void BlendLayerMatrices(const std::vector<Mat4>& base, const std::vector<Mat4>& layer,
                            const class BoneMask& mask, float weight, bool additive, 
                            std::vector<Mat4>& result);
 };
+

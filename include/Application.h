@@ -35,4 +35,7 @@ private:
     float m_FrameCount;
     float m_FPSTimer;
     bool m_Running;
+    
+    // Audio Listener
+    Vec3 m_LastCameraPosition;
 };

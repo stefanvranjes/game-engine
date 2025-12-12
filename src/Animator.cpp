@@ -1,6 +1,8 @@
 #include "Animator.h"
 #include "BlendCurve.h"
 #include "BoneMask.h"
+#include "BlendTree.h"
+#include "IK.h"
 #include <iostream>
 
 Animator::Animator() 
@@ -10,8 +12,9 @@ Animator::Animator()
     , m_IsPaused(false)
     , m_Loop(true)
     , m_PlaybackSpeed(1.0f)
-    , m_DefaultBlendTime(0.3f)
-    , m_DefaultBlendCurve(BlendCurve::SmoothStep) {
+    , m_DefaultBlendTime(0.2f)
+    , m_DefaultBlendCurve(BlendCurve::Linear)
+    , m_StateMachine(this) { // Pass this to state machine
 }
 
 Animator::~Animator() {
@@ -121,18 +124,35 @@ void Animator::Update(float deltaTime) {
             }
         }
         
+        // Determine sampling times for both animations
+        float fromSamplingTime = m_CurrentTime;
+        float toSamplingTime = m_CurrentTime;
+        
+        // Sync Logic: If animations are in the same SyncGroup, align their phases
+        if (!fromAnim->GetSyncGroup().empty() && fromAnim->GetSyncGroup() == toAnim->GetSyncGroup()) {
+            float fromDuration = fromAnim->GetDuration();
+            
+            if (fromDuration > 0.001f && toDuration > 0.001f) {
+                // Calculate normalized phase of the source animation
+                float fromPhase = fmod(fromSamplingTime, fromDuration) / fromDuration;
+                
+                // Set target time to match that phase
+                toSamplingTime = fromPhase * toDuration;
+            }
+        }
+        
         // Calculate bone matrices for both animations
         int boneCount = m_Skeleton->GetBoneCount();
         std::vector<Mat4> toBoneMatrices(boneCount);
         
-        // Calculate matrices for 'from' animation (keep using cached time)
+        // Calculate matrices for 'from' animation
         for (int i = 0; i < boneCount; ++i) {
             const AnimationChannel* channel = fromAnim->GetChannelForBone(i);
             if (channel) {
                 Vec3 position;
                 Quaternion rotation;
                 Vec3 scale;
-                channel->GetTransform(m_CurrentTime, position, rotation, scale);
+                channel->GetTransform(fromSamplingTime, position, rotation, scale);
                 
                 Mat4 translation = Mat4::Translation(position);
                 Mat4 rotationMat = rotation.ToMatrix();
@@ -155,7 +175,7 @@ void Animator::Update(float deltaTime) {
                 Vec3 position;
                 Quaternion rotation;
                 Vec3 scale;
-                channel->GetTransform(m_CurrentTime, position, rotation, scale);
+                channel->GetTransform(toSamplingTime, position, rotation, scale);
                 
                 Mat4 translation = Mat4::Translation(position);
                 Mat4 rotationMat = rotation.ToMatrix();
@@ -218,34 +238,53 @@ void Animator::Update(float deltaTime) {
                     if (t >= 1.0f) {
                         // Layer blend complete
                         layer.isBlending = false;
-                        layer.animationIndex = layer.toAnimationIndex;
+                        layer.type = layer.toType;
+                        if (layer.toType == LayerType::SingleAnimation) {
+                            layer.animationIndex = layer.toAnimationIndex;
+                        } else {
+                            layer.blendTreeIndex = layer.toBlendTreeIndex;
+                        }
                         t = 1.0f;
                     }
                     
                     // Apply easing curve
                     float easedT = EasingFunctions::Apply(t, layer.blendCurve);
                     
-                    // Update time for target animation
-                    Animation* toAnim = m_Animations[layer.toAnimationIndex].get();
-                    layer.currentTime += deltaTime * m_PlaybackSpeed;
-                    
-                    // Handle looping for target
-                    float toDuration = toAnim->GetDuration();
-                    if (layer.currentTime >= toDuration) {
-                        if (layer.loop) {
-                            layer.currentTime = fmod(layer.currentTime, toDuration);
-                        } else {
-                            layer.currentTime = toDuration;
-                            if (!layer.isBlending) {
-                                layer.isPlaying = false;
+                    // Update time for target
+                    // Note: BlendTrees track their own time inside Update(), but we might need
+                    // to advance a dummy time if we want to support looping/duration checks easily for trees?
+                    // Usually BlendTrees just run indefinitely or loop internally.
+                    // For SingleAnimation target:
+                    if (layer.toType == LayerType::SingleAnimation) {
+                        Animation* toAnim = m_Animations[layer.toAnimationIndex].get();
+                        layer.currentTime += deltaTime * m_PlaybackSpeed;
+                        
+                        float toDuration = toAnim->GetDuration();
+                        if (layer.currentTime >= toDuration) {
+                            if (layer.loop) {
+                                layer.currentTime = fmod(layer.currentTime, toDuration);
+                            } else {
+                                layer.currentTime = toDuration;
                             }
                         }
                     }
                     
-                    // Calculate matrices for target animation
+                    // Calculate matrices for target animation/tree
                     AnimationLayer tempLayer = layer;
-                    tempLayer.animationIndex = layer.toAnimationIndex;
-                    UpdateLayerTransforms(tempLayer, m_LayerBoneMatrices);
+                    tempLayer.type = layer.toType;
+                    if (layer.toType == LayerType::SingleAnimation) {
+                        tempLayer.animationIndex = layer.toAnimationIndex;
+                        // Time already updated above for SingleAnim
+                    } else {
+                        tempLayer.blendTreeIndex = layer.toBlendTreeIndex;
+                        // BlendTrees need the delta time passed to UpdateLayerTransforms to advance internal state
+                        // BUT we don't want to advance state twice (once here, and once if it becomes active next frame).
+                        // Since this is a temporary layer for blending, it's fine.
+                    }
+                    
+                    // We pass deltaTime only if it's a BlendTree so it updates its nodes
+                    float updateDelta = (layer.toType != LayerType::SingleAnimation) ? (deltaTime * m_PlaybackSpeed) : 0.0f;
+                    UpdateLayerTransforms(tempLayer, updateDelta, m_LayerBoneMatrices);
                     
                     // Blend from cached 'from' matrices to 'to' matrices
                     BlendBoneMatrices(layer.fromBoneMatrices, m_LayerBoneMatrices, 
@@ -253,27 +292,35 @@ void Animator::Update(float deltaTime) {
                     
                 } else {
                     // Normal layer update (no blending)
-                    if (layer.animationIndex < 0) {
-                        continue;
-                    }
                     
-                    // Update layer time
-                    Animation* layerAnim = m_Animations[layer.animationIndex].get();
-                    layer.currentTime += deltaTime * m_PlaybackSpeed;
-                    
-                    // Handle looping
-                    float layerDuration = layerAnim->GetDuration();
-                    if (layer.currentTime >= layerDuration) {
-                        if (layer.loop) {
-                            layer.currentTime = fmod(layer.currentTime, layerDuration);
-                        } else {
-                            layer.currentTime = layerDuration;
-                            layer.isPlaying = false;
+                    if (layer.type == LayerType::SingleAnimation) {
+                        if (layer.animationIndex < 0) {
+                            continue;
                         }
+                        
+                        // Update layer time
+                        Animation* layerAnim = m_Animations[layer.animationIndex].get();
+                        layer.currentTime += deltaTime * m_PlaybackSpeed;
+                        
+                        // Handle looping
+                        float layerDuration = layerAnim->GetDuration();
+                        if (layer.currentTime >= layerDuration) {
+                            if (layer.loop) {
+                                layer.currentTime = fmod(layer.currentTime, layerDuration);
+                            } else {
+                                layer.currentTime = layerDuration;
+                                layer.isPlaying = false;
+                            }
+                        }
+                        
+                        // Calculate layer bone matrices
+                        UpdateLayerTransforms(layer, 0.0f, layerBlendedMatrices);
                     }
-                    
-                    // Calculate layer bone matrices
-                    UpdateLayerTransforms(layer, layerBlendedMatrices);
+                    else {
+                        // Blend Tree update
+                        // Pass deltaTime so the tree can advance its internal time
+                        UpdateLayerTransforms(layer, deltaTime * m_PlaybackSpeed, layerBlendedMatrices);
+                    }
                 }
                 
                 // Blend layer with current result
@@ -317,6 +364,13 @@ void Animator::UpdateBoneTransforms() {
     
     // Calculate global transforms
     m_Skeleton->CalculateGlobalTransforms(m_LocalTransforms, m_GlobalTransforms);
+    
+    // Apply Inverse Kinematics
+    for (auto& chain : m_IKChains) {
+        if (chain.weight > 0.001f) {
+            IKSolver::SolveFABRIK(chain, m_Skeleton.get(), m_GlobalTransforms);
+        }
+    }
     
     // Calculate final bone matrices (global * inverseBindMatrix)
     for (int i = 0; i < boneCount; ++i) {
@@ -490,44 +544,129 @@ int Animator::AddAdditiveLayer(int animationIndex, const BoneMask& mask, float w
     return AddLayer(animationIndex, mask, weight, true);
 }
 
-void Animator::UpdateLayerTransforms(AnimationLayer& layer, std::vector<Mat4>& outMatrices) {
-    if (!m_Skeleton || layer.animationIndex < 0) {
+int Animator::AddBlendTreeLayer1D(int treeIndex, const BoneMask& mask, float weight, bool additive) {
+    if (treeIndex < 0 || treeIndex >= static_cast<int>(m_BlendTrees1D.size())) {
+        std::cerr << "Invalid 1D blend tree index for layer: " << treeIndex << std::endl;
+        return -1;
+    }
+    
+    AnimationLayer layer;
+    layer.type = LayerType::BlendTree1D;
+    layer.blendTreeIndex = treeIndex;
+    layer.mask = mask;
+    layer.weight = std::max(0.0f, std::min(1.0f, weight));
+    layer.isAdditive = additive;
+    layer.isPlaying = true;
+    layer.loop = true;
+    layer.currentTime = 0.0f;
+    
+    m_Layers.push_back(layer);
+    return static_cast<int>(m_Layers.size()) - 1;
+}
+
+int Animator::AddBlendTreeLayer2D(int treeIndex, const BoneMask& mask, float weight, bool additive) {
+    if (treeIndex < 0 || treeIndex >= static_cast<int>(m_BlendTrees2D.size())) {
+        std::cerr << "Invalid 2D blend tree index for layer: " << treeIndex << std::endl;
+        return -1;
+    }
+    
+    AnimationLayer layer;
+    layer.type = LayerType::BlendTree2D;
+    layer.blendTreeIndex = treeIndex;
+    layer.mask = mask;
+    layer.weight = std::max(0.0f, std::min(1.0f, weight));
+    layer.isAdditive = additive;
+    layer.isPlaying = true;
+    layer.loop = true;
+    layer.currentTime = 0.0f;
+    
+    m_Layers.push_back(layer);
+    return static_cast<int>(m_Layers.size()) - 1;
+}
+
+int Animator::AddBlendTreeLayer3D(int treeIndex, const BoneMask& mask, float weight, bool additive) {
+    if (treeIndex < 0 || treeIndex >= static_cast<int>(m_BlendTrees3D.size())) {
+        std::cerr << "Invalid 3D blend tree index for layer: " << treeIndex << std::endl;
+        return -1;
+    }
+    
+    AnimationLayer layer;
+    layer.type = LayerType::BlendTree3D;
+    layer.blendTreeIndex = treeIndex;
+    layer.mask = mask;
+    layer.weight = std::max(0.0f, std::min(1.0f, weight));
+    layer.isAdditive = additive;
+    layer.isPlaying = true;
+    layer.loop = true;
+    layer.currentTime = 0.0f;
+    
+    m_Layers.push_back(layer);
+    return static_cast<int>(m_Layers.size()) - 1;
+}
+
+void Animator::UpdateLayerTransforms(AnimationLayer& layer, float deltaTime, std::vector<Mat4>& outMatrices) {
+    if (!m_Skeleton) {
         return;
     }
     
-    Animation* anim = m_Animations[layer.animationIndex].get();
-    int boneCount = m_Skeleton->GetBoneCount();
-    
-    std::vector<Mat4> localTransforms(boneCount);
-    std::vector<Mat4> globalTransforms(boneCount);
-    
-    // Update local transforms from animation channels
-    for (int i = 0; i < boneCount; ++i) {
-        const AnimationChannel* channel = anim->GetChannelForBone(i);
+    // Handle based on layer type
+    if (layer.type == LayerType::SingleAnimation) {
+        if (layer.animationIndex < 0 || layer.animationIndex >= static_cast<int>(m_Animations.size())) {
+            return;
+        }
         
-        if (channel) {
-            Vec3 position;
-            Quaternion rotation;
-            Vec3 scale;
-            channel->GetTransform(layer.currentTime, position, rotation, scale);
+        Animation* anim = m_Animations[layer.animationIndex].get();
+        int boneCount = m_Skeleton->GetBoneCount();
+        
+        std::vector<Mat4> localTransforms(boneCount);
+        std::vector<Mat4> globalTransforms(boneCount);
+        
+        // Note: For SingleAnimation, time is managed by Animator::Update loop
+        // so we use layer.currentTime which is already updated.
+        
+        // Update local transforms from animation channels
+        for (int i = 0; i < boneCount; ++i) {
+            const AnimationChannel* channel = anim->GetChannelForBone(i);
             
-            Mat4 translation = Mat4::Translation(position);
-            Mat4 rotationMat = rotation.ToMatrix();
-            Mat4 scaleMat = Mat4::Scale(scale);
-            
-            localTransforms[i] = translation * rotationMat * scaleMat;
-        } else {
-            localTransforms[i] = m_Skeleton->GetBone(i).localTransform;
+            if (channel) {
+                Vec3 position;
+                Quaternion rotation;
+                Vec3 scale;
+                channel->GetTransform(layer.currentTime, position, rotation, scale);
+                
+                Mat4 translation = Mat4::Translation(position);
+                Mat4 rotationMat = rotation.ToMatrix();
+                Mat4 scaleMat = Mat4::Scale(scale);
+                
+                localTransforms[i] = translation * rotationMat * scaleMat;
+            } else {
+                localTransforms[i] = m_Skeleton->GetBone(i).localTransform;
+            }
+        }
+        
+        // Calculate global transforms
+        m_Skeleton->CalculateGlobalTransforms(localTransforms, globalTransforms);
+        
+        // Calculate final bone matrices
+        outMatrices.resize(boneCount);
+        for (int i = 0; i < boneCount; ++i) {
+            outMatrices[i] = globalTransforms[i] * m_Skeleton->GetBone(i).inverseBindMatrix;
+        }
+    } 
+    else if (layer.type == LayerType::BlendTree1D) {
+        if (layer.blendTreeIndex >= 0 && layer.blendTreeIndex < static_cast<int>(m_BlendTrees1D.size())) {
+            m_BlendTrees1D[layer.blendTreeIndex]->Update(deltaTime, m_Animations, m_Skeleton.get(), outMatrices);
         }
     }
-    
-    // Calculate global transforms
-    m_Skeleton->CalculateGlobalTransforms(localTransforms, globalTransforms);
-    
-    // Calculate final bone matrices
-    outMatrices.resize(boneCount);
-    for (int i = 0; i < boneCount; ++i) {
-        outMatrices[i] = globalTransforms[i] * m_Skeleton->GetBone(i).inverseBindMatrix;
+    else if (layer.type == LayerType::BlendTree2D) {
+        if (layer.blendTreeIndex >= 0 && layer.blendTreeIndex < static_cast<int>(m_BlendTrees2D.size())) {
+            m_BlendTrees2D[layer.blendTreeIndex]->Update(deltaTime, m_Animations, m_Skeleton.get(), outMatrices);
+        }
+    }
+    else if (layer.type == LayerType::BlendTree3D) {
+        if (layer.blendTreeIndex >= 0 && layer.blendTreeIndex < static_cast<int>(m_BlendTrees3D.size())) {
+            m_BlendTrees3D[layer.blendTreeIndex]->Update(deltaTime, m_Animations, m_Skeleton.get(), outMatrices);
+        }
     }
 }
 
@@ -626,8 +765,14 @@ void Animator::TransitionLayerToAnimation(int layerIndex, int animationIndex, fl
     
     // Setup layer blend state
     layer.isBlending = true;
+    layer.fromType = layer.type;
     layer.fromAnimationIndex = layer.animationIndex;
+    layer.fromBlendTreeIndex = layer.blendTreeIndex;
+    
+    layer.toType = LayerType::SingleAnimation;
     layer.toAnimationIndex = animationIndex;
+    layer.toBlendTreeIndex = -1;
+    
     layer.blendTime = blendTime;
     layer.currentBlendTime = 0.0f;
     layer.blendCurve = curve;
@@ -639,13 +784,77 @@ void Animator::TransitionLayerToAnimation(int layerIndex, int animationIndex, fl
         
         // Calculate current layer matrices
         std::vector<Mat4> currentMatrices;
-        UpdateLayerTransforms(layer, currentMatrices);
+        UpdateLayerTransforms(layer, 0.0f, currentMatrices);
         layer.fromBoneMatrices = currentMatrices;
     }
     
     std::cout << "Layer " << layerIndex << ": Starting blend from animation " 
               << layer.fromAnimationIndex << " to " << layer.toAnimationIndex 
               << " over " << blendTime << "s" << std::endl;
+}
+
+void Animator::TransitionLayerToBlendTree(int layerIndex, int treeIndex, int type, float blendTime, BlendCurve curve) {
+    if (layerIndex < 0 || layerIndex >= static_cast<int>(m_Layers.size())) {
+        std::cerr << "Invalid layer index for transition: " << layerIndex << std::endl;
+        return;
+    }
+    
+    LayerType targetType = static_cast<LayerType>(type);
+    bool validTree = false;
+    if (targetType == LayerType::BlendTree1D) validTree = (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees1D.size()));
+    else if (targetType == LayerType::BlendTree2D) validTree = (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees2D.size()));
+    else if (targetType == LayerType::BlendTree3D) validTree = (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees3D.size()));
+    
+    if (!validTree) {
+        std::cerr << "Invalid blend tree index for layer transition: " << treeIndex << std::endl;
+        return;
+    }
+    
+    AnimationLayer& layer = m_Layers[layerIndex];
+    
+    // If already transitioning to this tree, ignore
+    if (layer.isBlending && layer.toType == targetType && layer.toBlendTreeIndex == treeIndex) {
+        return;
+    }
+    
+    // Use defaults if not specified
+    if (blendTime < 0.0f) {
+        blendTime = m_DefaultBlendTime;
+    }
+    
+     // If layer not playing, just set directly
+    if (!layer.isPlaying) {
+        layer.type = targetType;
+        layer.blendTreeIndex = treeIndex;
+        layer.currentTime = 0.0f;
+        layer.isPlaying = true;
+        return;
+    }
+    
+    // Setup layer blend state
+    layer.isBlending = true;
+    layer.fromType = layer.type;
+    layer.fromAnimationIndex = layer.animationIndex;
+    layer.fromBlendTreeIndex = layer.blendTreeIndex;
+    
+    layer.toType = targetType;
+    layer.toAnimationIndex = -1;
+    layer.toBlendTreeIndex = treeIndex;
+    
+    layer.blendTime = blendTime;
+    layer.currentBlendTime = 0.0f;
+    layer.blendCurve = curve;
+    
+    // Cache current bone matrices as 'from' state
+    if (m_Skeleton) {
+        int boneCount = m_Skeleton->GetBoneCount();
+        layer.fromBoneMatrices.resize(boneCount);
+        
+        // Calculate current layer matrices
+        std::vector<Mat4> currentMatrices;
+        UpdateLayerTransforms(layer, 0.0f, currentMatrices);
+        layer.fromBoneMatrices = currentMatrices;
+    }
 }
 
 bool Animator::IsLayerBlending(int layerIndex) const {
@@ -664,4 +873,170 @@ float Animator::GetLayerBlendProgress(int layerIndex) const {
         return std::min(1.0f, layer.currentBlendTime / layer.blendTime);
     }
     return 1.0f;
+}
+
+// Blend Tree Management
+int Animator::CreateBlendTree1D() {
+    auto tree = std::make_unique<BlendTree1D>();
+    m_BlendTrees1D.push_back(std::move(tree));
+    return static_cast<int>(m_BlendTrees1D.size() - 1);
+}
+
+int Animator::CreateBlendTree2D() {
+    auto tree = std::make_unique<BlendTree2D>();
+    m_BlendTrees2D.push_back(std::move(tree));
+    return static_cast<int>(m_BlendTrees2D.size() - 1);
+}
+
+int Animator::CreateBlendTree3D() {
+    auto tree = std::make_unique<BlendTree3D>();
+    m_BlendTrees3D.push_back(std::move(tree));
+    return static_cast<int>(m_BlendTrees3D.size() - 1);
+}
+
+void Animator::AddBlendTreeNode1D(int treeIndex, int animationIndex, float parameter) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees1D.size())) {
+        m_BlendTrees1D[treeIndex]->AddNode(animationIndex, parameter);
+    }
+}
+
+void Animator::AddBlendTreeNode2D(int treeIndex, int animationIndex, Vec2 parameter) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees2D.size())) {
+        m_BlendTrees2D[treeIndex]->AddNode(animationIndex, parameter);
+    }
+}
+
+void Animator::AddBlendTreeNode3D(int treeIndex, int animationIndex, Vec3 parameter) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees3D.size())) {
+        m_BlendTrees3D[treeIndex]->AddNode(animationIndex, parameter);
+    }
+}
+
+void Animator::SetBlendTreeParameter1D(int treeIndex, float value) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees1D.size())) {
+        m_BlendTrees1D[treeIndex]->SetParameter(value);
+    }
+}
+
+void Animator::SetBlendTreeParameterSmooth1D(int treeIndex, float value, float smoothTime) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees1D.size())) {
+        m_BlendTrees1D[treeIndex]->SetParameterSmooth(value, smoothTime);
+    }
+}
+
+void Animator::SetBlendTreeParameter2D(int treeIndex, Vec2 value) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees2D.size())) {
+        m_BlendTrees2D[treeIndex]->SetParameter(value);
+    }
+}
+
+void Animator::SetBlendTreeParameterSmooth2D(int treeIndex, Vec2 value, float smoothTime) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees2D.size())) {
+        m_BlendTrees2D[treeIndex]->SetParameterSmooth(value, smoothTime);
+    }
+}
+
+void Animator::SetBlendTreeParameter3D(int treeIndex, Vec3 value) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees3D.size())) {
+        m_BlendTrees3D[treeIndex]->SetParameter(value);
+    }
+}
+
+void Animator::SetBlendTreeParameterSmooth3D(int treeIndex, Vec3 value, float smoothTime) {
+    if (treeIndex >= 0 && treeIndex < static_cast<int>(m_BlendTrees3D.size())) {
+        m_BlendTrees3D[treeIndex]->SetParameterSmooth(value, smoothTime);
+    }
+}
+
+void Animator::SetLayerBlendTree1D(int layerIndex, int treeIndex) {
+    if (layerIndex >= 0 && layerIndex < static_cast<int>(m_Layers.size())) {
+        m_Layers[layerIndex].type = LayerType::BlendTree1D;
+        m_Layers[layerIndex].blendTreeIndex = treeIndex;
+        m_Layers[layerIndex].isPlaying = true;
+    }
+}
+
+void Animator::SetLayerBlendTree2D(int layerIndex, int treeIndex) {
+    if (layerIndex >= 0 && layerIndex < static_cast<int>(m_Layers.size())) {
+        m_Layers[layerIndex].type = LayerType::BlendTree2D;
+        m_Layers[layerIndex].blendTreeIndex = treeIndex;
+        m_Layers[layerIndex].isPlaying = true;
+    }
+}
+
+void Animator::SetLayerBlendTree3D(int layerIndex, int treeIndex) {
+    if (layerIndex >= 0 && layerIndex < static_cast<int>(m_Layers.size())) {
+        m_Layers[layerIndex].type = LayerType::BlendTree3D;
+        m_Layers[layerIndex].blendTreeIndex = treeIndex;
+        m_Layers[layerIndex].isPlaying = true;
+    }
+}
+
+// Inverse Kinematics
+int Animator::AddIKChain(const std::string& rootBone, const std::string& effectorBone) {
+    if (!m_Skeleton) return -1;
+    
+    IKChain chain;
+    chain.rootBoneName = rootBone;
+    chain.effectorBoneName = effectorBone;
+    chain.rootIndex = m_Skeleton->FindBoneIndex(rootBone);
+    chain.effectorIndex = m_Skeleton->FindBoneIndex(effectorBone);
+    chain.weight = 0.0f; // Disabled by default
+    chain.targetPosition = Vec3(0, 0, 0);
+    
+    if (chain.rootIndex == -1 || chain.effectorIndex == -1) {
+        std::cerr << "Invalid bones for IK chain: " << rootBone << " -> " << effectorBone << std::endl;
+        return -1;
+    }
+    
+    // Build chain indices (from Effector up to Root)
+    int current = chain.effectorIndex;
+    while (current != -1 && current != chain.rootIndex) {
+        chain.chainIndices.push_back(current);
+        const Bone& bone = m_Skeleton->GetBone(current);
+        current = bone.parentIndex;
+    }
+    
+    if (current == chain.rootIndex) {
+        chain.chainIndices.push_back(current);
+    } else {
+        std::cerr << "Root bone is not an ancestor of effector bone for IK chain" << std::endl;
+        return -1;
+    }
+    
+    m_IKChains.push_back(chain);
+    return static_cast<int>(m_IKChains.size()) - 1;
+}
+
+void Animator::SetIKTarget(int chainIndex, Vec3 targetPos) {
+    if (chainIndex >= 0 && chainIndex < static_cast<int>(m_IKChains.size())) {
+        m_IKChains[chainIndex].targetPosition = targetPos;
+    }
+}
+
+void Animator::SetIKWeight(int chainIndex, float weight) {
+    if (chainIndex >= 0 && chainIndex < static_cast<int>(m_IKChains.size())) {
+        m_IKChains[chainIndex].weight = std::max(0.0f, std::min(1.0f, weight));
+    }
+}
+
+int Animator::CreateLocomotionBlendTree1D(int idleAnim, int walkAnim, int runAnim) {
+    int tree = CreateBlendTree1D();
+    AddBlendTreeNode1D(tree, idleAnim, 0.0f);
+    AddBlendTreeNode1D(tree, walkAnim, 0.5f);
+    AddBlendTreeNode1D(tree, runAnim, 1.0f);
+    return tree;
+}
+
+int Animator::CreateDirectionalBlendTree2D(const std::vector<int>& animIndices, const std::vector<Vec2>& positions) {
+    if (animIndices.size() != positions.size()) {
+        std::cerr << "Mismatch in animation indices and positions for 2D blend tree" << std::endl;
+        return -1;
+    }
+    
+    int tree = CreateBlendTree2D();
+    for (size_t i = 0; i < animIndices.size(); ++i) {
+        AddBlendTreeNode2D(tree, animIndices[i], positions[i]);
+    }
+    return tree;
 }

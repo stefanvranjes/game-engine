@@ -56,13 +56,18 @@ public:
     float GetDuration() const { return m_Duration; }
     
     void AddChannel(const AnimationChannel& channel);
+    void AddChannel(const AnimationChannel& channel);
     const std::vector<AnimationChannel>& GetChannels() const { return m_Channels; }
+    
+    void SetSyncGroup(const std::string& group) { m_SyncGroup = group; }
+    const std::string& GetSyncGroup() const { return m_SyncGroup; }
     
     // Get channel for specific bone
     const AnimationChannel* GetChannelForBone(int boneIndex) const;
     
 private:
     std::string m_Name;
+    std::string m_SyncGroup;
     float m_Duration;
     std::vector<AnimationChannel> m_Channels;
 };

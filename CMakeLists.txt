@@ -45,6 +45,17 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(tinygltf)
 
+# Fetch miniaudio
+FetchContent_Declare(
+    miniaudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG 0.11.21
+)
+FetchContent_GetProperties(miniaudio)
+if(NOT miniaudio_populated)
+    FetchContent_Populate(miniaudio)
+endif()
+
 # ImGui sources
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
@@ -93,10 +104,12 @@ add_executable(GameEngine
     src/ParticleSystem.cpp
     src/Sprite.cpp
     src/SSBO.cpp
+    src/AudioSystem.cpp
+    src/AudioSource.cpp
     ${IMGUI_SOURCES}
 )
 
-target_include_directories(GameEngine PUBLIC include include/imgui)
+target_include_directories(GameEngine PUBLIC include include/imgui ${miniaudio_SOURCE_DIR})
 
 target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf)
 

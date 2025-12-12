@@ -64,8 +64,7 @@ public:
     Sprite(const std::string& name = "Sprite");
     virtual ~Sprite();
 
-    virtual void Update(const Mat4& parentMatrix) override;
-    void Update(const Mat4& parentMatrix, float deltaTime);
+    virtual void Update(const Mat4& parentMatrix, float deltaTime) override;
 
     // Animation control
     void Play();

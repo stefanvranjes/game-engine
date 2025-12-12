@@ -22,6 +22,7 @@ public:
     
     Vec3 GetPosition() const { return m_Position; }
     void SetPosition(const Vec3& position) { m_Position = position; }
+    Vec3 GetFront() const { return m_Front; }
     
     void UpdateMatrices();
     

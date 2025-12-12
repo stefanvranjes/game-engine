@@ -746,10 +746,10 @@ void Renderer::Update(float deltaTime) {
         // For Sprite objects, we need to call the deltaTime-aware Update
         // For now, we'll call the base Update which will use default deltaTime
         // In the future, we could add a virtual Update(Mat4, float) to GameObject
-        m_Root->Update(Mat4::Identity());
+        m_Root->Update(Mat4::Identity(), deltaTime);
         
         // Update sprites specifically with deltaTime
-        UpdateSprites(m_Root, deltaTime);
+        // UpdateSprites(m_Root, deltaTime); // DEPRECATED: now handled by standard Update recursion
         
         // Update animators with deltaTime
         m_Root->UpdateAnimator(deltaTime);
