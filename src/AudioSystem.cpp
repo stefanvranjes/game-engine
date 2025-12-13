@@ -61,6 +61,12 @@ bool AudioSystem::Initialize() {
     if (result != MA_SUCCESS) {
         return false;
     }
+
+    // Initialize Music Group (routes to Endpoint by default, which is what we want)
+    result = ma_sound_group_init(&m_engine, 0, NULL, &m_musicGroup);
+    if (result != MA_SUCCESS) {
+        return false;
+    }
     
     // Re-route World Group Output -> Reverb Node Input
     // Note: miniaudio nodes are single-input single-output (bus-wise) usually unless configured explicitly.
@@ -87,6 +93,7 @@ void AudioSystem::Shutdown() {
 
     ma_reverb_node_uninit(&m_reverbNode, NULL); // Clean up node
     ma_sound_group_uninit(&m_worldGroup);       // Clean up group
+    ma_sound_group_uninit(&m_musicGroup);       // Clean up music group
     ma_engine_uninit(&m_engine);
     m_initialized = false;
 }
@@ -113,4 +120,14 @@ void AudioSystem::SetListenerDirection(const Vec3& forward) {
 void AudioSystem::SetListenerVelocity(const Vec3& velocity) {
     if (!m_initialized) return;
     ma_engine_listener_set_velocity(&m_engine, 0, velocity.x, velocity.y, velocity.z);
+}
+
+void AudioSystem::SetSFXVolume(float volume) {
+    if (!m_initialized) return;
+    ma_sound_group_set_volume(&m_worldGroup, volume);
+}
+
+void AudioSystem::SetMusicVolume(float volume) {
+    if (!m_initialized) return;
+    ma_sound_group_set_volume(&m_musicGroup, volume);
 }

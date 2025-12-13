@@ -116,6 +116,9 @@ public:
             std::cout << "Attached animator with " << m_Animations.size() << " animations to root" << std::endl;
         }
 
+        // Process Auto-LOD Groups
+        root->ProcessLODGroups();
+        
         return root;
     }
 

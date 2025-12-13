@@ -10,7 +10,12 @@ public:
     AudioSource();
     ~AudioSource();
 
-    void Load(const std::string& filepath);
+    enum class Type {
+        SFX,
+        Music
+    };
+
+    void Load(const std::string& filepath, Type type = Type::SFX);
     void Play();
     void Pause();
     void Stop();

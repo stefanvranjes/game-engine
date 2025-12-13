@@ -38,6 +38,10 @@ public:
     void SetReverbProperties(const ReverbProperties& props);
     // Accessor for AudioSource to attach to
     ma_sound_group* GetWorldGroup() { return &m_worldGroup; }
+    ma_sound_group* GetMusicGroup() { return &m_musicGroup; }
+
+    void SetSFXVolume(float volume);
+    void SetMusicVolume(float volume);
 
 private:
     AudioSystem();
@@ -45,6 +49,7 @@ private:
 
     ma_engine m_engine;
     ma_sound_group m_worldGroup; // All 3D sounds go here
+    ma_sound_group m_musicGroup; // 2D Music goes here (no reverb usually)
     ma_reverb_node m_reverbNode; // The effect node
     
     bool m_initialized = false;

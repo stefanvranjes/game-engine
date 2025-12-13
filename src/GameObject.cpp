@@ -71,6 +71,26 @@ void GameObject::Update(const Mat4& parentMatrix, float deltaTime) {
     for (auto& child : m_Children) {
         child->Update(m_WorldMatrix, deltaTime);
     }
+    
+    // Auto-update LOD state
+    if (!m_LODs.empty()) {
+        // We need camera position. But Update doesn't have camera info.
+        // We usually do this in Draw or a separate Cull/LOD pass.
+        // Doing it in Draw is tricky because Draw might not be called if parent is culled?
+        // Actually, Draw is recursive.
+        // However, updating state in Draw is generally discouraged (side effects).
+        // Let's postpone LOD selection to Draw or pre-Draw traversal.
+        // But we need to update transition timer here.
+        
+        if (m_IsLODTransitioning) {
+            m_LODTransitionProgress += deltaTime / LOD_TRANSITION_DURATION;
+            if (m_LODTransitionProgress >= 1.0f) {
+                m_LODTransitionProgress = 1.0f;
+                m_IsLODTransitioning = false;
+                m_CurrentLODIndex = m_TargetLODIndex;
+            }
+        }
+    }
 }
 
 void GameObject::AddAudioSource(std::shared_ptr<AudioSource> source) {
@@ -168,48 +188,187 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
         return;
     }
     
-    // LOD Selection
-    std::shared_ptr<Mesh> meshToDraw = m_Mesh;
-    std::shared_ptr<Model> modelToDraw = m_Model;
+    // LOD Selection & Transition
+    int desiredLOD = -1; // Base
     
     if (!m_LODs.empty()) {
-        // Calculate distance to camera
         Vec3 viewPos = view * m_WorldMatrix.GetTranslation();
         float dist = viewPos.Length();
         
-        for (const auto& lod : m_LODs) {
-            if (dist >= lod.minDistance) {
-                if (lod.mesh) {
-                    meshToDraw = lod.mesh;
-                    modelToDraw = nullptr;
-                } else if (lod.model) {
-                    modelToDraw = lod.model;
-                    meshToDraw = nullptr;
-                }
+        for (size_t i = 0; i < m_LODs.size(); ++i) {
+            if (dist >= m_LODs[i].minDistance) {
+                desiredLOD = static_cast<int>(i);
                 break;
             }
         }
+        
+        // Check for state change
+        if (desiredLOD != m_TargetLODIndex && desiredLOD != m_CurrentLODIndex) {
+            // Start transition
+            m_TargetLODIndex = desiredLOD;
+            
+            // If we were already transitioning, we blend from current visual state?
+            // Simplification: Just reset blend to 0 and go towards new target from current snapshot?
+            // Or simpler: always blend from m_CurrentLODIndex to m_TargetLODIndex.
+            m_IsLODTransitioning = true;
+            m_LODTransitionProgress = 0.0f;
+        }
+        // If desired == current, and we are transitioning, we might want to reverse? 
+        // Logic: if desired == m_CurrentLODIndex && transitioning, we are moving back.
+        // That effectively means Target becomes Current, and Current becomes Target.
+        // Let's implement simpler: Only change target if different from current target.
+        if (desiredLOD != m_TargetLODIndex) {
+             // Retarget
+             // If we were transitioning A->B, and now want A, revert?
+             // Not strictly handled here for simplicity.
+        }
     }
 
-    if (modelToDraw) {
-        // Draw model (handles its own materials)
-        Mat4 mvp = projection * view * m_WorldMatrix;
-        shader->SetMat4("u_MVP", mvp.m);
-        shader->SetMat4("u_Model", m_WorldMatrix.m);
-        modelToDraw->Draw(shader);
-    }
-    else if (meshToDraw && m_Material) {
-        // Draw single mesh with material
-        Mat4 mvp = projection * view * m_WorldMatrix;
-        shader->SetMat4("u_MVP", mvp.m);
-        shader->SetMat4("u_Model", m_WorldMatrix.m);
+    // Helper to draw a specific mesh/model
+    auto DrawLOD = [&](int lodIndex, float alpha) {
+        std::shared_ptr<Mesh> mesh;
+        std::shared_ptr<Model> model;
+        bool isBillboard = false;
         
-        // Set UV offset and scale for sprite atlases
-        shader->SetVec2("u_UVOffset", m_UVOffset.x, m_UVOffset.y);
-        shader->SetVec2("u_UVScale", m_UVScale.x, m_UVScale.y);
+        if (lodIndex == -1) {
+            mesh = m_Mesh;
+            model = m_Model;
+        } else if (lodIndex >= 0 && lodIndex < m_LODs.size()) {
+            mesh = m_LODs[lodIndex].mesh;
+            model = m_LODs[lodIndex].model;
+            isBillboard = m_LODs[lodIndex].isBillboard;
+        }
         
-        m_Material->Bind(shader);
-        meshToDraw->Draw();
+        Shader* shaderToUse = shader;
+        // Basic shader switching logic (Hack since we don't have a Shader Manager)
+        static std::unique_ptr<Shader> billboardShader;
+        if (isBillboard) {
+             if (!billboardShader) {
+                 billboardShader = std::make_unique<Shader>();
+                 billboardShader->LoadFromFiles("shaders/billboard.vert", "shaders/billboard.frag");
+             }
+             shaderToUse = billboardShader.get();
+             shaderToUse->Use();
+             // Set Billboard Uniforms
+             // Billboard shader needs: u_View, u_Projection, u_CenterPos, u_Size
+             shaderToUse = billboardShader.get();
+             shaderToUse->Use();
+             // Set Billboard Uniforms
+             shaderToUse->SetMat4("u_View", view.m);
+             shaderToUse->SetMat4("u_Projection", projection.m);
+             shaderToUse->SetVec3("u_CenterPos", m_WorldMatrix.GetTranslation().x, m_WorldMatrix.GetTranslation().y, m_WorldMatrix.GetTranslation().z);
+             shaderToUse->SetVec2("u_Size", m_WorldMatrix.GetScale().x, m_WorldMatrix.GetScale().y); // Use scale for size
+             shaderToUse->SetInt("u_Rows", 4);
+             shaderToUse->SetInt("u_Cols", 4);
+             
+             // Extract Camera Pos from View Matrix
+             // GLSL View is Column-Major:
+             // [ Rx Ux Fx 0 ]
+             // [ Ry Uy Fy 0 ]
+             // [ Rz Uz Fz 0 ]
+             // [ Tx Ty Tz 1 ]
+             // Wait, LookAt implementation usually:
+             // [ Rx Ry Rz -dot(R,P) ]
+             // [ Ux Uy Uz -dot(U,P) ]
+             // [ Fx Fy Fz -dot(F,P) ]
+             // [ 0  0  0  1         ]
+             // In Column Major:
+             // m[0] = Rx, m[1] = Ux, m[2] = Fx, m[3] = 0
+             // m[4] = Ry, m[5] = Uy, m[6] = Fy, m[7] = 0
+             // m[8] = Rz, m[9] = Uz, m[10]= Fz, m[11]= 0
+             // m[12]=Tx,  m[13]=Ty,  m[14]=Tz,  m[15]= 1
+             
+             // Rotation Transpose (Inverse Rotation)
+             // R^T = [ Rx Ux Fx ] -> [ m0 m1 m2 ]
+             //       [ Ry Uy Fy ]    [ m4 m5 m6 ]
+             //       [ Rz Uz Fz ]    [ m8 m9 m10]
+             
+             // CameraPos = -R^T * T_vec
+             // T_vec = [ m12 m13 m14 ]
+             
+             float m0 = view.m[0][0], m4 = view.m[1][0], m8 = view.m[2][0];
+             float m1 = view.m[0][1], m5 = view.m[1][1], m9 = view.m[2][1];
+             float m2 = view.m[0][2], m6 = view.m[1][2], m10= view.m[2][2];
+             float m12= view.m[3][0], m13= view.m[3][1], m14= view.m[3][2];
+             
+             // Check matrix access. Mat4 is usually m[col][row] or m[row][col]? 
+             // Math/Mat4.h usually column-major internal array if OpenGL compatible.
+             // If Mat4.m is float[4][4], then m[col][row].
+             // let's verify Mat4 definition later. Assuming standard OpenGL layout.
+             // R^T row 0: (m0, m4, m8). (Actually m0=xx, m4=xy .. wait.)
+             // If column major:
+             // Col 0 (Right axis): m00, m01, m02 -> R.x, R.y, R.z (No! Right vector is usually the ROW in lookat? No.
+             // LookAt:
+             // Row 0: R.x, R.y, R.z
+             // Row 1: U.x, U.y, U.z
+             // Row 2: F.x, F.y, F.z
+             // OpenGL stores Column-Major. So Row 0 is stored as: m[0], m[4], m[8].
+             // So m00, m10, m20.
+             // Access m[col][row]?
+             // Let's assume m[col][row].
+             // Row 0: m[0][0], m[1][0], m[2][0]
+             
+             // Camera Pos = - (Row0*Tx + Row1*Ty + Row2*Tz) ? No.
+             // P = -R^T * T
+             // R^T = [ col0 col1 col2 ] (Because R is orthogonal, inv(R) = R^T)
+             // T = [ m[3][0], m[3][1], m[3][2] ]
+             
+             // C.x = -(R.x*Tx + U.x*Ty + F.x*Tz) 
+             // C.x = -(m[0][0]*m[3][0] + m[0][1]*m[3][1] + m[0][2]*m[3][2])
+             // C.y = -(m[1][0]*m[3][0] + m[1][1]*m[3][1] + m[1][2]*m[3][2])
+             // C.z = -(m[2][0]*m[3][0] + m[2][1]*m[3][1] + m[2][2]*m[3][2])
+            
+             float tx = view.m[3][0];
+             float ty = view.m[3][1];
+             float tz = view.m[3][2];
+             
+             float cx = -(view.m[0][0]*tx + view.m[0][1]*ty + view.m[0][2]*tz);
+             float cy = -(view.m[1][0]*tx + view.m[1][1]*ty + view.m[1][2]*tz);
+             float cz = -(view.m[2][0]*tx + view.m[2][1]*ty + view.m[2][2]*tz);
+             
+             shaderToUse->SetVec3("u_CameraPos", cx, cy, cz);
+
+        if (model) {
+            // Model drawing doesn't support alpha override easily yet without traversing materials.
+            // For now, Models pop.
+            Mat4 mvp = projection * view * m_WorldMatrix;
+            shaderToUse->SetMat4("u_MVP", mvp.m); // Use shaderToUse here
+            shaderToUse->SetMat4("u_Model", m_WorldMatrix.m); // Use shaderToUse here
+            model->Draw(shaderToUse); // Pass shaderToUse to model
+        } else if (mesh && m_Material) {
+            if (!isBillboard) {
+                Mat4 mvp = projection * view * m_WorldMatrix;
+                shaderToUse->SetMat4("u_MVP", mvp.m);
+                shaderToUse->SetMat4("u_Model", m_WorldMatrix.m);
+                shaderToUse->SetVec2("u_UVOffset", m_UVOffset.x, m_UVOffset.y);
+                shaderToUse->SetVec2("u_UVScale", m_UVScale.x, m_UVScale.y);
+                
+                // Set Dithering Uniforms
+                shaderToUse->SetFloat("u_DitherThreshold", alpha); 
+            }
+            
+            m_Material->Bind(shaderToUse); // Bind material to the active shader
+            mesh->Draw();
+            
+            // Restore shader if changed
+            if (isBillboard) {
+                shader->Use();
+            }
+        }
+    };
+
+    if (m_IsLODTransitioning) {
+        // Draw Current (fading out)
+        DrawLOD(m_CurrentLODIndex, 1.0f - m_LODTransitionProgress);
+        
+        // Draw Target (fading in)
+        // Only if different
+        if (m_CurrentLODIndex != m_TargetLODIndex) {
+            DrawLOD(m_TargetLODIndex, m_LODTransitionProgress);
+        }
+    } else {
+        // Draw Current steady state
+        DrawLOD(m_CurrentLODIndex, 1.0f);
     }
     
     // Draw children
@@ -218,13 +377,14 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
     }
 }
 
-void GameObject::AddLOD(std::shared_ptr<Mesh> mesh, float minDistance) {
+void GameObject::AddLOD(std::shared_ptr<Mesh> mesh, float minDistance, bool isBillboard) {
     LODLevel lod;
     lod.mesh = mesh;
     lod.minDistance = minDistance;
+    lod.isBillboard = isBillboard;
     m_LODs.push_back(lod);
     
-    // Sort by distance descending (farthest first)
+    // Maintain sort order (descending distance)
     std::sort(m_LODs.begin(), m_LODs.end(), [](const LODLevel& a, const LODLevel& b) {
         return a.minDistance > b.minDistance;
     });

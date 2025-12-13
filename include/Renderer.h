@@ -32,7 +32,11 @@ public:
 
     bool Init();
     void Update(float deltaTime);
-    void Render();
+    // Impostor System
+    std::shared_ptr<Texture> GenerateImpostorTexture(std::shared_ptr<GameObject> obj, int resolution = 512);
+    void SetupImpostor(std::shared_ptr<GameObject> obj, float minDistance);
+    
+    // Shader Management
     void UpdateShaders(); // Hot-Reload
     void Shutdown();
     

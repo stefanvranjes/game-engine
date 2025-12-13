@@ -43,6 +43,17 @@ uniform int u_HasORMMap;
 uniform int u_HasHeightMap;
 uniform int u_HasEmissiveMap;
 
+// Dithering for LOD Fading (0.0 = fully transparent, 1.0 = fully opaque)
+uniform float u_DitherThreshold; 
+
+// Bayer 4x4 matrix for ordered dithering
+const float dither4x4[16] = float[](
+    0.0/16.0,  8.0/16.0,  2.0/16.0, 10.0/16.0,
+    12.0/16.0, 4.0/16.0, 14.0/16.0,  6.0/16.0,
+    3.0/16.0, 11.0/16.0,  1.0/16.0,  9.0/16.0,
+    15.0/16.0, 7.0/16.0, 13.0/16.0,  5.0/16.0
+);
+
 // Parallax Occlusion Mapping
 vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir)
 {
@@ -91,6 +102,28 @@ vec2 ParallaxMapping(vec2 texCoords, vec3 viewDir)
 
 void main()
 {
+    // Dithering Check
+    // Get pixel coordinates in screen space
+    int x = int(gl_FragCoord.x) % 4;
+    int y = int(gl_FragCoord.y) % 4;
+    float threshold = dither4x4[y * 4 + x];
+    
+    // If u_DitherThreshold is defined in the application as "Opacity" (1.0 = opaque)
+    // We discard if Opacity < Threshold
+    // Default uniform value should be 1.0 if not set.
+    // If u_DitherThreshold is 0.5, we draw pixels where 0.5 >= threshold ? 
+    // No. If Opacity is low, we want to discard MORE.
+    // So if Opacity < threshold -> Discard.
+    // Examples:
+    // Opacity 1.0 -> 1.0 < anything? Most thresholds are < 1.0. 
+    // Wait, threshold max is 15/16 ~ 0.93. 1.0 is always greater. No discard.
+    // Opacity 0.0 -> 0.0 < anything? Always less. Discard all.
+    // Opacity 0.5 -> 0.5 < 0.9? Yes -> discard. 0.5 < 0.1? No -> keep.
+    
+    if (u_DitherThreshold < threshold) {
+        discard;
+    }
+
     // ... (POM logic remains same)
     // Calculate view direction for parallax mapping
     vec3 viewDir = normalize(ViewPos - FragPos);

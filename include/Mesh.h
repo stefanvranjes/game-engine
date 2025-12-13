@@ -30,6 +30,14 @@ public:
     const AABB& GetBounds() const { return m_Bounds; }
     const std::string& GetSource() const { return m_Source; }
 
+    // Automatic LOD Generation
+    // gridSize: The resolution of the clustering grid (e.g., 64 for 64x64x64)
+    // Smaller grid = More simplification
+    Mesh GenerateLOD(int gridSize) const;
+
+    const std::vector<float>& GetVertices() const { return m_Vertices; }
+    const std::vector<unsigned int>& GetIndices() const { return m_Indices; }
+
 private:
     void SetupMesh(const std::vector<float>& vertices, const std::vector<unsigned int>& indices);
 
@@ -39,4 +47,8 @@ private:
     unsigned int m_EBO;
     unsigned int m_IndexCount;
     AABB m_Bounds;
+
+    // CPU-side Geometry storage for LOD generation / Physics
+    std::vector<float> m_Vertices;
+    std::vector<unsigned int> m_Indices;
 };

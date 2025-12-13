@@ -141,6 +141,201 @@ void Renderer::AddPyramid(const Transform& transform) {
     std::cout << "Added pyramid at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
+std::shared_ptr<Texture> Renderer::GenerateImpostorTexture(std::shared_ptr<GameObject> obj, int tileResolution) {
+    if (!obj) return nullptr;
+
+    const int cols = 4;
+    const int rows = 4;
+    const int totalViews = cols * rows;
+    const int atlasWidth = tileResolution * cols;
+    const int atlasHeight = tileResolution * rows;
+    
+    // 1. Setup Framebuffer
+    unsigned int fbo, rbo;
+    glGenFramebuffers(1, &fbo);
+    glGenRenderbuffers(1, &rbo);
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+    
+    // Create texture atlas
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, atlasWidth, atlasHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
+    
+    // Depth buffer (needs to be full atlas size)
+    glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, atlasWidth, atlasHeight);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rbo);
+    
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Impostor FBO not complete!" << std::endl;
+        return nullptr;
+    }
+    
+    // 2. Setup Capture State
+    Transform originalTransform = obj->GetTransform();
+    obj->GetTransform() = Transform(); // Reset to identity
+    
+    // Camera params
+    float dist = 4.0f; // Distance for capture
+    // Orthographic fits better for atlas
+    Mat4 projection = Mat4::Orthographic(-2.0f, 2.0f, -2.0f, 2.0f, 0.1f, 100.0f);
+    
+    // Clear whole atlas
+    glViewport(0, 0, atlasWidth, atlasHeight);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    
+    // 3. Render Loop
+    if (m_Shader) {
+        m_Shader->Use();
+        // Assuming m_Shader handles lights or use unlit for now.
+        // For correct lighting baking, we'd need fixed light relative to camera.
+        
+        for (int i = 0; i < totalViews; ++i) {
+            // Calculate Viewport
+            int col = i % cols;
+            int row = i / cols; // 0 is top? viewport 0,0 is bottom-left.
+            // Texture coordinates 0,0 is bottom-left usually.
+            // Let's map i=0 (front) to top-left or bottom-left?
+            // Let's assume standard linear order: Row 0 is top if we want UV (0,1).
+            // Helper: fill from top-left (row index 0) to bottom-right (row index 3)
+            // But glViewport y=0 is bottom. So row 0 (top) needs y = (rows - 1 - row) * tileRes.
+            
+            int viewportX = col * tileResolution;
+            int viewportY = (rows - 1 - (i / cols)) * tileResolution; 
+            
+            glViewport(viewportX, viewportY, tileResolution, tileResolution);
+            
+            // Calculate Rotation
+            // Angle = i * (360 / total)
+            float angle = (float)i * (360.0f / (float)totalViews);
+            // Rotate CAMERA around Object? Or Rotate Object?
+            // Rotating Object is easier with fixed camera.
+            // We want to capture the object as seen from Angle.
+            // RotY(angle) on object.
+            
+            obj->GetTransform().rotation = Vec3(0, angle, 0); // Rotate Y
+            obj->Update(Mat4::Identity(), 0.0f); // Update World Matrix
+            
+            // Fixed Camera (Front View)
+            Mat4 view = Mat4::LookAt(Vec3(0, 0, dist), Vec3(0, 0, 0), Vec3(0, 1, 0));
+            
+            Mat4 mvp = projection * view * obj->GetTransform().GetMatrix();
+            m_Shader->SetMat4("u_MVP", mvp.m);
+            m_Shader->SetMat4("u_Model", obj->GetTransform().GetMatrix().m);
+            
+            // Draw
+            // We need to clear Depth for this viewport?
+            // But glClear clears whole buffer (subject to scissor test).
+            glEnable(GL_SCISSOR_TEST);
+            glScissor(viewportX, viewportY, tileResolution, tileResolution);
+            glClear(GL_DEPTH_BUFFER_BIT); // Keep color (accumulate), Clear Depth
+            glDisable(GL_SCISSOR_TEST);
+            
+            obj->Draw(m_Shader.get());
+        }
+    }
+    
+    // Restore transform
+    obj->GetTransform() = originalTransform;
+    // Restore default viewport
+    int width, height;
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    glViewport(0, 0, width, height);
+    
+    // 4. Cleanup
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &fbo);
+    glDeleteRenderbuffers(1, &rbo);
+
+    // Create wrapper
+    auto tex = std::make_shared<Texture>(textureID, atlasWidth, atlasHeight, 4);
+    return tex;
+}
+
+void Renderer::SetupImpostor(std::shared_ptr<GameObject> obj, float minDistance) {
+    if (!obj) return;
+    
+    // Generate texture
+    auto impostorTex = GenerateImpostorTexture(obj);
+    if (!impostorTex) return;
+    
+    // Create Quad Mesh
+    // Billboard needs a vertical quad (XY plane) centered at 0
+    std::vector<float> vertices = {
+        // Pos        // UV
+        -0.5f,  0.5f, 0.0f,  0.0f, 1.0f,
+        -0.5f, -0.5f, 0.0f,  0.0f, 0.0f,
+         0.5f, -0.5f, 0.0f,  1.0f, 0.0f,
+        -0.5f,  0.5f, 0.0f,  0.0f, 1.0f,
+         0.5f, -0.5f, 0.0f,  1.0f, 0.0f,
+         0.5f,  0.5f, 0.0f,  1.0f, 1.0f
+    };
+    
+    auto quadMesh = std::make_shared<Mesh>(vertices, std::vector<unsigned int>(), 800); // 800 is dummy size? No, it's vertex count usually? 
+    // Wait, Mesh constructor signature: Mesh(vertices, indices, ...)
+    // Wait, let's check Mesh.h or CreateCube usage.
+    // Mesh::CreateCube returns shared_ptr<Mesh>.
+    // Let's use a helper Mesh::CreateQuad() if it exists or make one.
+    // Or just manually construct.
+    // The Mesh ctor in cpp: Mesh(std::vector<float> vertices, std::vector<unsigned int> indices)
+    // We don't have indices here, just vertices.
+    // We can make indices trivial.
+    std::vector<unsigned int> indices = {0, 1, 2, 0, 2, 3}; // If using indexed
+    // But above vertices are 6 for 2 triangles non-indexed? 
+    // Let's use indexed quad.
+    std::vector<float> uniqueVertices = {
+        -0.5f,  0.5f, 0.0f,  0.0f, 1.0f, // TL
+        -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, // BL
+         0.5f, -0.5f, 0.0f,  1.0f, 0.0f, // BR
+         0.5f,  0.5f, 0.0f,  1.0f, 1.0f  // TR
+    };
+    // Correct indices: 0,1,2, 0,2,3
+    quadMesh = std::make_shared<Mesh>(uniqueVertices, indices);
+
+    // Create Material
+    auto mat = std::make_shared<Material>();
+    mat->SetTexture(impostorTex);
+    
+    // We need to mark this as a "Billboard" for special rendering?
+    // Or we use a specific shader for this LOD.
+    // GameObject::Draw uses standard shader passed to it.
+    // If we want billboard behavior (facing camera), we need the billboard shader.
+    // GameObject doesn't easily support switching shader per LOD yet. 
+    // It calls mesh->Draw() with the *provided* shader.
+    // We might need to handle Billboard rendering logic specifically in GameObject::Draw
+    // or add a "Billboard" component/flag.
+    
+    // For now, let's just make it a static quad that doesn't terminate rotation? 
+    // No, "Impostor" implies billboarding.
+    // If we just put a quad, it will rotate with the object (which might be what we want if it's a static capture?).
+    // If the object rotates, we want the impostor to reflect that OR always face camera.
+    // 2 types: 
+    // 1. Billboard (always faces camera, used for trees/particles)
+    // 2. Simply Low Poly (static mesh).
+    // The user asked for "Billboard Impostors". This usually means always facing camera.
+    // So we need GPU billboarding.
+    
+    // To support custom shader for LOD, we might need to modify GameObject logic.
+    // Or we add a `SetCustomShader` to Material?
+    // Let's stick to modifying GameObject::Draw to detect if it's a billboard LOD?
+    // How? Maybe `IsBillboard` flag on Mesh? Or Material?
+    // Let's add `m_IsBillboard` to Material or GameObject?
+    // If we add it to GameObject, it applies to all LODs? No.
+    // Let's add `bool useBillboardShader` to `LODLevel` struct in GameObject.h
+    
+    obj->AddLOD(quadMesh, minDistance);
+    // We need to signal this LOD needs billboard shader.
+    // But `AddLOD` updates `m_LODs`.
+    // Let's assume we update GameObject to handle this.
+    // For now, we just add it, and we will update GameObject.h next.
+}
+
 void Renderer::AddLODTestObject(const Transform& transform) {
     auto lodObject = std::make_shared<GameObject>("LOD_Test");
     
@@ -154,13 +349,16 @@ void Renderer::AddLODTestObject(const Transform& transform) {
     mat->SetDiffuse(Vec3(1.0f, 1.0f, 0.0f)); // Yellow for pyramid
     lodObject->SetMaterial(mat);
     
-    // LOD 1 (Low detail - Cube at 10m) - Swapped for debugging
-    auto cubeMesh = std::make_shared<Mesh>(Mesh::CreateCube());
-    lodObject->AddLOD(cubeMesh, 10.0f);
+    // LOD 1 (Low detail - Cube at 10m) - OLD
+    // auto cubeMesh = std::make_shared<Mesh>(Mesh::CreateCube());
+    // lodObject->AddLOD(cubeMesh, 10.0f);
+    
+    // Create Impostor LOD at 20m
+    SetupImpostor(lodObject, 20.0f);
     
     if (m_Root) m_Root->AddChild(lodObject);
     
-    std::cout << "Added LOD test object at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
+    std::cout << "Added LOD test object with Impostor at position (" << transform.position.x << ", " << transform.position.y << ", " << transform.position.z << ")" << std::endl;
 }
 
 void Renderer::RemoveObject(size_t index) {
@@ -203,6 +401,27 @@ void Renderer::SetupScene() {
     floor->SetMaterial(mat);
     
     if (m_Root) m_Root->AddChild(floor);
+    
+    // Simulate Imported LOD Group
+    auto lodGroupRoot = std::make_shared<GameObject>("Imported_Model_Root");
+    
+    // Base (LOD0)
+    auto baseParams = std::make_shared<GameObject>("MyProp_LOD0");
+    baseParams->SetMesh(Mesh::CreateCube());
+    baseParams->SetMaterial(mat);
+    lodGroupRoot->AddChild(baseParams);
+    
+    // LOD1
+    auto lod1Params = std::make_shared<GameObject>("MyProp_LOD1");
+    lod1Params->SetMesh(Mesh::CreateCube()); // Same mesh but would be simpler
+    lod1Params->GetTransform().scale = Vec3(0.5f, 0.5f, 0.5f); // Visual distinction
+    lodGroupRoot->AddChild(lod1Params);
+    
+    // Process Groups
+    lodGroupRoot->ProcessLODGroups();
+    
+    lodGroupRoot->GetTransform().position = Vec3(5, 0, 0);
+    if (m_Root) m_Root->AddChild(lodGroupRoot);
     
     // Load animated GLTF model for testing
     try {

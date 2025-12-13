@@ -11,7 +11,7 @@ AudioSource::~AudioSource() {
     }
 }
 
-void AudioSource::Load(const std::string& filepath) {
+void AudioSource::Load(const std::string& filepath, Type type) {
     if (m_loaded) {
         ma_sound_uninit(&m_sound);
         m_loaded = false;
@@ -20,17 +20,26 @@ void AudioSource::Load(const std::string& filepath) {
     ma_engine* engine = AudioSystem::Get().GetEngine();
     if (!engine) return;
 
-    // Load sound file, decoding into memory or streaming (defaulting to streaming for now for music, but let's see)
-    // Use flags for spatialization default?
-    ma_uint32 flags = MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC;
+    ma_uint32 flags = MA_SOUND_FLAG_ASYNC;
+    ma_sound_group* targetGroup = nullptr;
+
+    if (type == Type::Music) {
+        flags |= MA_SOUND_FLAG_STREAM; // Stream music
+        targetGroup = AudioSystem::Get().GetMusicGroup();
+    } else {
+        flags |= MA_SOUND_FLAG_DECODE; // Decode SFX to memory
+        targetGroup = AudioSystem::Get().GetWorldGroup();
+    }
     
-    // Attach to the World Group (Reverb Bus) instead of NULL (Master)
-    ma_sound_group* worldGroup = AudioSystem::Get().GetWorldGroup();
-    
-    ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), flags, worldGroup, NULL, &m_sound);
+    ma_result result = ma_sound_init_from_file(engine, filepath.c_str(), flags, targetGroup, NULL, &m_sound);
     if (result != MA_SUCCESS) {
         std::cerr << "Failed to load sound: " << filepath << " Error: " << result << std::endl;
         return;
+    }
+
+    if (type == Type::Music) {
+        // Disable spatialization for music so it's always 2D
+        ma_sound_set_spatialization_enabled(&m_sound, false);
     }
 
     m_loaded = true;

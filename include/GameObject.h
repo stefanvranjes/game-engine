@@ -50,12 +50,15 @@ public:
     // Animation
     void SetAnimator(std::shared_ptr<class Animator> animator) { m_Animator = animator; }
     std::shared_ptr<class Animator> GetAnimator() const { return m_Animator; }
-
+    
+    // Auto-LOD Grouping
+    void ProcessLODGroups();
     // LOD System
     struct LODLevel {
         std::shared_ptr<Mesh> mesh;
         std::shared_ptr<Model> model;
         float minDistance; // Switch to this LOD when distance >= minDistance
+        bool isBillboard = false; // Flag to enable billboard shader
     };
 
     void AddLOD(std::shared_ptr<Mesh> mesh, float minDistance);
@@ -101,6 +104,13 @@ private:
     int m_VisibilityStableFrames;     // Consecutive frames with same visibility
     int m_QueryFrameInterval;         // How often to issue queries (1 = every frame)
     int m_FramesSinceLastQuery;       // Counter for skipping frames
+
+    // LOD Transition
+    int m_CurrentLODIndex = -1;       // -1 = Base Mesh
+    int m_TargetLODIndex = -1;
+    float m_LODTransitionProgress = 1.0f; // 0.0 to 1.0
+    bool m_IsLODTransitioning = false;
+    const float LOD_TRANSITION_DURATION = 1.0f; // Seconds to fade
 
     std::vector<std::shared_ptr<GameObject>> m_Children;
     std::weak_ptr<GameObject> m_Parent;
