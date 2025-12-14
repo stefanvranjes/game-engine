@@ -254,3 +254,117 @@ if(BUILD_TESTS)
     # Run all tests
     add_test(NAME all_tests COMMAND tests)
 endif()
+
+# ============================================================================
+# INSTALLATION & PACKAGING CONFIGURATION
+# ============================================================================
+
+# Install executable
+install(TARGETS GameEngine
+    RUNTIME DESTINATION bin
+    LIBRARY DESTINATION lib
+    ARCHIVE DESTINATION lib
+)
+
+# Install assets directory
+install(DIRECTORY assets/
+    DESTINATION bin/assets
+    PATTERN ".git*" EXCLUDE
+)
+
+# Install shaders directory
+install(DIRECTORY shaders/
+    DESTINATION bin/shaders
+    PATTERN ".git*" EXCLUDE
+)
+
+# Install documentation
+install(FILES 
+    README.md
+    LICENSE
+    CHANGELOG.md
+    GETTING_STARTED.md
+    CI_QUICK_START.md
+    IMPLEMENTATION_SUMMARY.md
+    ARCHITECTURE_DIAGRAM.md
+    CHECKLIST.md
+    FILE_MANIFEST.md
+    docs/TESTING_CI_GUIDE.md
+    docs/AnimationEvents.md
+    docs/particle_collision_guide.md
+    docs/particle_trails_guide.md
+    game-engine-multiplayer/README.md
+    DESTINATION share/doc/GameEngine
+    OPTIONAL
+)
+
+# Install include headers
+install(DIRECTORY include/
+    DESTINATION include/GameEngine
+    PATTERN "*.h"
+    PATTERN "imgui" EXCLUDE
+)
+
+# CPack configuration for distribution
+set(CPACK_PACKAGE_NAME "GameEngine")
+set(CPACK_PACKAGE_VENDOR "Development Team")
+set(CPACK_PACKAGE_VERSION_MAJOR "0")
+set(CPACK_PACKAGE_VERSION_MINOR "1")
+set(CPACK_PACKAGE_VERSION_PATCH "0")
+set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Game Engine with Deferred Rendering and Advanced Post-Processing")
+set(CPACK_PACKAGE_DESCRIPTION "A C++20 OpenGL 3.3+ game engine with deferred rendering, advanced visual effects, and multiplayer networking support.")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/YOUR_USERNAME/game-engine")
+set(CPACK_PACKAGE_ICON "${CMAKE_SOURCE_DIR}/assets/icon.png")
+
+# Installation directory
+set(CPACK_INSTALL_PREFIX "/opt/GameEngine")
+
+# Windows-specific packaging
+if(WIN32)
+    set(CPACK_GENERATOR "NSIS;ZIP")
+    set(CPACK_NSIS_PACKAGE_NAME "Game Engine")
+    set(CPACK_NSIS_DISPLAY_NAME "Game Engine ${CPACK_PACKAGE_VERSION}")
+    set(CPACK_NSIS_INSTALL_ROOT "C:\\Program Files")
+    set(CPACK_NSIS_MENU_LINKS
+        "bin/GameEngine.exe" "Game Engine"
+        "https://github.com/YOUR_USERNAME/game-engine" "Project Repository"
+    )
+    set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/YOUR_USERNAME/game-engine")
+    set(CPACK_NSIS_CONTACT "your-email@example.com")
+    set(CPACK_NSIS_CREATE_ADMINISTRATORS_GROUP TRUE)
+endif()
+
+# Linux-specific packaging
+if(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "DEB;RPM;TGZ")
+    
+    # DEB package settings
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Development Team <email@example.com>")
+    set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
+    set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "${CPACK_PACKAGE_HOMEPAGE_URL}")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+    set(CPACK_DEBIAN_PACKAGE_DEPENDS "libglfw3, libgl1-mesa0")
+    
+    # RPM package settings
+    set(CPACK_RPM_PACKAGE_ARCHITECTURE "x86_64")
+    set(CPACK_RPM_PACKAGE_REQUIRES "glfw-devel opengl-devel")
+    set(CPACK_RPM_PACKAGE_URL "${CPACK_PACKAGE_HOMEPAGE_URL}")
+endif()
+
+# macOS-specific packaging
+if(APPLE)
+    set(CPACK_GENERATOR "DragNDrop;TGZ")
+    set(CPACK_DMG_VOLUME_NAME "Game Engine ${CPACK_PACKAGE_VERSION}")
+    set(CPACK_DMG_FORMAT "UDBZ")
+endif()
+
+# Common packaging settings
+set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_README "${CMAKE_SOURCE_DIR}/README.md")
+set(CPACK_STRIP_FILES TRUE)
+set(CPACK_VERBOSE ON)
+
+# Include CPack
+include(CPack)

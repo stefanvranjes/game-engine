@@ -1,0 +1,363 @@
+{
+  "version": 3,
+  "vendor": {
+    "game-engine": {
+      "autoFormat": true
+    }
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default Config",
+      "description": "Default build configuration",
+      "hidden": true,
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_CXX_STANDARD": "20",
+        "CMAKE_CXX_STANDARD_REQUIRED": "ON",
+        "BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc-release",
+      "displayName": "Windows MSVC Release",
+      "description": "Windows Release build with Visual Studio 2022",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/release",
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-msvc-debug",
+      "displayName": "Windows MSVC Debug",
+      "description": "Windows Debug build with Visual Studio 2022",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/debug",
+      "generator": "Visual Studio 17 2022",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-clang-release",
+      "displayName": "Windows Clang Release",
+      "description": "Windows Release build with Clang",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/clang-release",
+      "generator": "Visual Studio 17 2022",
+      "toolset": "ClangCL",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/clang-release"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+    {
+      "name": "windows-sanitizer-asan",
+      "displayName": "Windows AddressSanitizer",
+      "description": "Windows build with AddressSanitizer",
+      "inherits": "windows-msvc-debug",
+      "binaryDir": "${sourceDir}/build/asan",
+      "cacheVariables": {
+        "USE_ASAN": "ON"
+      }
+    },
+    {
+      "name": "windows-sanitizer-ubsan",
+      "displayName": "Windows UndefinedBehavior Sanitizer",
+      "description": "Windows build with UndefinedBehavior Sanitizer",
+      "inherits": "windows-msvc-debug",
+      "binaryDir": "${sourceDir}/build/ubsan",
+      "cacheVariables": {
+        "USE_UBSAN": "ON"
+      }
+    },
+    {
+      "name": "windows-clang-tidy",
+      "displayName": "Windows with Clang-Tidy",
+      "description": "Windows Debug build with Clang-Tidy static analysis",
+      "inherits": "windows-msvc-debug",
+      "binaryDir": "${sourceDir}/build/clang-tidy",
+      "cacheVariables": {
+        "ENABLE_CLANG_TIDY": "ON"
+      }
+    },
+    {
+      "name": "linux-gcc-release",
+      "displayName": "Linux GCC Release",
+      "description": "Linux Release build with GCC",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_INSTALL_PREFIX": "/usr/local/GameEngine"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-gcc-debug",
+      "displayName": "Linux GCC Debug",
+      "description": "Linux Debug build with GCC",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/linux-debug",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "g++",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/linux-debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-clang-release",
+      "displayName": "Linux Clang Release",
+      "description": "Linux Release build with Clang",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/linux-clang-release",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_INSTALL_PREFIX": "/usr/local/GameEngine"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "linux-sanitizer-asan",
+      "displayName": "Linux AddressSanitizer",
+      "description": "Linux build with AddressSanitizer",
+      "inherits": "linux-gcc-debug",
+      "binaryDir": "${sourceDir}/build/linux-asan",
+      "cacheVariables": {
+        "USE_ASAN": "ON"
+      }
+    },
+    {
+      "name": "linux-sanitizer-ubsan",
+      "displayName": "Linux UndefinedBehavior Sanitizer",
+      "description": "Linux build with UndefinedBehavior Sanitizer",
+      "inherits": "linux-gcc-debug",
+      "binaryDir": "${sourceDir}/build/linux-ubsan",
+      "cacheVariables": {
+        "USE_UBSAN": "ON"
+      }
+    },
+    {
+      "name": "linux-sanitizer-tsan",
+      "displayName": "Linux Thread Sanitizer",
+      "description": "Linux build with Thread Sanitizer",
+      "inherits": "linux-gcc-debug",
+      "binaryDir": "${sourceDir}/build/linux-tsan",
+      "cacheVariables": {
+        "USE_TSAN": "ON"
+      }
+    },
+    {
+      "name": "linux-sanitizer-msan",
+      "displayName": "Linux Memory Sanitizer",
+      "description": "Linux build with Memory Sanitizer (Clang only)",
+      "inherits": "linux-clang-release",
+      "binaryDir": "${sourceDir}/build/linux-msan",
+      "cacheVariables": {
+        "USE_MSAN": "ON",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-clang-tidy",
+      "displayName": "Linux with Clang-Tidy",
+      "description": "Linux Debug build with Clang-Tidy static analysis",
+      "inherits": "linux-clang-release",
+      "binaryDir": "${sourceDir}/build/linux-clang-tidy",
+      "cacheVariables": {
+        "ENABLE_CLANG_TIDY": "ON",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "macos-clang-release",
+      "displayName": "macOS Clang Release",
+      "description": "macOS Release build with Apple Clang",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/macos-release",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_INSTALL_PREFIX": "/usr/local/GameEngine"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+    {
+      "name": "macos-clang-debug",
+      "displayName": "macOS Clang Debug",
+      "description": "macOS Debug build with Apple Clang",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build/macos-debug",
+      "generator": "Unix Makefiles",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_INSTALL_PREFIX": "${sourceDir}/install/macos-debug"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "hidden": true,
+      "jobs": 0,
+      "targets": ["GameEngine"]
+    },
+    {
+      "name": "windows-msvc-release",
+      "configurePreset": "windows-msvc-release",
+      "inherits": "default",
+      "displayName": "Build Windows Release",
+      "description": "Build Release binary for Windows"
+    },
+    {
+      "name": "windows-msvc-debug",
+      "configurePreset": "windows-msvc-debug",
+      "inherits": "default",
+      "displayName": "Build Windows Debug",
+      "description": "Build Debug binary for Windows"
+    },
+    {
+      "name": "windows-clang-release",
+      "configurePreset": "windows-clang-release",
+      "inherits": "default",
+      "displayName": "Build Windows Clang Release",
+      "description": "Build Release binary with Clang for Windows"
+    },
+    {
+      "name": "linux-gcc-release",
+      "configurePreset": "linux-gcc-release",
+      "inherits": "default",
+      "displayName": "Build Linux Release",
+      "description": "Build Release binary for Linux"
+    },
+    {
+      "name": "linux-gcc-debug",
+      "configurePreset": "linux-gcc-debug",
+      "inherits": "default",
+      "displayName": "Build Linux Debug",
+      "description": "Build Debug binary for Linux"
+    },
+    {
+      "name": "linux-clang-release",
+      "configurePreset": "linux-clang-release",
+      "inherits": "default",
+      "displayName": "Build Linux Clang Release",
+      "description": "Build Release binary with Clang for Linux"
+    },
+    {
+      "name": "macos-clang-release",
+      "configurePreset": "macos-clang-release",
+      "inherits": "default",
+      "displayName": "Build macOS Release",
+      "description": "Build Release binary for macOS"
+    },
+    {
+      "name": "macos-clang-debug",
+      "configurePreset": "macos-clang-debug",
+      "inherits": "default",
+      "displayName": "Build macOS Debug",
+      "description": "Build Debug binary for macOS"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-msvc-release",
+      "inherits": "default",
+      "displayName": "Test Windows Release",
+      "description": "Run tests for Windows Release build"
+    },
+    {
+      "name": "windows-debug",
+      "configurePreset": "windows-msvc-debug",
+      "inherits": "default",
+      "displayName": "Test Windows Debug",
+      "description": "Run tests for Windows Debug build"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-gcc-release",
+      "inherits": "default",
+      "displayName": "Test Linux Release",
+      "description": "Run tests for Linux Release build"
+    },
+    {
+      "name": "linux-debug",
+      "configurePreset": "linux-gcc-debug",
+      "inherits": "default",
+      "displayName": "Test Linux Debug",
+      "description": "Run tests for Linux Debug build"
+    },
+    {
+      "name": "macos-release",
+      "configurePreset": "macos-clang-release",
+      "inherits": "default",
+      "displayName": "Test macOS Release",
+      "description": "Run tests for macOS Release build"
+    }
+  ]
+}
