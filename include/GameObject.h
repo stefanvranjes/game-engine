@@ -10,6 +10,10 @@
 #include <memory>
 #include <string>
 
+// Forward declarations
+class RigidBody;
+class KinematicController;
+
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
     GameObject(const std::string& name = "GameObject");
@@ -50,6 +54,14 @@ public:
     // Animation
     void SetAnimator(std::shared_ptr<class Animator> animator) { m_Animator = animator; }
     std::shared_ptr<class Animator> GetAnimator() const { return m_Animator; }
+    
+    // Physics - Rigid Bodies
+    void SetRigidBody(std::shared_ptr<RigidBody> rigidBody) { m_RigidBody = rigidBody; }
+    std::shared_ptr<RigidBody> GetRigidBody() const { return m_RigidBody; }
+    
+    // Physics - Kinematic Controllers
+    void SetKinematicController(std::shared_ptr<KinematicController> controller) { m_KinematicController = controller; }
+    std::shared_ptr<KinematicController> GetKinematicController() const { return m_KinematicController; }
     
     // Auto-LOD Grouping
     void ProcessLODGroups();
@@ -118,49 +130,12 @@ private:
     // Animation
     std::shared_ptr<class Animator> m_Animator;
 
-    // Audio
-    void SetAudioSource(std::shared_ptr<class AudioSource> audioSource) { m_AudioSource = audioSource; }
-    std::shared_ptr<class AudioSource> GetAudioSource() const { return m_AudioSource; }
-
-private:
-    std::string m_Name;
-    Transform m_Transform;
-    Mat4 m_WorldMatrix;
-    
-    std::shared_ptr<Mesh> m_Mesh;
-    std::shared_ptr<Material> m_Material;
-    std::shared_ptr<Model> m_Model;
-    
-    Vec2 m_UVOffset;  // UV offset for sprite atlases
-    Vec2 m_UVScale;   // UV scale for sprite atlases
-    
-    std::vector<LODLevel> m_LODs; // Sorted by distance descending
-
-    // Occlusion Culling Data
-    unsigned int m_QueryID;
-    bool m_Visible;
-    bool m_QueryIssued;
-    
-    // Adaptive query frequency
-    bool m_PreviousVisible;           // Visibility from last frame
-    int m_VisibilityStableFrames;     // Consecutive frames with same visibility
-    int m_QueryFrameInterval;         // How often to issue queries (1 = every frame)
-    int m_FramesSinceLastQuery;       // Counter for skipping frames
-
-    // Physics/Audio
-    Vec3 m_Velocity;
-    Vec3 m_LastPosition;
-
-    std::vector<std::shared_ptr<GameObject>> m_Children;
-    std::weak_ptr<GameObject> m_Parent;
-    
-    // Animation
-    std::shared_ptr<class Animator> m_Animator;
+    // Physics components
+    std::shared_ptr<RigidBody> m_RigidBody;
+    std::shared_ptr<KinematicController> m_KinematicController;
 
     // Audio
     std::vector<std::shared_ptr<class AudioSource>> m_AudioSources;
     std::shared_ptr<class AudioListener> m_AudioListener;
-    
-    void SetAudioListener(std::shared_ptr<class AudioListener> listener) { m_AudioListener = listener; }
-    std::shared_ptr<class AudioListener> GetAudioListener() const { return m_AudioListener; }
 };
+

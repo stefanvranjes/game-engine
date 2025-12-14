@@ -113,6 +113,25 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(enet)
 
+# Fetch Bullet3D Physics Engine
+FetchContent_Declare(
+    bullet3
+    GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
+    GIT_TAG 3.24
+)
+FetchContent_GetProperties(bullet3)
+if(NOT bullet3_populated)
+    FetchContent_Populate(bullet3)
+    # Use Bullet2 API
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+    set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
+    set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
+    set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
+    set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(${bullet3_SOURCE_DIR}/src bullet3_build EXCLUDE_FROM_ALL)
+endif()
+
 # ImGui sources
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
@@ -172,6 +191,10 @@ add_executable(GameEngine
     # Profiling and telemetry
     src/Profiler.cpp
     src/TelemetryServer.cpp
+    # Physics system
+    src/PhysicsSystem.cpp
+    src/RigidBody.cpp
+    src/KinematicController.cpp
     # Networking layer - integrated into main engine
     game-engine-multiplayer/src/NetworkManager.cpp
     game-engine-multiplayer/src/Server.cpp
@@ -182,9 +205,9 @@ add_executable(GameEngine
     ${IMGUI_SOURCES}
 )
 
-target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR})
+target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src)
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf enet ws2_32 winmm)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf enet ws2_32 winmm BulletDynamics BulletCollision LinearMath)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD

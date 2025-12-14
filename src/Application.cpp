@@ -18,11 +18,17 @@ Application::Application()
 }
 
 Application::~Application() {
+    if (m_PhysicsSystem) {
+        m_PhysicsSystem->Shutdown();
+    }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
 }
 
 void Application::Shutdown() {
+    if (m_PhysicsSystem) {
+        m_PhysicsSystem->Shutdown();
+    }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
     m_Running = false;
@@ -84,6 +90,11 @@ bool Application::Init() {
         std::cerr << "Failed to initialize Audio System" << std::endl;
         // Check if critical? maybe just log
     }
+
+    // Initialize Physics System
+    m_PhysicsSystem = std::make_unique<PhysicsSystem>();
+    m_PhysicsSystem->Initialize(Vec3(0, -9.81f, 0)); // Standard Earth gravity
+    std::cout << "Physics System initialized with Bullet3D" << std::endl;
 
     m_Running = true;
     return true;
@@ -174,6 +185,33 @@ void Application::Update(float deltaTime) {
         SCOPED_PROFILE("Renderer::Update");
         if (m_Renderer) {
             m_Renderer->Update(deltaTime);
+        }
+    }
+
+    // Update physics simulation
+    {
+        SCOPED_PROFILE("Physics::Update");
+        if (m_PhysicsSystem) {
+            m_PhysicsSystem->Update(deltaTime);
+            
+            // Sync rigid bodies to GameObjects
+            if (m_Renderer) {
+                auto& gameObjects = m_Renderer->GetGameObjects();
+                for (auto& obj : gameObjects) {
+                    if (obj && obj->GetRigidBody()) {
+                        Vec3 physicsPos;
+                        Quat physicsRot;
+                        obj->GetRigidBody()->SyncTransformFromPhysics(physicsPos, physicsRot);
+                        obj->GetTransform().SetPosition(physicsPos);
+                        obj->GetTransform().SetRotation(physicsRot);
+                    }
+                    if (obj && obj->GetKinematicController()) {
+                        Vec3 physicsPos;
+                        obj->GetKinematicController()->SyncTransformFromPhysics(physicsPos);
+                        obj->GetTransform().SetPosition(physicsPos);
+                    }
+                }
+            }
         }
     }
 

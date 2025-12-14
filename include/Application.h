@@ -8,6 +8,7 @@
 #include "PreviewRenderer.h"
 #include "Profiler.h"
 #include "TelemetryServer.h"
+#include "PhysicsSystem.h"
 #include <memory>
 
 class Application {
@@ -30,6 +31,7 @@ private:
     std::unique_ptr<Text> m_Text;
     std::unique_ptr<ImGuiManager> m_ImGui;
     std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
+    std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
     
     int m_SelectedObjectIndex;
     
@@ -42,3 +44,4 @@ private:
     // Audio Listener
     Vec3 m_LastCameraPosition;
 };
+
