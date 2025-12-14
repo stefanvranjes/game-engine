@@ -6,6 +6,8 @@
 #include "Text.h"
 #include "ImGuiManager.h"
 #include "PreviewRenderer.h"
+#include "Profiler.h"
+#include "TelemetryServer.h"
 #include <memory>
 
 class Application {
@@ -15,6 +17,7 @@ public:
 
     bool Init();
     void Run();
+    void Shutdown();
 
 private:
     void Update(float deltaTime);

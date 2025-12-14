@@ -19,9 +19,20 @@ Application::Application()
 
 Application::~Application() {
     AudioSystem::Get().Shutdown();
+    RemoteProfiler::Instance().Shutdown();
+}
+
+void Application::Shutdown() {
+    AudioSystem::Get().Shutdown();
+    RemoteProfiler::Instance().Shutdown();
+    m_Running = false;
 }
 
 bool Application::Init() {
+    // Initialize remote profiler (telemetry server on port 8080)
+    RemoteProfiler::Instance().Initialize(8080);
+    std::cout << "Remote Profiler initialized. View at: http://localhost:8080" << std::endl;
+    
     // Create window
     m_Window = std::make_unique<Window>(800, 600, "Game Engine");
     
@@ -82,6 +93,9 @@ void Application::Run() {
     m_LastFrameTime = static_cast<float>(glfwGetTime());
     
     while (m_Running && !m_Window->ShouldClose()) {
+        // Begin frame profiling
+        Profiler::Instance().BeginFrame();
+        
         float currentTime = static_cast<float>(glfwGetTime());
         float deltaTime = currentTime - m_LastFrameTime;
         m_LastFrameTime = currentTime;
@@ -89,12 +103,19 @@ void Application::Run() {
         Update(deltaTime);
         Render();
         
+        // End frame profiling and update telemetry
+        Profiler::Instance().EndFrame();
+        PerformanceMonitor::Instance().Update();
+        RemoteProfiler::Instance().Update();
+        
         m_Window->SwapBuffers();
         m_Window->PollEvents();
     }
 }
 
 void Application::Update(float deltaTime) {
+    SCOPED_PROFILE("Application::Update");
+    
     // Calculate FPS
     m_FrameCount++;
     m_FPSTimer += deltaTime;
@@ -105,7 +126,9 @@ void Application::Update(float deltaTime) {
     }
 
     // Update camera with collision detection
-    if (m_Camera) {
+    {
+        SCOPED_PROFILE("Camera::Update");
+        if (m_Camera) {
         Vec3 oldPos = m_Camera->GetPosition();
         m_Camera->ProcessInput(m_Window->GetGLFWWindow(), deltaTime);
         Vec3 newPos = m_Camera->GetPosition();
@@ -147,8 +170,11 @@ void Application::Update(float deltaTime) {
     }
     
     // Update scene (sprites, particles, etc.) with deltaTime
-    if (m_Renderer) {
-        m_Renderer->Update(deltaTime);
+    {
+        SCOPED_PROFILE("Renderer::Update");
+        if (m_Renderer) {
+            m_Renderer->Update(deltaTime);
+        }
     }
 
     // Scene Management Input
@@ -169,33 +195,44 @@ void Application::Update(float deltaTime) {
 }
 
 void Application::Render() {
+    SCOPED_PROFILE("Application::Render");
+    
     // Clear the screen and depth buffer
     glClearColor(0.1f, 0.1f, 0.2f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     // Render scene
-    m_Renderer->Render();
+    {
+        PROFILE_GPU("Renderer::Render");
+        m_Renderer->Render();
+    }
 
     // Render UI (HUD)
-    if (m_Text && m_Camera) {
-        // FPS counter
-        std::string fpsText = "FPS: " + std::to_string(static_cast<int>(m_FPS));
-        m_Text->RenderText(fpsText, 10.0f, 10.0f, 1.0f, Vec3(0.0f, 1.0f, 0.0f));
+    {
+        SCOPED_PROFILE("UI::Render");
+        if (m_Text && m_Camera) {
+            // FPS counter
+            std::string fpsText = "FPS: " + std::to_string(static_cast<int>(m_FPS));
+            m_Text->RenderText(fpsText, 10.0f, 10.0f, 1.0f, Vec3(0.0f, 1.0f, 0.0f));
 
-        // Camera position
-        Vec3 camPos = m_Camera->GetPosition();
-        std::string posText = "Pos: (" + 
-            std::to_string(static_cast<int>(camPos.x)) + ", " +
-            std::to_string(static_cast<int>(camPos.y)) + ", " +
-            std::to_string(static_cast<int>(camPos.z)) + ")";
-        m_Text->RenderText(posText, 10.0f, 30.0f, 1.0f, Vec3(1.0f, 1.0f, 1.0f));
+            // Camera position
+            Vec3 camPos = m_Camera->GetPosition();
+            std::string posText = "Pos: (" + 
+                std::to_string(static_cast<int>(camPos.x)) + ", " +
+                std::to_string(static_cast<int>(camPos.y)) + ", " +
+                std::to_string(static_cast<int>(camPos.z)) + ")";
+            m_Text->RenderText(posText, 10.0f, 30.0f, 1.0f, Vec3(1.0f, 1.0f, 1.0f));
+        }
     }
 
     // Render ImGui Editor UI
-    if (m_ImGui) {
-        m_ImGui->BeginFrame();
-        RenderEditorUI();
-        m_ImGui->EndFrame();
+    {
+        SCOPED_PROFILE("ImGui::Render");
+        if (m_ImGui) {
+            m_ImGui->BeginFrame();
+            RenderEditorUI();
+            m_ImGui->EndFrame();
+        }
     }
 }
 
