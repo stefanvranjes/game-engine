@@ -3,6 +3,7 @@
 #include "Frustum.h"
 #include "GLExtensions.h"
 #include "GLTFLoader.h"
+#include "Profiler.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -963,6 +964,8 @@ void Renderer::RenderSceneForward(Shader* shader) {
 
 
 void Renderer::Update(float deltaTime) {
+    SCOPED_PROFILE("Renderer::Update");
+    
     // Update camera matrices
     if (m_Camera) {
         m_Camera->UpdateMatrices();
@@ -1054,12 +1057,17 @@ void Renderer::UpdateSprites(std::shared_ptr<GameObject> node, float deltaTime) 
 }
 
 void Renderer::Render() {
+    SCOPED_PROFILE("Renderer::Render");
+    
     // Update camera matrices (moved to Update method)
     // Update scene graph (moved to Update method)
     // Update particles (moved to Update method)
 
     // ===== PASS 0: Render point light shadows =====
-    m_PointShadowShader->Use();
+    {
+        SCOPED_PROFILE("PointShadows");
+        SCOPED_GPU_PROFILE("PointShadowPass", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+        m_PointShadowShader->Use();
     int shadowIndex = 0;
     for (const auto& light : m_Lights) {
         if (light.type == LightType::Point && light.castsShadows && shadowIndex < m_PointShadows.size()) {
@@ -1087,9 +1095,13 @@ void Renderer::Render() {
         }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
     // ===== PASS 1: Render spot light shadows =====
-    m_DepthShader->Use();
+    {
+        SCOPED_PROFILE("SpotShadows");
+        SCOPED_GPU_PROFILE("SpotShadowPass", glm::vec4(0.5f, 1.0f, 0.0f, 1.0f));
+        m_DepthShader->Use();
     int spotShadowIndex = 0;
     std::vector<Mat4> spotLightMatrices;
     
@@ -1115,8 +1127,12 @@ void Renderer::Render() {
         }
     }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
     // ===== PASS 2: Calculate light space matrix for shadow mapping (first directional light only) =====
+    {
+        SCOPED_PROFILE("CascadedShadows");
+        SCOPED_GPU_PROFILE("CascadedShadowPass", glm::vec4(0.0f, 1.0f, 1.0f, 1.0f));
     std::vector<Mat4> lightSpaceMatrices;
     if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
         lightSpaceMatrices = GetLightSpaceMatrices();
@@ -1155,6 +1171,7 @@ void Renderer::Render() {
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+    }
 
     // Get framebuffer size
     int width, height;
@@ -1164,11 +1181,13 @@ void Renderer::Render() {
     glViewport(0, 0, width, height);
 
     // ===== PASS 2: Issue Occlusion Queries (BEFORE updating visibility) =====
-    // Issue queries against the depth buffer from the PREVIOUS frame
-    // This ensures we test with the visibility state that was used to render that depth buffer
-    
-    // Disable color and depth writes
-    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    {
+        SCOPED_PROFILE("OcclusionQueries");
+        // Issue queries against the depth buffer from the PREVIOUS frame
+        // This ensures we test with the visibility state that was used to render that depth buffer
+        
+        // Disable color and depth writes
+        glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
     glDepthMask(GL_FALSE);
     
     // Bind G-Buffer FBO from previous frame (still has old depth buffer)
@@ -1210,14 +1229,16 @@ void Renderer::Render() {
                 queue.push_back(child);
             }
         }
+        
+        // Restore state
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDepthMask(GL_TRUE);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
-    
-    // Restore state
-    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glDepthMask(GL_TRUE);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     // ===== PASS 3: Retrieve Query Results and Update Visibility =====
+    {
+        SCOPED_PROFILE("VisibilityUpdate");
     // Retrieve results from queries issued in the PREVIOUS frame
     if (m_Root) {
         std::vector<std::shared_ptr<GameObject>> queue;
@@ -1246,8 +1267,12 @@ void Renderer::Render() {
             }
         }
     }
+    }
 
     // ===== PASS 4: Geometry Pass - Render to G-Buffer =====
+    {
+        SCOPED_PROFILE("GeometryPass");
+        SCOPED_GPU_PROFILE("GeometryPass", glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
     glViewport(0, 0, width, height);
     m_GBuffer->BindForWriting();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1294,9 +1319,12 @@ void Renderer::Render() {
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
 
     // ===== PASS 4.5: SSAO Pass =====
     if (m_SSAOEnabled) {
+        SCOPED_PROFILE("SSAO");
+        SCOPED_GPU_PROFILE("SSAOPass", glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
         m_SSAO->Render(
             m_GBuffer->GetPositionTexture(),
             m_GBuffer->GetNormalTexture(),
@@ -1304,9 +1332,12 @@ void Renderer::Render() {
             m_Camera->GetViewMatrix().m
         );
     }
+    }
 
     // ===== PASS 4.6: SSR Pass =====
     if (m_SSREnabled) {
+        SCOPED_PROFILE("SSR");
+        SCOPED_GPU_PROFILE("SSRPass", glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
         m_SSR->Render(
             m_GBuffer->GetPositionTexture(),
             m_GBuffer->GetNormalTexture(),
@@ -1315,9 +1346,12 @@ void Renderer::Render() {
             m_Camera->GetProjectionMatrix()
         );
     }
+    }
 
     // ===== PASS 4.7: Volumetric Fog Pass =====
     if (m_VolumetricFogEnabled && m_Lights.size() > 0 && lightSpaceMatrices.size() == 3) {
+        SCOPED_PROFILE("VolumetricFog");
+        SCOPED_GPU_PROFILE("VolumetricFogPass", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
         // Flatten matrices for passing
         std::vector<float> flatMatrices;
         for (const auto& mat : lightSpaceMatrices) {
@@ -1342,8 +1376,12 @@ void Renderer::Render() {
             m_CascadeSplits.data()
         );
     }
+    }
 
     // ===== PASS 5: Lighting Pass - Render to HDR framebuffer =====
+    {
+        SCOPED_PROFILE("LightingPass");
+        SCOPED_GPU_PROFILE("LightingPass", glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
     m_PostProcessing->BeginHDR();
 
     m_LightingShader->Use();

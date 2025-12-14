@@ -3,6 +3,7 @@
 #include "BoneMask.h"
 #include "BlendTree.h"
 #include "IK.h"
+#include "Profiler.h"
 #include <iostream>
 
 Animator::Animator() 
@@ -86,12 +87,15 @@ void Animator::Resume() {
 }
 
 void Animator::Update(float deltaTime) {
+    SCOPED_PROFILE("Animator::Update");
+    
     if (!m_IsPlaying || m_IsPaused || !m_Skeleton) {
         return;
     }
     
     // Handle blending
     if (m_BlendState.isBlending) {
+        SCOPED_PROFILE("AnimationBlending");
         m_BlendState.currentBlendTime += deltaTime;
         float t = m_BlendState.currentBlendTime / m_BlendState.blendTime;
         
@@ -192,10 +196,14 @@ void Animator::Update(float deltaTime) {
         }
         
         // Blend the matrices using eased blend weight
-        BlendBoneMatrices(m_FromBoneMatrices, toBoneMatrices, easedT, m_FinalBoneMatrices);
+        {
+            SCOPED_PROFILE("BlendBoneMatrices");
+            BlendBoneMatrices(m_FromBoneMatrices, toBoneMatrices, easedT, m_FinalBoneMatrices);
+        }
         
     } else {
         // Normal single animation update
+        SCOPED_PROFILE("SingleAnimation");
         if (m_CurrentAnimationIndex < 0) {
             return;
         }

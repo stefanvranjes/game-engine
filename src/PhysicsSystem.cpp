@@ -1,6 +1,7 @@
 #include "PhysicsSystem.h"
 #include "RigidBody.h"
 #include "KinematicController.h"
+#include "Profiler.h"
 #include <btBulletDynamicsCommon.h>
 #include <iostream>
 
@@ -105,15 +106,23 @@ void PhysicsSystem::Shutdown() {
 }
 
 void PhysicsSystem::Update(float deltaTime, int subSteps) {
+    SCOPED_PROFILE("PhysicsSystem::Update");
+    
     if (!m_Initialized || !m_DynamicsWorld) {
         return;
     }
 
     // Update kinematic controllers before physics step
-    UpdateKinematicControllers(deltaTime);
+    {
+        SCOPED_PROFILE("KinematicControllers");
+        UpdateKinematicControllers(deltaTime);
+    }
 
     // Step the simulation
-    m_DynamicsWorld->stepSimulation(deltaTime, subSteps, 1.0f / 60.0f);
+    {
+        SCOPED_PROFILE("PhysicsSimulation");
+        m_DynamicsWorld->stepSimulation(deltaTime, subSteps, 1.0f / 60.0f);
+    }
 }
 
 void PhysicsSystem::UpdateKinematicControllers(float deltaTime) {
