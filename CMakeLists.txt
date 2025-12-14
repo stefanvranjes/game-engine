@@ -5,8 +5,57 @@ project(GameEngine VERSION 0.1.0 LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Build type defaults
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Compiler flags
 if(MSVC)
-    add_compile_options(/FS)
+    add_compile_options(/FS /W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# Sanitizers configuration
+option(USE_ASAN "Enable Address Sanitizer" OFF)
+option(USE_UBSAN "Enable Undefined Behavior Sanitizer" OFF)
+option(USE_MSAN "Enable Memory Sanitizer" OFF)
+option(USE_TSAN "Enable Thread Sanitizer" OFF)
+
+if(USE_ASAN AND NOT MSVC)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
+if(USE_UBSAN AND NOT MSVC)
+    add_compile_options(-fsanitize=undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=undefined)
+endif()
+
+if(USE_MSAN AND NOT MSVC)
+    add_compile_options(-fsanitize=memory -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=memory)
+endif()
+
+if(USE_TSAN AND NOT MSVC)
+    add_compile_options(-fsanitize=thread)
+    add_link_options(-fsanitize=thread)
+endif()
+
+# Clang-Tidy configuration
+option(ENABLE_CLANG_TIDY "Enable clang-tidy checks" OFF)
+
+if(ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_COMMAND clang-tidy)
+    if(CLANG_TIDY_COMMAND)
+        set(CMAKE_CXX_CLANG_TIDY
+            "${CLANG_TIDY_COMMAND}"
+            "-checks=readability-*,performance-*,modernize-*,bugprone-*,portability-*"
+            "-header-filter=.*"
+            "-warnings-as-errors=*"
+        )
+    endif()
 endif()
 
 # Fetch GLFW
@@ -152,9 +201,56 @@ if(BUILD_TESTS)
         GIT_REPOSITORY https://github.com/google/googletest.git
         GIT_TAG release-1.14.0
     )
+    # Disable warnings in googletest
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
-    add_executable(tests tests/main.cpp) # create tests/main.cpp later
-    target_link_libraries(tests PRIVATE gtest_main)
+    
+    # Core library tests
+    add_executable(tests
+        tests/main.cpp
+        tests/test_math.cpp
+        tests/test_transform.cpp
+        tests/test_gameobject.cpp
+        tests/test_material.cpp
+        tests/test_shader.cpp
+        tests/game-engine-multiplayer/test_message.cpp
+        tests/game-engine-multiplayer/test_serializer.cpp
+    )
+    
+    target_include_directories(tests PRIVATE 
+        include 
+        include/imgui 
+        game-engine-multiplayer/include 
+        ${miniaudio_SOURCE_DIR}
+    )
+    
+    target_link_libraries(tests PRIVATE 
+        gtest 
+        gtest_main 
+        nlohmann_json
+    )
+    
+    # Apply sanitizers to tests
+    if(USE_ASAN AND NOT MSVC)
+        target_compile_options(tests PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+        target_link_options(tests PRIVATE -fsanitize=address)
+    endif()
+    
+    if(USE_UBSAN AND NOT MSVC)
+        target_compile_options(tests PRIVATE -fsanitize=undefined -fno-omit-frame-pointer)
+        target_link_options(tests PRIVATE -fsanitize=undefined)
+    endif()
+    
     enable_testing()
-    add_test(NAME unit_tests COMMAND tests)
+    
+    # Add individual test targets
+    add_test(NAME math_tests COMMAND tests --gtest_filter=MathTest.*)
+    add_test(NAME transform_tests COMMAND tests --gtest_filter=TransformTest.*)
+    add_test(NAME gameobject_tests COMMAND tests --gtest_filter=GameObjectTest.*)
+    add_test(NAME material_tests COMMAND tests --gtest_filter=MaterialTest.*)
+    add_test(NAME network_tests COMMAND tests --gtest_filter=NetworkTest.*)
+    add_test(NAME serialization_tests COMMAND tests --gtest_filter=SerializationTest.*)
+    
+    # Run all tests
+    add_test(NAME all_tests COMMAND tests)
 endif()

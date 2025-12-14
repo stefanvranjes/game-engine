@@ -1,0 +1,213 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CMAKE_VERSION: "3.20"
+  BUILD_TYPE: Release
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        vs-version: [2022]
+        config: [Debug, Release]
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        choco install -y cmake
+        choco install -y llvm
+    
+    - name: Create build directory
+      run: mkdir -p build
+    
+    - name: Configure CMake
+      run: |
+        cd build
+        cmake .. -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=${{ matrix.config }} -DBUILD_TESTS=ON
+    
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config ${{ matrix.config }} -j4
+    
+    - name: Run tests
+      run: |
+        cd build
+        ctest --output-on-failure --build-config ${{ matrix.config }}
+
+  clang-tidy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake clang-tidy clang-tools
+        sudo apt-get install -y libglfw3-dev libgl1-mesa-dev
+    
+    - name: Create build directory
+      run: mkdir -p build
+    
+    - name: Configure CMake with clang-tidy
+      run: |
+        cd build
+        cmake .. -DCMAKE_CXX_COMPILER=clang++ -DENABLE_CLANG_TIDY=ON -DBUILD_TESTS=ON
+    
+    - name: Run clang-tidy
+      run: |
+        cd build
+        cmake --build . -j4 2>&1 | tee tidy-output.txt
+    
+    - name: Check clang-tidy results
+      run: |
+        cd build
+        if grep -q "error:" tidy-output.txt; then
+          echo "Clang-tidy found errors"
+          exit 1
+        fi
+
+  sanitizers:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        sanitizer: [asan, ubsan, msan, tsan]
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake clang libglfw3-dev libgl1-mesa-dev
+    
+    - name: Create build directory
+      run: mkdir -p build_${{ matrix.sanitizer }}
+    
+    - name: Configure CMake with ${{ matrix.sanitizer }}
+      run: |
+        cd build_${{ matrix.sanitizer }}
+        case "${{ matrix.sanitizer }}" in
+          asan)
+            cmake .. -DCMAKE_CXX_COMPILER=clang++ -DUSE_ASAN=ON -DBUILD_TESTS=ON
+            ;;
+          ubsan)
+            cmake .. -DCMAKE_CXX_COMPILER=clang++ -DUSE_UBSAN=ON -DBUILD_TESTS=ON
+            ;;
+          msan)
+            cmake .. -DCMAKE_CXX_COMPILER=clang++ -DUSE_MSAN=ON -DBUILD_TESTS=ON
+            ;;
+          tsan)
+            cmake .. -DCMAKE_CXX_COMPILER=clang++ -DUSE_TSAN=ON -DBUILD_TESTS=ON
+            ;;
+        esac
+    
+    - name: Build with ${{ matrix.sanitizer }}
+      run: |
+        cd build_${{ matrix.sanitizer }}
+        cmake --build . -j4
+    
+    - name: Run tests with ${{ matrix.sanitizer }}
+      run: |
+        cd build_${{ matrix.sanitizer }}
+        ctest --output-on-failure
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libglfw3-dev libgl1-mesa-dev
+    
+    - name: Create build directory
+      run: mkdir -p build
+    
+    - name: Configure CMake
+      run: |
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTS=ON
+    
+    - name: Build
+      run: |
+        cd build
+        cmake --build . -j4
+    
+    - name: Run unit tests
+      run: |
+        cd build
+        ctest --output-on-failure --verbose
+    
+    - name: Generate coverage
+      run: |
+        cd build
+        ctest --output-on-failure --verbose --coverage
+
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake
+    
+    - name: Lint with clang-format (check only)
+      run: |
+        sudo apt-get install -y clang-format
+        find src include -name "*.cpp" -o -name "*.h" | xargs clang-format --dry-run -Werror
+
+  windows-debug-build:
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    
+    - name: Install dependencies
+      run: |
+        choco install -y cmake
+    
+    - name: Create build directory
+      run: mkdir -p build
+    
+    - name: Configure CMake for Debug
+      run: |
+        cd build
+        cmake .. -G "Visual Studio 17 2022" -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTS=ON
+    
+    - name: Build Debug
+      run: |
+        cd build
+        cmake --build . --config Debug -j4
+    
+    - name: Run tests with Debug symbols
+      run: |
+        cd build
+        ctest --output-on-failure --build-config Debug --verbose
