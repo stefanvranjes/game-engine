@@ -23,11 +23,14 @@ public:
     void SetLooping(bool loop);
     bool IsLooping() const;
 
+
     void SetVolume(float volume);
     float GetVolume() const;
 
+
     void SetPitch(float pitch);
     float GetPitch() const;
+
 
     // 3D Spatialization
     void SetPosition(const Vec3& position);
@@ -63,9 +66,9 @@ public:
     
     // Getters for UI
     Vec3 GetPosition() const { return m_Position; }
-    float GetVolume() const { return m_Volume; }
-    float GetPitch() const { return m_Pitch; }
-    bool IsLooping() const { return m_Looping; }
+    // float GetVolume() const { return m_Volume; } // Implemented in cpp
+    // float GetPitch() const { return m_Pitch; } // Implemented in cpp
+    // bool IsLooping() const { return m_Looping; } // Implemented in cpp
     float GetMinDistance() const { return m_MinDistance; }
     float GetMaxDistance() const { return m_MaxDistance; }
     float GetRolloff() const { return m_Rolloff; }

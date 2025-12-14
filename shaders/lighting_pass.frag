@@ -70,6 +70,10 @@ uniform vec3 u_ReflectionProbePositions[4];
 uniform float u_ReflectionProbeRadii[4];
 uniform samplerCube u_ReflectionProbeCubemaps[4];
 
+// Volumetric Fog
+uniform sampler2D volumetricFogTexture;
+uniform int volumetricFogEnabled;
+
 // Array of offset direction for sampling
 vec3 gridSamplingDisk[20] = vec3[]
 (
@@ -567,5 +571,13 @@ void main()
     
     vec3 color = ambient + Lo + Emissive; // Add emissive component
     
+    // Apply Volumetric Fog
+    if (volumetricFogEnabled == 1) {
+        vec4 fogData = texture(volumetricFogTexture, TexCoord);
+        vec3 fogColor = fogData.rgb;
+        float transmittance = fogData.a;
+        color = color * transmittance + fogColor;
+    }
+
     FragColor = vec4(color, 1.0);
 }

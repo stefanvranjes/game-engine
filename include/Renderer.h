@@ -16,6 +16,7 @@
 #include "ShadowMap.h"
 #include "MaterialLibrary.h"
 #include "TextureManager.h"
+#include "VolumetricFog.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -79,6 +80,11 @@ public:
     TAA* GetTAA() { return m_TAA.get(); }
     void SetTAAEnabled(bool enabled) { m_TAAEnabled = enabled; }
     bool GetTAAEnabled() const { return m_TAAEnabled; }
+    
+    // Volumetric Fog
+    VolumetricFog* GetVolumetricFog() { return m_VolumetricFog.get(); }
+    void SetVolumetricFogEnabled(bool enabled) { m_VolumetricFogEnabled = enabled; }
+    bool GetVolumetricFogEnabled() const { return m_VolumetricFogEnabled; }
     
     // Batched Rendering
     void SetBatchedRenderingEnabled(bool enabled) { m_BatchedRenderingEnabled = enabled; }
@@ -156,6 +162,8 @@ private:
     bool m_SSREnabled;
     std::unique_ptr<TAA> m_TAA;
     bool m_TAAEnabled;
+    std::unique_ptr<VolumetricFog> m_VolumetricFog;
+    bool m_VolumetricFogEnabled;
     std::unique_ptr<ParticleSystem> m_ParticleSystem;
     bool m_BatchedRenderingEnabled;
     

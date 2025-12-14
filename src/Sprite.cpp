@@ -22,18 +22,11 @@ Sprite::Sprite(const std::string& name)
 Sprite::~Sprite() {
 }
 
-void Sprite::Update(const Mat4& parentMatrix) {
-    // Call base class update
-    GameObject::Update(parentMatrix);
-    
-    // Use default deltaTime for backward compatibility
-    float deltaTime = 1.0f / 60.0f;
-    UpdateAnimation(deltaTime);
-}
+
 
 void Sprite::Update(const Mat4& parentMatrix, float deltaTime) {
     // Call base class update
-    GameObject::Update(parentMatrix);
+    GameObject::Update(parentMatrix, deltaTime);
     
     // Use provided deltaTime
     UpdateAnimation(deltaTime);

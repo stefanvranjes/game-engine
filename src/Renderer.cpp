@@ -14,8 +14,9 @@
 Renderer::Renderer() 
     : m_Camera(nullptr)
     , m_ShowCascades(false)
-    , m_ShadowFadeStart(40.0f)
-    , m_ShadowFadeEnd(50.0f)
+    , m_ShadowFadeStart(100.0f)
+    , m_ShadowFadeEnd(150.0f)
+    , m_VolumetricFogEnabled(true)
     , m_SSAOEnabled(false)
     , m_SSREnabled(false)
     , m_TAAEnabled(false)
@@ -621,6 +622,13 @@ bool Renderer::Init() {
     m_TAA = std::make_unique<TAA>();
     if (!m_TAA->Init(width, height)) {
         std::cerr << "Failed to initialize TAA" << std::endl;
+        return false;
+    }
+
+    // Initialize Volumetric Fog
+    m_VolumetricFog = std::make_unique<VolumetricFog>();
+    if (!m_VolumetricFog->Init(width, height)) {
+        std::cerr << "Failed to initialize Volumetric Fog" << std::endl;
         return false;
     }
 
@@ -1308,6 +1316,33 @@ void Renderer::Render() {
         );
     }
 
+    // ===== PASS 4.7: Volumetric Fog Pass =====
+    if (m_VolumetricFogEnabled && m_Lights.size() > 0 && lightSpaceMatrices.size() == 3) {
+        // Flatten matrices for passing
+        std::vector<float> flatMatrices;
+        for (const auto& mat : lightSpaceMatrices) {
+            for(int i=0; i<16; ++i) flatMatrices.push_back(mat.m[i]);
+        }
+        
+        Vec3 camPosObj = m_Camera->GetPosition();
+        float camPos[3] = { camPosObj.x, camPosObj.y, camPosObj.z };
+        
+        m_VolumetricFog->Render(
+            m_GBuffer->GetDepthTexture(),
+            m_CSM->GetShadowMap(),
+            m_Camera->GetViewMatrix().m,
+            m_Camera->GetProjectionMatrix().m,
+            m_Camera->GetViewMatrix().Inverse().m,
+            m_Camera->GetProjectionMatrix().Inverse().m,
+            camPos,
+            &m_Lights[0].direction.x,
+            &m_Lights[0].color.x,
+            m_Lights[0].intensity,
+            flatMatrices.data(),
+            m_CascadeSplits.data()
+        );
+    }
+
     // ===== PASS 5: Lighting Pass - Render to HDR framebuffer =====
     m_PostProcessing->BeginHDR();
 
@@ -1378,6 +1413,22 @@ void Renderer::Render() {
     glBindTexture(GL_TEXTURE_2D, m_SSR->GetSSRTexture());
     m_LightingShader->SetInt("ssrTexture", 16);
     m_LightingShader->SetInt("ssrEnabled", m_SSREnabled ? 1 : 0);
+
+    // Bind Volumetric Fog
+    glActiveTexture(GL_TEXTURE0 + 23); // Use a free slot (23)
+    // Check if fog was rendered (matrices existed)
+    if (m_VolumetricFogEnabled && m_Lights.size() > 0 && lightSpaceMatrices.size() == 3) {
+        glBindTexture(GL_TEXTURE_2D, m_VolumetricFog->GetFogTexture());
+    } else {
+        // Bind black or empty? Just bind 0, shader will sample black probably (or random).
+        // Best to unbind or bind a black tex/shadow map.
+        glBindTexture(GL_TEXTURE_2D, 0); 
+    }
+    m_LightingShader->SetInt("volumetricFogTexture", 23); // Slot 23
+    // We need to pass enabled flag if we want to toggle composition
+    // But modifying shader to take tint might be cleaner.
+    // For now, if texture is black, it adds nothing.
+    m_LightingShader->SetInt("volumetricFogEnabled", m_VolumetricFogEnabled ? 1 : 0);
 
     // Bind Light Probe (Test with first probe)
     if (!m_LightProbes.empty()) {

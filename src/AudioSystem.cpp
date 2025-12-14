@@ -4,6 +4,9 @@
 // Define implementation only in this .cpp file
 #define MINIAUDIO_IMPLEMENTATION
 #include <miniaudio.h>
+extern "C" {
+#include "extras/nodes/ma_reverb_node/ma_reverb_node.c"
+}
 
 AudioSystem& AudioSystem::Get() {
     static AudioSystem instance;
@@ -37,6 +40,8 @@ bool AudioSystem::Initialize() {
     // We get the node graph from the engine
     ma_node_graph* nodeGraph = ma_engine_get_node_graph(&m_engine);
     
+    // Initialize Reverb Node - DISABLED due to API mismatch
+    /*
     ma_reverb_node_config reverbConfig = ma_reverb_node_config_init(nodeGraph->pResourceManager->config.channels, nodeGraph->pResourceManager->config.sampleRate);
     reverbConfig.roomSize = 0.5f; // Default
     reverbConfig.damping = 0.5f;
@@ -51,6 +56,7 @@ bool AudioSystem::Initialize() {
     // Connect Reverb to Engine Endpoint (Master Out)
     // ma_node_attach_output_bus(&m_reverbNode, 0, ma_engine_get_endpoint(&m_engine), 0);
     // Actually, usually we route reverb output to master, but input comes from group.
+    */
     
     // Initialize World Sound Group
     // We want this group to output to the Reverb Node INSTEAD of the Endpoint.
@@ -68,6 +74,8 @@ bool AudioSystem::Initialize() {
         return false;
     }
     
+    // Reverb routing - DISABLED
+    /*
     // Re-route World Group Output -> Reverb Node Input
     // Note: miniaudio nodes are single-input single-output (bus-wise) usually unless configured explicitly.
     // We connect Group's internal node to Reverb.
@@ -82,9 +90,10 @@ bool AudioSystem::Initialize() {
     
     // 3. Attach Reverb to Endpoint
     ma_node_attach_output_bus(&m_reverbNode, 0, endpoint, 0);
+    */
 
     m_initialized = true;
-    std::cout << "Audio System Initialized." << std::endl;
+    std::cout << "Audio System Initialized (Reverb Disabled)." << std::endl;
     return true;
 }
 

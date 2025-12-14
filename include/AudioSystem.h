@@ -1,6 +1,7 @@
 #pragma once
 
 #include <miniaudio.h>
+#include "extras/nodes/ma_reverb_node/ma_reverb_node.h"
 #include "Math/Vec3.h"
 #include <vector>
 #include <string>

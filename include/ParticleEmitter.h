@@ -217,7 +217,6 @@ public:
     static std::shared_ptr<ParticleEmitter> CreateFire(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateSmoke(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateSparks(const Vec3& position);
-    static std::shared_ptr<ParticleEmitter> CreateSparks(const Vec3& position);
     static std::shared_ptr<ParticleEmitter> CreateMagic(const Vec3& position);
     
     // Cloth/SoftBody Initialization
@@ -325,7 +324,7 @@ private:
     
     unsigned int GetIndirectBuffer() const { return m_IndirectBuffer; }
     
-    float m_SmoothingRadius;
+
 
     // Spring System (Cloth/SoftBody)
     std::unique_ptr<class Shader> m_SpringForceShader;

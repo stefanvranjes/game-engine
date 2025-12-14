@@ -102,6 +102,7 @@ add_executable(GameEngine
     src/ParticleTrail.cpp
     src/ParticleEmitter.cpp
     src/ParticleSystem.cpp
+    src/VolumetricFog.cpp
     src/Sprite.cpp
     src/SSBO.cpp
     src/AudioSystem.cpp

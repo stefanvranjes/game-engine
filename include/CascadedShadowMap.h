@@ -15,6 +15,7 @@ public:
     unsigned int GetWidth() const { return m_Width; }
     unsigned int GetHeight() const { return m_Height; }
     unsigned int GetCascadeCount() const { return 3; }
+    unsigned int GetShadowMap() const { return m_DepthMapArray; }
 
 private:
     unsigned int m_FBO;
