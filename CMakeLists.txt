@@ -56,6 +56,14 @@ if(NOT miniaudio_populated)
     FetchContent_Populate(miniaudio)
 endif()
 
+# Fetch ENet
+FetchContent_Declare(
+    enet
+    GIT_REPOSITORY https://github.com/lsalzman/enet.git
+    GIT_TAG v7.19
+)
+FetchContent_MakeAvailable(enet)
+
 # ImGui sources
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
@@ -107,12 +115,19 @@ add_executable(GameEngine
     src/SSBO.cpp
     src/AudioSystem.cpp
     src/AudioSource.cpp
+    # Networking layer - integrated into main engine
+    game-engine-multiplayer/src/NetworkManager.cpp
+    game-engine-multiplayer/src/Server.cpp
+    game-engine-multiplayer/src/Client.cpp
+    game-engine-multiplayer/src/Message.cpp
+    game-engine-multiplayer/src/Peer.cpp
+    game-engine-multiplayer/src/serialization/Serializer.cpp
     ${IMGUI_SOURCES}
 )
 
-target_include_directories(GameEngine PUBLIC include include/imgui ${miniaudio_SOURCE_DIR})
+target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR})
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf enet ws2_32 winmm)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD
@@ -123,3 +138,23 @@ add_custom_command(TARGET GameEngine POST_BUILD
     ${CMAKE_SOURCE_DIR}/shaders
     $<TARGET_FILE_DIR:GameEngine>/shaders
 )
+
+option(BUILD_TESTS "Build unit tests" ON)
+
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
+if(BUILD_TESTS)
+    include(FetchContent)
+    FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG release-1.14.0
+    )
+    FetchContent_MakeAvailable(googletest)
+    add_executable(tests tests/main.cpp) # create tests/main.cpp later
+    target_link_libraries(tests PRIVATE gtest_main)
+    enable_testing()
+    add_test(NAME unit_tests COMMAND tests)
+endif()
