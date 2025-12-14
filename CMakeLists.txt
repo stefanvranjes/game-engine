@@ -154,6 +154,11 @@ add_executable(GameEngine
     src/GLTFLoader.cpp
     src/PreviewRenderer.cpp
     src/Material.cpp
+    src/Animator.cpp
+    src/Animation.cpp
+    src/AnimationStateMachine.cpp
+    src/BlendTree.cpp
+    src/BlendTreeEditor.cpp
     src/CollisionShape.cpp
     src/CollisionDemo.cpp
     src/ParticleTrail.cpp
@@ -164,6 +169,9 @@ add_executable(GameEngine
     src/SSBO.cpp
     src/AudioSystem.cpp
     src/AudioSource.cpp
+    # Profiling and telemetry
+    src/Profiler.cpp
+    src/TelemetryServer.cpp
     # Networking layer - integrated into main engine
     game-engine-multiplayer/src/NetworkManager.cpp
     game-engine-multiplayer/src/Server.cpp
