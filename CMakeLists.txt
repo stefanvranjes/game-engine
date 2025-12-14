@@ -188,6 +188,9 @@ add_executable(GameEngine
     src/SSBO.cpp
     src/AudioSystem.cpp
     src/AudioSource.cpp
+    src/AudioMixer.cpp
+    src/AudioSpatializer.cpp
+    src/AudioOcclusion.cpp
     # Profiling and telemetry
     src/Profiler.cpp
     src/TelemetryServer.cpp

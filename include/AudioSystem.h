@@ -5,6 +5,7 @@
 #include "Math/Vec3.h"
 #include <vector>
 #include <string>
+#include <memory>
 
 class AudioSystem {
 public:
@@ -43,6 +44,9 @@ public:
 
     void SetSFXVolume(float volume);
     void SetMusicVolume(float volume);
+
+    // Update audio system (called from main loop)
+    void Update(float deltaTime);
 
 private:
     AudioSystem();

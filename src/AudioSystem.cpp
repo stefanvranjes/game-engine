@@ -1,4 +1,7 @@
 #include "AudioSystem.h"
+#include "AudioMixer.h"
+#include "AudioSpatializer.h"
+#include "AudioOcclusion.h"
 #include <iostream>
 
 // Define implementation only in this .cpp file
@@ -92,8 +95,13 @@ bool AudioSystem::Initialize() {
     ma_node_attach_output_bus(&m_reverbNode, 0, endpoint, 0);
     */
 
+    // Initialize advanced audio subsystems
+    AudioMixer::Get().Initialize(&m_engine);
+    AudioSpatializer::Get().Initialize();
+    AudioOcclusion::Get().Initialize();
+
     m_initialized = true;
-    std::cout << "Audio System Initialized (Reverb Disabled)." << std::endl;
+    std::cout << "Audio System Initialized (Reverb Disabled, Mixer/Spatialization/Occlusion Enabled)." << std::endl;
     return true;
 }
 
@@ -139,4 +147,14 @@ void AudioSystem::SetSFXVolume(float volume) {
 void AudioSystem::SetMusicVolume(float volume) {
     if (!m_initialized) return;
     ma_sound_group_set_volume(&m_musicGroup, volume);
+}
+
+void AudioSystem::Update(float deltaTime) {
+    if (!m_initialized) return;
+
+    // Update mixer state (fades, time-based effects)
+    AudioMixer::Get().Update(deltaTime);
+
+    // Note: Spatializer and Occlusion updates are typically called per-frame
+    // in the game loop when updating audio source positions
 }

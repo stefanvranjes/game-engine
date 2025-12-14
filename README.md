@@ -41,7 +41,15 @@ A modern C++20 OpenGL 3.3+ game engine with deferred rendering, advanced visual 
 - **Global Particle Budget** (default 100k) with per-emitter limits
 
 ### Audio System
-- **3D Spatial Audio** via Miniaudio
+- **3D Spatial Audio** via Miniaudio with advanced spatialization
+- **Audio Mixer** with hierarchical channel groups (Music, SFX, UI, Dialogue, Ambient)
+- **Volume Fading & Cross-Fades** for smooth audio transitions
+- **HRTF Simulation** for elevation cues (Generic, Large, Small profiles)
+- **Distance Attenuation Models** (Inverse, Linear, Exponential)
+- **Directional Sound Cones** with smooth falloff
+- **Doppler Effect** based on velocity
+- **Audio Occlusion** with material-based blocking (Brick, Metal, Glass, Water, etc.)
+- **Frequency Filtering** (LPF/HPF) based on occlusion and distance
 - **Per-GameObject Audio Sources**
 - **Audio Listener** with camera-based positioning
 
