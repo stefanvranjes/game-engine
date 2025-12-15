@@ -205,6 +205,11 @@ add_executable(GameEngine
     # Scene serialization and prefabs
     src/SceneSerializer.cpp
     src/Prefab.cpp
+    # Asset pipeline - incremental builds, hashing, and conversion
+    src/AssetHash.cpp
+    src/AssetDatabase.cpp
+    src/AssetConverter.cpp
+    src/AssetPipeline.cpp
     # Networking layer - integrated into main engine
     game-engine-multiplayer/src/NetworkManager.cpp
     game-engine-multiplayer/src/Server.cpp
