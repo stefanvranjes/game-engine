@@ -113,6 +113,30 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(enet)
 
+# Fetch Assimp (Open Asset Import Library)
+FetchContent_Declare(
+    assimp
+    GIT_REPOSITORY https://github.com/assimp/assimp.git
+    GIT_TAG v5.3.1
+)
+FetchContent_GetProperties(assimp)
+if(NOT assimp_populated)
+    FetchContent_Populate(assimp)
+    set(ASSIMP_BUILD_ASSIMP_TOOLS OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
+    # Only build necessary importers to speed up compilation
+    set(ASSIMP_BUILD_ALL_IMPORTERS_BY_DEFAULT OFF CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_FBX_IMPORTER ON CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_COLLADA_IMPORTER ON CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_BLEND_IMPORTER ON CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_IQM_IMPORTER ON CACHE BOOL "" FORCE)
+    set(ASSIMP_BUILD_MD5_IMPORTER ON CACHE BOOL "" FORCE)
+    add_subdirectory(${assimp_SOURCE_DIR} assimp_build EXCLUDE_FROM_ALL)
+endif()
+
 # Fetch Bullet3D Physics Engine
 FetchContent_Declare(
     bullet3
@@ -160,6 +184,7 @@ add_executable(GameEngine
     src/MaterialLibrary.cpp
     src/GameObject.cpp
     src/Model.cpp
+    src/ModelLoader.cpp
     src/GBuffer.cpp
     src/PostProcessing.cpp
     src/CubemapShadow.cpp
@@ -171,6 +196,7 @@ add_executable(GameEngine
     src/LightProbe.cpp
     src/ReflectionProbe.cpp
     src/GLTFLoader.cpp
+    src/GLTFExtensions.cpp
     src/PreviewRenderer.cpp
     src/Material.cpp
     src/Animator.cpp
@@ -220,9 +246,9 @@ add_executable(GameEngine
     ${IMGUI_SOURCES}
 )
 
-target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src)
+target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include)
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf enet ws2_32 winmm BulletDynamics BulletCollision LinearMath)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp enet ws2_32 winmm BulletDynamics BulletCollision LinearMath)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD
