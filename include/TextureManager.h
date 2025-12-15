@@ -2,6 +2,7 @@
 #pragma once
 
 #include "Texture.h"
+#include "FileWatcher.h"
 #include <map>
 #include <string>
 #include <memory>
@@ -11,6 +12,7 @@
 #include <queue>
 #include <atomic>
 #include <vector> // Added for std::vector
+#include <functional>
 
 class TextureManager {
 public:
@@ -38,6 +40,23 @@ public:
     
     // Resource Listing
     std::vector<std::string> GetTextureNames() const;
+    
+    // Hot-Reload Support
+    void SetHotReloadEnabled(bool enabled);
+    bool IsHotReloadEnabled() const { return m_HotReloadEnabled; }
+    
+    /**
+     * Watch directory for texture changes
+     * @param directory Directory to watch (e.g., "assets/textures/")
+     */
+    void WatchTextureDirectory(const std::string& directory);
+    
+    /**
+     * Register callback for texture changes
+     * @param callback Called when a texture is reloaded (receives path)
+     */
+    using TextureChangeCallback = std::function<void(const std::string& path)>;
+    void SetOnTextureReloaded(TextureChangeCallback callback) { m_OnTextureReloaded = callback; }
 
 private:
     std::map<std::string, std::shared_ptr<Texture>> m_Textures;
@@ -64,6 +83,12 @@ private:
     
     float m_GlobalAnisotropy;
     
+    // Hot-Reload Support
+    std::unique_ptr<FileWatcher> m_FileWatcher;
+    bool m_HotReloadEnabled = false;
+    TextureChangeCallback m_OnTextureReloaded;
+    
     void WorkerThreadLoop();
     void ManageMemory();
+    void ReloadTexture(const std::string& path);
 };

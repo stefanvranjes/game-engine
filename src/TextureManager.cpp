@@ -1,8 +1,5 @@
 #include "TextureManager.h"
 #include <iostream>
-
-#include "TextureManager.h"
-#include <iostream>
 #include <algorithm>
 
 TextureManager::TextureManager() 
@@ -10,9 +7,13 @@ TextureManager::TextureManager()
     , m_MemoryBudget(1024 * 1024 * 512) // 512 MB default budget
     , m_CurrentMemoryUsage(0)
     , m_GlobalAnisotropy(1.0f)
+    , m_HotReloadEnabled(false)
 {
     // Start worker thread
     m_WorkerThread = std::thread(&TextureManager::WorkerThreadLoop, this);
+    
+    // Initialize file watcher
+    m_FileWatcher = std::make_unique<FileWatcher>();
 }
 
 TextureManager::~TextureManager() {
@@ -69,6 +70,11 @@ std::shared_ptr<Texture> TextureManager::GetTexture(const std::string& path) {
 }
 
 void TextureManager::Update() {
+    // Update file watcher for hot-reload
+    if (m_HotReloadEnabled && m_FileWatcher) {
+        m_FileWatcher->Update(100);
+    }
+    
     // Process pending uploads (Main thread)
     std::vector<std::shared_ptr<Texture>> uploads;
     {
@@ -144,6 +150,52 @@ void TextureManager::WorkerThreadLoop() {
         } else {
             // Sleep to avoid busy waiting
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+}
+
+void TextureManager::SetHotReloadEnabled(bool enabled) {
+    m_HotReloadEnabled = enabled;
+    if (!enabled && m_FileWatcher) {
+        m_FileWatcher->Clear();
+    }
+}
+
+void TextureManager::WatchTextureDirectory(const std::string& directory) {
+    if (!m_FileWatcher || !m_HotReloadEnabled) return;
+    
+    // Watch for common texture file extensions
+    static const std::vector<std::string> extensions = {
+        ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".hdr", ".exr"
+    };
+    
+    for (const auto& ext : extensions) {
+        m_FileWatcher->WatchDirectory(directory, ext, [this](const std::string& path) {
+            ReloadTexture(path);
+        });
+    }
+    
+    std::cout << "TextureManager: Watching directory for hot-reload: " << directory << std::endl;
+}
+
+void TextureManager::ReloadTexture(const std::string& path) {
+    auto it = m_Textures.find(path);
+    if (it != m_Textures.end()) {
+        std::cout << "TextureManager: Reloading texture: " << path << std::endl;
+        
+        // Unload old texture
+        it->second->Unload();
+        m_CurrentMemoryUsage -= it->second->GetMemorySize();
+        
+        // Queue for reload
+        {
+            std::lock_guard<std::mutex> lock(m_QueueMutex);
+            m_LoadQueue.push({path, it->second});
+        }
+        
+        // Invoke callback
+        if (m_OnTextureReloaded) {
+            m_OnTextureReloaded(path);
         }
     }
 }

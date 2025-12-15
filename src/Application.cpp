@@ -106,6 +106,14 @@ bool Application::Init() {
     m_EntityManager->AddSystem<LifetimeSystem>();
     std::cout << "ECS Manager initialized with core systems" << std::endl;
 
+    // Initialize Asset Hot-Reload Manager
+    m_HotReloadManager = std::make_unique<AssetHotReloadManager>();
+    m_HotReloadManager->Initialize(m_Renderer.get(), m_Renderer->GetTextureManager());
+    m_HotReloadManager->SetEnabled(true);  // Enable for editor
+    m_HotReloadManager->WatchShaderDirectory("shaders/");
+    m_HotReloadManager->WatchTextureDirectory("assets/");
+    std::cout << "Asset Hot-Reload Manager initialized" << std::endl;
+
     m_Running = true;
     return true;
 }
@@ -136,6 +144,11 @@ void Application::Run() {
 
 void Application::Update(float deltaTime) {
     SCOPED_PROFILE("Application::Update");
+    
+    // Update hot-reload system
+    if (m_HotReloadManager) {
+        m_HotReloadManager->Update();
+    }
     
     // Calculate FPS
     m_FrameCount++;
@@ -1042,6 +1055,46 @@ void Application::RenderEditorUI() {
                  ImGui::TextDisabled("Enable LOD to configure levels.");
             }
         }
+    }
+    
+    ImGui::End();
+
+    // Asset Hot-Reload Panel
+    ImGui::Begin("Asset Hot-Reload");
+    
+    if (m_HotReloadManager) {
+        bool hotReloadEnabled = m_HotReloadManager->IsEnabled();
+        if (ImGui::Checkbox("Enable Hot-Reload##main", &hotReloadEnabled)) {
+            m_HotReloadManager->SetEnabled(hotReloadEnabled);
+        }
+        
+        ImGui::Separator();
+        ImGui::Text("Status:");
+        ImGui::SameLine();
+        if (m_HotReloadManager->IsEnabled()) {
+            ImGui::TextColored(ImVec4(0.0f, 1.0f, 0.0f, 1.0f), "ACTIVE");
+        } else {
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "INACTIVE");
+        }
+        
+        ImGui::Separator();
+        ImGui::Text("Statistics:");
+        ImGui::BulletText("Watched Files: %zu", m_HotReloadManager->GetWatchedFileCount());
+        ImGui::BulletText("Reloads: %u", m_HotReloadManager->GetReloadCount());
+        
+        ImGui::Separator();
+        if (ImGui::Button("Reset Reload Count")) {
+            m_HotReloadManager->ResetReloadCount();
+        }
+        
+        ImGui::Separator();
+        ImGui::Text("Watching:");
+        ImGui::BulletText("shaders/");
+        ImGui::BulletText("assets/");
+        
+        ImGui::Separator();
+        ImGui::TextWrapped("Hot-reload monitors shader and texture files for changes. "
+                          "Edit files and they will reload automatically in the editor.");
     }
     
     ImGui::End();

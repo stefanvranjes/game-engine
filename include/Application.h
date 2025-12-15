@@ -10,6 +10,7 @@
 #include "TelemetryServer.h"
 #include "PhysicsSystem.h"
 #include "ECS.h"
+#include "AssetHotReloadManager.h"
 #include <memory>
 
 class Application {
@@ -33,6 +34,9 @@ private:
     std::unique_ptr<ImGuiManager> m_ImGui;
     std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
     std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
+    
+    // Asset Hot-Reload
+    std::unique_ptr<AssetHotReloadManager> m_HotReloadManager;
     
     // ECS Architecture
     std::unique_ptr<EntityManager> m_EntityManager;
