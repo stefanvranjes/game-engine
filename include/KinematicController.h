@@ -166,6 +166,68 @@ public:
     void SetCollisionFilterGroup(uint16_t group);
     void SetCollisionFilterMask(uint16_t mask);
 
+    // ==================== ADVANCED MOVEMENT QUERIES ====================
+
+    /**
+     * @brief Check if there's a wall directly ahead (for wall-slide detection)
+     * @param maxDistance How far to check ahead
+     * @param outWallNormal Normal of the wall surface
+     * @return True if a wall was detected ahead
+     */
+    bool IsWallAhead(float maxDistance = 1.0f, Vec3* outWallNormal = nullptr) const;
+
+    /**
+     * @brief Check if character is on a slope and get the slope angle
+     * @param outSlopeAngle Output angle in radians (0 = flat, PI/2 = vertical)
+     * @return True if on a slope
+     */
+    bool IsOnSlope(float* outSlopeAngle = nullptr) const;
+
+    /**
+     * @brief Get the ground normal beneath the character
+     * @param outNormal The normal of the surface below
+     * @param maxDistance How far below to check
+     * @return True if ground was found
+     */
+    bool GetGroundNormal(Vec3& outNormal, float maxDistance = 0.5f) const;
+
+    /**
+     * @brief Predict if a movement will cause collision
+     * @param moveDirection Direction and distance to test (world space)
+     * @param outBlockingDirection Output: direction away from obstacle
+     * @return True if movement would be blocked
+     */
+    bool WillMoveCollide(const Vec3& moveDirection, Vec3* outBlockingDirection = nullptr) const;
+
+    /**
+     * @brief Get the distance to a collision in a direction
+     * @param direction Direction to test (normalized or with magnitude)
+     * @return Distance to collision, or max float if no collision
+     */
+    float GetDistanceToCollision(const Vec3& direction) const;
+
+    /**
+     * @brief Check if character can jump (is grounded)
+     * Uses internal grounded state rather than raycasting
+     */
+    bool CanJump() const { return IsGrounded(); }
+
+    /**
+     * @brief Get the velocity of the character (includes fall velocity)
+     * @return Current velocity vector
+     */
+    Vec3 GetVelocity() const;
+
+    /**
+     * @brief Get current move speed (horizontal)
+     */
+    float GetMoveSpeed() const;
+
+    /**
+     * @brief Check if character is in the air (falling or jumping)
+     */
+    bool IsInAir() const { return !IsGrounded(); }
+
 private:
     btKinematicCharacterController* m_Controller;
     btPairCachingGhostObject* m_GhostObject;

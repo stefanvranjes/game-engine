@@ -163,3 +163,135 @@ void KinematicController::SetCollisionFilterMask(uint16_t mask) {
     // Note: This requires re-adding to world in real implementation
     // Simplified for now
 }
+// ==================== ADVANCED MOVEMENT QUERIES ====================
+
+bool KinematicController::IsWallAhead(float maxDistance, Vec3* outWallNormal) const {
+    if (!m_Controller) {
+        return false;
+    }
+
+    Vec3 pos = GetPosition();
+    Vec3 forward = m_WalkDirection;
+    if (forward.Length() < 0.001f) {
+        forward = Vec3(0, 0, -1); // Default forward direction
+    }
+    forward.Normalize();
+
+    Vec3 checkPos = pos + forward * maxDistance;
+    
+    // Cast a ray forward to detect walls
+    RaycastHit hit;
+    if (PhysicsSystem::Get().Raycast(pos, checkPos, hit)) {
+        if (outWallNormal) {
+            *outWallNormal = hit.normal;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+bool KinematicController::IsOnSlope(float* outSlopeAngle) const {
+    if (!m_Controller) {
+        return false;
+    }
+
+    Vec3 groundNormal;
+    if (GetGroundNormal(groundNormal, 0.5f)) {
+        // Calculate angle between up vector and ground normal
+        Vec3 upVector(0, 1, 0);
+        float dotProduct = groundNormal.Dot(upVector);
+        dotProduct = std::max(-1.0f, std::min(1.0f, dotProduct)); // Clamp for acos
+        
+        float angle = std::acos(dotProduct);
+        if (outSlopeAngle) {
+            *outSlopeAngle = angle;
+        }
+
+        // Consider it a slope if angle is between 5 and 85 degrees
+        const float minSlopeAngle = 0.087266f; // ~5 degrees
+        const float maxSlopeAngle = 1.48353f;  // ~85 degrees
+        return angle > minSlopeAngle && angle < maxSlopeAngle;
+    }
+
+    return false;
+}
+
+bool KinematicController::GetGroundNormal(Vec3& outNormal, float maxDistance) const {
+    if (!m_Controller) {
+        return false;
+    }
+
+    Vec3 pos = GetPosition();
+    Vec3 below = pos + Vec3(0, -maxDistance, 0);
+
+    RaycastHit hit;
+    if (PhysicsSystem::Get().Raycast(pos, below, hit)) {
+        outNormal = hit.normal;
+        return true;
+    }
+
+    outNormal = Vec3(0, 1, 0); // Default to up
+    return false;
+}
+
+bool KinematicController::WillMoveCollide(const Vec3& moveDirection, Vec3* outBlockingDirection) const {
+    if (!m_Controller) {
+        return false;
+    }
+
+    Vec3 startPos = GetPosition();
+    Vec3 targetPos = startPos + moveDirection;
+
+    RaycastHit hit;
+    if (PhysicsSystem::Get().Raycast(startPos, targetPos, hit)) {
+        if (outBlockingDirection) {
+            *outBlockingDirection = hit.normal;
+        }
+        return true;
+    }
+
+    return false;
+}
+
+float KinematicController::GetDistanceToCollision(const Vec3& direction) const {
+    if (!m_Controller || direction.Length() < 0.001f) {
+        return std::numeric_limits<float>::max();
+    }
+
+    Vec3 pos = GetPosition();
+    Vec3 normalizedDir = direction;
+    normalizedDir.Normalize();
+    
+    // Cast ray a very long distance to find collision
+    const float maxDistance = 1000.0f;
+    Vec3 farPos = pos + normalizedDir * maxDistance;
+
+    RaycastHit hit;
+    if (PhysicsSystem::Get().Raycast(pos, farPos, hit)) {
+        return hit.distance;
+    }
+
+    return maxDistance;
+}
+
+Vec3 KinematicController::GetVelocity() const {
+    if (!m_Controller) {
+        return Vec3(0, 0, 0);
+    }
+
+    // Current velocity is walk direction plus vertical component
+    Vec3 velocity = m_WalkDirection;
+    velocity.y = m_VerticalVelocity;
+    return velocity;
+}
+
+float KinematicController::GetMoveSpeed() const {
+    if (!m_Controller) {
+        return 0.0f;
+    }
+
+    Vec3 horizontalVelocity = m_WalkDirection;
+    horizontalVelocity.y = 0; // Remove vertical component
+    return horizontalVelocity.Length();
+}
