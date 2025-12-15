@@ -191,6 +191,10 @@ add_executable(GameEngine
     src/AudioMixer.cpp
     src/AudioSpatializer.cpp
     src/AudioOcclusion.cpp
+    # Resource streaming and virtual filesystem
+    src/VirtualFileSystem.cpp
+    src/ResourceStreamingManager.cpp
+    src/AssetPackage.cpp
     # Profiling and telemetry
     src/Profiler.cpp
     src/TelemetryServer.cpp
