@@ -1,0 +1,104 @@
+#version 460 core
+
+/**
+ * GPU Occlusion Culling Compute Shader
+ * 
+ * Tests visibility against depth pyramid from previous frame.
+ * Only runs on frustum-visible instances to improve efficiency.
+ * 
+ * Uses mipmap hierarchy: MIP 0 = full resolution, MIP N = 1x1 pixel
+ */
+
+#define MAX_INSTANCES 8192
+
+layout(std430, binding = 0) readonly buffer CullDataBuffer {
+    vec4 modelMatrixRows[4 * MAX_INSTANCES];
+    vec4 boundingSphere[MAX_INSTANCES];
+    vec4 aabbMin[MAX_INSTANCES];
+    vec4 aabbMax[MAX_INSTANCES];
+    uint meshletCount[MAX_INSTANCES];
+    uint originalIndex[MAX_INSTANCES];
+} cullData;
+
+layout(std430, binding = 1) readonly buffer VisibilityBuffer {
+    uint frustumVisibility[];
+};
+
+layout(std430, binding = 2) writeonly buffer OcclusionBuffer {
+    uint occlusionVisibility[];
+};
+
+layout(std140, binding = 0) uniform CullingConstants {
+    mat4 viewMatrix;
+    mat4 projectionMatrix;
+    vec3 cameraPosition;
+    float cameraNear;
+    float cameraFar;
+    vec2 depthBufferSize;
+    float padding1;
+};
+
+uniform sampler2D u_DepthPyramid;  // Mipmapped depth texture
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// Sample depth pyramid, selecting appropriate mip based on footprint size
+float sampleDepthPyramid(vec2 uv, float footprintSize) {
+    // Automatically select mip level based on footprint
+    // Higher footprints use lower mips (coarser resolution)
+    int mipLevel = int(ceil(log2(footprintSize)));
+    mipLevel = clamp(mipLevel, 0, 12);
+    
+    return textureLod(u_DepthPyramid, uv, float(mipLevel)).r;
+}
+
+// Check if sphere projects to screen space and is not occluded
+bool isOccluded(vec3 sphereCenter, float radius) {
+    // Project sphere center to screen space
+    vec4 projPos = projectionMatrix * vec4(sphereCenter, 1.0);
+    projPos /= projPos.w;
+    
+    // NDC to screen space
+    vec2 screenUV = projPos.xy * 0.5 + 0.5;
+    
+    // Outside screen bounds
+    if (screenUV.x < 0.0 || screenUV.x > 1.0 || screenUV.y < 0.0 || screenUV.y > 1.0) {
+        return false;  // Off-screen, render anyway (conservative)
+    }
+    
+    // Estimate projected radius
+    vec4 projRadius = projectionMatrix * vec4(radius, 0.0, sphereCenter.z, 1.0);
+    float projRadiusPixels = (projRadius.x / projRadius.w) * depthBufferSize.x;
+    
+    // Sample depth at projected location
+    float sampledDepth = sampleDepthPyramid(screenUV, projRadiusPixels);
+    
+    // Compare: if sphere is behind sampled depth, it's occluded
+    float sphereDepth = projPos.z;
+    return sphereDepth > sampledDepth + 0.01;  // Small bias for numerical stability
+}
+
+void main() {
+    uint instanceID = gl_GlobalInvocationID.x;
+    
+    // Only test if frustum-visible
+    if (frustumVisibility[instanceID] == 0U) {
+        occlusionVisibility[instanceID] = 0U;
+        return;
+    }
+    
+    // Reconstruct model matrix
+    mat4 model = mat4(
+        cullData.modelMatrixRows[instanceID * 4 + 0],
+        cullData.modelMatrixRows[instanceID * 4 + 1],
+        cullData.modelMatrixRows[instanceID * 4 + 2],
+        cullData.modelMatrixRows[instanceID * 4 + 3]
+    );
+    
+    vec3 sphereCenter = (model * vec4(cullData.boundingSphere[instanceID].xyz, 1.0)).xyz;
+    float radius = cullData.boundingSphere[instanceID].w;
+    
+    // Test occlusion
+    bool visible = !isOccluded(sphereCenter, radius);
+    occlusionVisibility[instanceID] = visible ? 1U : 0U;
+}

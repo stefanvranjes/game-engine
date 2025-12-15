@@ -243,6 +243,10 @@ add_executable(GameEngine
     game-engine-multiplayer/src/Message.cpp
     game-engine-multiplayer/src/Peer.cpp
     game-engine-multiplayer/src/serialization/Serializer.cpp
+    # Hybrid deferred+forward rendering with GPU culling
+    src/RenderPass.cpp
+    src/HybridRenderer.cpp
+    src/GPUCullingSystem.cpp
     ${IMGUI_SOURCES}
 )
 

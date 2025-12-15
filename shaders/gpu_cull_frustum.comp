@@ -1,0 +1,108 @@
+#version 460 core
+
+/**
+ * GPU Frustum Culling Compute Shader
+ * 
+ * Tests each instance's bounding volume (AABB + sphere) against the camera frustum.
+ * Results stored in visibility SSBO for later indirect rendering.
+ * 
+ * Workgroup: 32x1x1 (one instance per thread)
+ */
+
+#define FRUSTUM_PLANES 6
+#define MAX_INSTANCES 8192
+
+layout(std430, binding = 0) readonly buffer CullDataBuffer {
+    vec4 modelMatrixRows[4 * MAX_INSTANCES];  // 4x4 matrix per instance
+    vec4 boundingSphere[MAX_INSTANCES];       // xyz = center, w = radius
+    vec4 aabbMin[MAX_INSTANCES];
+    vec4 aabbMax[MAX_INSTANCES];
+    uint meshletCount[MAX_INSTANCES];
+    uint originalIndex[MAX_INSTANCES];
+} cullData;
+
+layout(std430, binding = 1) writeonly buffer VisibilityBuffer {
+    uint visibility[];
+};
+
+layout(std430, binding = 2) writeonly buffer LODBuffer {
+    uint lodLevels[];
+};
+
+layout(std140, binding = 0) uniform CullingConstants {
+    vec4 frustumPlanes[FRUSTUM_PLANES];   // plane: vec4(normal.xyz, distance)
+    mat4 viewMatrix;
+    mat4 projectionMatrix;
+    vec3 cameraPosition;
+    float cameraNear;
+    float cameraFar;
+    float padding1, padding2, padding3;
+};
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// Test sphere against frustum plane
+bool testSphereFrustum(vec3 sphereCenter, float radius) {
+    for (int i = 0; i < FRUSTUM_PLANES; ++i) {
+        float dist = dot(sphereCenter, frustumPlanes[i].xyz) - frustumPlanes[i].w;
+        if (dist < -radius) {
+            return false;  // Completely outside frustum
+        }
+    }
+    return true;  // Completely or partially inside
+}
+
+// Test AABB against frustum using Separating Axis Theorem
+bool testAABBFrustum(vec3 aabbMin, vec3 aabbMax) {
+    for (int i = 0; i < FRUSTUM_PLANES; ++i) {
+        vec3 normal = frustumPlanes[i].xyz;
+        
+        // Compute AABB corner closest to plane normal
+        vec3 p = aabbMin;
+        if (normal.x > 0.0) p.x = aabbMax.x;
+        if (normal.y > 0.0) p.y = aabbMax.y;
+        if (normal.z > 0.0) p.z = aabbMax.z;
+        
+        // If closest corner is on negative side, AABB is outside
+        if (dot(p, normal) - frustumPlanes[i].w < 0.0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void main() {
+    uint instanceID = gl_GlobalInvocationID.x;
+    
+    // Reconstruct model matrix (stored as 4 rows)
+    mat4 model = mat4(
+        modelMatrixRows[instanceID * 4 + 0],
+        modelMatrixRows[instanceID * 4 + 1],
+        modelMatrixRows[instanceID * 4 + 2],
+        modelMatrixRows[instanceID * 4 + 3]
+    );
+    
+    // Transform bounding volumes to world space
+    vec3 sphereCenter = (model * vec4(boundingSphere[instanceID].xyz, 1.0)).xyz;
+    float radius = boundingSphere[instanceID].w;
+    
+    vec3 aabbMin_ws = (model * vec4(aabbMin[instanceID].xyz, 1.0)).xyz;
+    vec3 aabbMax_ws = (model * vec4(aabbMax[instanceID].xyz, 1.0)).xyz;
+    
+    // Conservative: test both sphere and AABB
+    bool visibleSphere = testSphereFrustum(sphereCenter, radius);
+    bool visibleAABB = testAABBFrustum(aabbMin_ws, aabbMax_ws);
+    bool isVisible = visibleSphere && visibleAABB;
+    
+    // Compute LOD level based on distance to camera
+    float distance = length(sphereCenter - cameraPosition);
+    uint lod = 0;
+    
+    // Simple LOD scheme: 4 levels based on distance
+    if (distance > 50.0) lod = 3;
+    else if (distance > 25.0) lod = 2;
+    else if (distance > 10.0) lod = 1;
+    
+    visibility[instanceID] = isVisible ? 1U : 0U;
+    lodLevels[instanceID] = lod;
+}
