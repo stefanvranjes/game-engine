@@ -96,6 +96,16 @@ bool Application::Init() {
     m_PhysicsSystem->Initialize(Vec3(0, -9.81f, 0)); // Standard Earth gravity
     std::cout << "Physics System initialized with Bullet3D" << std::endl;
 
+    // Initialize ECS Manager
+    m_EntityManager = std::make_unique<EntityManager>();
+    // Register core systems
+    m_EntityManager->AddSystem<TransformSystem>();
+    m_EntityManager->AddSystem<PhysicsSystem>();
+    m_EntityManager->AddSystem<RenderSystem>();
+    m_EntityManager->AddSystem<CollisionSystem>();
+    m_EntityManager->AddSystem<LifetimeSystem>();
+    std::cout << "ECS Manager initialized with core systems" << std::endl;
+
     m_Running = true;
     return true;
 }
@@ -134,6 +144,14 @@ void Application::Update(float deltaTime) {
         m_FPS = m_FrameCount / m_FPSTimer;
         m_FrameCount = 0.0f;
         m_FPSTimer = 0.0f;
+    }
+
+    // Update ECS (core game logic)
+    {
+        SCOPED_PROFILE("ECS::Update");
+        if (m_EntityManager) {
+            m_EntityManager->Update(deltaTime);
+        }
     }
 
     // Update camera with collision detection

@@ -9,6 +9,7 @@
 #include "Profiler.h"
 #include "TelemetryServer.h"
 #include "PhysicsSystem.h"
+#include "ECS.h"
 #include <memory>
 
 class Application {
@@ -32,6 +33,9 @@ private:
     std::unique_ptr<ImGuiManager> m_ImGui;
     std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
     std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
+    
+    // ECS Architecture
+    std::unique_ptr<EntityManager> m_EntityManager;
     
     int m_SelectedObjectIndex;
     
