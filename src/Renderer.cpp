@@ -26,6 +26,8 @@ Renderer::Renderer()
 {
     m_TextureManager = std::make_unique<TextureManager>();
     m_MaterialLibrary = std::make_unique<MaterialLibrary>();
+    m_SceneSerializer = std::make_unique<SceneSerializer>();
+    m_PrefabManager = std::make_unique<PrefabManager>("assets/prefabs");
     m_Root = std::make_shared<GameObject>("Root");
 }
 
@@ -40,76 +42,90 @@ bool Renderer::CheckCollision(const AABB& bounds) {
     return false;
 }
 
-void Renderer::SaveScene(const std::string& filename) {
-    // Simplified save: only saves direct children of root
-    std::ofstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open scene file for saving: " << filename << std::endl;
+void Renderer::SaveScene(const std::string& filename, SceneSerializer::SerializationFormat format) {
+    if (!m_SceneSerializer) {
+        std::cerr << "Scene serializer not initialized" << std::endl;
         return;
     }
 
-    if (m_Root) {
-        for (auto& child : m_Root->GetChildren()) {
-            // Determine type based on name or mesh (simplified)
-            std::string source = "cube";
-            if (child->GetName() == "Pyramid") source = "assets/pyramid.obj";
-            
-            const Transform& t = child->GetTransform();
-            file << source << " "
-                 << t.position.x << " " << t.position.y << " " << t.position.z << " "
-                 << t.rotation.x << " " << t.rotation.y << " " << t.rotation.z << " "
-                 << t.scale.x << " " << t.scale.y << " " << t.scale.z << "\n";
-        }
-    }
+    SceneSerializer::SerializeOptions options;
+    options.format = format;
+    options.prettyPrintJSON = true;
+    options.includeChildren = true;
+    options.includeLights = true;
+    options.includeAnimations = true;
+    options.includePhysics = true;
     
-    std::cout << "Scene saved to " << filename << std::endl;
+    if (!m_SceneSerializer->SerializeScene(m_Root, filename, m_Lights, options)) {
+        std::cerr << "Failed to save scene: " << m_SceneSerializer->GetLastError() << std::endl;
+    }
 }
 
 void Renderer::LoadScene(const std::string& filename) {
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Failed to open scene file for loading: " << filename << std::endl;
+    if (!m_SceneSerializer) {
+        std::cerr << "Scene serializer not initialized" << std::endl;
         return;
     }
 
-    // Clear current scene
-    if (m_Root) {
-        m_Root->GetChildren().clear();
-    } else {
-        m_Root = std::make_shared<GameObject>("Root");
+    std::shared_ptr<GameObject> loadedRoot;
+    std::vector<Light> loadedLights;
+    
+    if (!m_SceneSerializer->DeserializeScene(filename, loadedRoot, loadedLights)) {
+        std::cerr << "Failed to load scene: " << m_SceneSerializer->GetLastError() << std::endl;
+        return;
     }
 
-    std::string line;
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string source;
-        Vec3 pos, rot, scale;
+    // Replace scene
+    m_Root = loadedRoot ? loadedRoot : std::make_shared<GameObject>("Root");
+    m_Lights = loadedLights;
+}
 
-        ss >> source 
-           >> pos.x >> pos.y >> pos.z 
-           >> rot.x >> rot.y >> rot.z 
-           >> scale.x >> scale.y >> scale.z;
-
-        auto obj = std::make_shared<GameObject>(source == "cube" ? "Cube" : "Pyramid");
-        if (source == "cube") {
-            obj->SetMesh(Mesh::CreateCube());
-        } else {
-            obj->SetMesh(Mesh::LoadFromOBJ(source));
-        }
-        
-        obj->GetTransform() = Transform(pos, rot, scale);
-        
-        // Create default material for loaded object
-        auto mat = std::make_shared<Material>();
-        mat->SetTexture(m_Texture);
-        mat->SetSpecularMap(m_Texture);
-        if (source != "cube") mat->SetDiffuse(Vec3(1.0f, 1.0f, 0.0f)); // Yellow for pyramid
-        obj->SetMaterial(mat);
-        
-        m_Root->AddChild(obj);
+std::shared_ptr<Prefab> Renderer::CreatePrefab(const std::string& prefabName, std::shared_ptr<GameObject> sourceObject) {
+    if (!m_PrefabManager) {
+        std::cerr << "Prefab manager not initialized" << std::endl;
+        return nullptr;
     }
 
-    std::cout << "Scene loaded from " << filename << std::endl;
+    // Use root as source if not specified
+    if (!sourceObject) {
+        sourceObject = m_Root;
+    }
+
+    Prefab::Metadata metadata;
+    metadata.name = prefabName;
+    metadata.description = "Prefab: " + prefabName;
+    
+    return m_PrefabManager->CreatePrefab(sourceObject, prefabName, metadata);
+}
+
+std::shared_ptr<Prefab> Renderer::GetPrefab(const std::string& prefabName) {
+    if (!m_PrefabManager) {
+        std::cerr << "Prefab manager not initialized" << std::endl;
+        return nullptr;
+    }
+
+    return m_PrefabManager->GetPrefab(prefabName);
+}
+
+std::shared_ptr<GameObject> Renderer::InstantiatePrefab(
+    const std::string& prefabName,
+    const Vec3& position,
+    const std::string& instanceName)
+{
+    auto prefab = GetPrefab(prefabName);
+    if (!prefab) {
+        std::cerr << "Prefab not found: " << prefabName << std::endl;
+        return nullptr;
+    }
+
+    auto instance = prefab->InstantiateAt(position, Vec3(0), Vec3(1), 
+        instanceName.empty() ? (prefabName + "_Instance") : instanceName);
+    
+    if (instance && m_Root) {
+        m_Root->AddChild(instance);
+    }
+
+    return instance;
 }
 
 void Renderer::AddCube(const Transform& transform) {

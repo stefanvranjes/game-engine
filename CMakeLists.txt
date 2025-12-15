@@ -202,6 +202,9 @@ add_executable(GameEngine
     src/PhysicsSystem.cpp
     src/RigidBody.cpp
     src/KinematicController.cpp
+    # Scene serialization and prefabs
+    src/SceneSerializer.cpp
+    src/Prefab.cpp
     # Networking layer - integrated into main engine
     game-engine-multiplayer/src/NetworkManager.cpp
     game-engine-multiplayer/src/Server.cpp

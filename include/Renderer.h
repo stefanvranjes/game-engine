@@ -17,6 +17,8 @@
 #include "MaterialLibrary.h"
 #include "TextureManager.h"
 #include "VolumetricFog.h"
+#include "SceneSerializer.h"
+#include "Prefab.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -44,9 +46,16 @@ public:
     void SetCamera(Camera* camera) { m_Camera = camera; }
     bool CheckCollision(const AABB& bounds);
 
-    void SaveScene(const std::string& filename);
+    // Scene serialization (JSON/Binary formats)
+    void SaveScene(const std::string& filename, SceneSerializer::SerializationFormat format = SceneSerializer::SerializationFormat::JSON);
     void LoadScene(const std::string& filename);
 
+    // Prefab management
+    std::shared_ptr<Prefab> CreatePrefab(const std::string& prefabName, std::shared_ptr<GameObject> sourceObject = nullptr);
+    std::shared_ptr<Prefab> GetPrefab(const std::string& prefabName);
+    std::shared_ptr<GameObject> InstantiatePrefab(const std::string& prefabName, const Vec3& position = Vec3(0), const std::string& instanceName = "");
+    PrefabManager* GetPrefabManager() { return m_PrefabManager.get(); }
+    
     // Scene manipulation for editor
     std::shared_ptr<GameObject> GetRoot() { return m_Root; }
     std::vector<Light>& GetLights() { return m_Lights; }
@@ -174,6 +183,10 @@ private:
     std::vector<Light> m_Lights;
     std::vector<std::unique_ptr<LightProbe>> m_LightProbes;
     std::vector<std::unique_ptr<ReflectionProbe>> m_ReflectionProbes;
+    
+    // Scene serialization and prefabs
+    std::unique_ptr<SceneSerializer> m_SceneSerializer;
+    std::unique_ptr<PrefabManager> m_PrefabManager;
     
     void BakeProbe(LightProbe* probe);
     void CaptureProbe(ReflectionProbe* probe);
