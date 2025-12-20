@@ -106,12 +106,13 @@ if(NOT miniaudio_populated)
 endif()
 
 # Fetch ENet
-FetchContent_Declare(
-    enet
-    GIT_REPOSITORY https://github.com/lsalzman/enet.git
-    GIT_TAG v7.19
-)
-FetchContent_MakeAvailable(enet)
+# Fetch ENet - DISABLED
+# FetchContent_Declare(
+#     enet
+#     GIT_REPOSITORY https://github.com/lsalzman/enet.git
+#     GIT_TAG v7.19
+# )
+# FetchContent_MakeAvailable(enet)
 
 # Fetch Assimp (Open Asset Import Library)
 FetchContent_Declare(
@@ -141,19 +142,18 @@ endif()
 FetchContent_Declare(
     bullet3
     GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
-    GIT_TAG 3.24
+    GIT_TAG master
 )
 FetchContent_GetProperties(bullet3)
 if(NOT bullet3_populated)
-    FetchContent_Populate(bullet3)
-    # Use Bullet2 API
     set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
     set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
     set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
     set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
     set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
     set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
-    add_subdirectory(${bullet3_SOURCE_DIR}/src bullet3_build EXCLUDE_FROM_ALL)
+    set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(bullet3)
 endif()
 
 # ImGui sources
@@ -236,13 +236,13 @@ add_executable(GameEngine
     src/AssetDatabase.cpp
     src/AssetConverter.cpp
     src/AssetPipeline.cpp
-    # Networking layer - integrated into main engine
-    game-engine-multiplayer/src/NetworkManager.cpp
-    game-engine-multiplayer/src/Server.cpp
-    game-engine-multiplayer/src/Client.cpp
-    game-engine-multiplayer/src/Message.cpp
-    game-engine-multiplayer/src/Peer.cpp
-    game-engine-multiplayer/src/serialization/Serializer.cpp
+    # Networking layer - integrated into main engine (DISABLED)
+    # game-engine-multiplayer/src/NetworkManager.cpp
+    # game-engine-multiplayer/src/Server.cpp
+    # game-engine-multiplayer/src/Client.cpp
+    # game-engine-multiplayer/src/Message.cpp
+    # game-engine-multiplayer/src/Peer.cpp
+    # game-engine-multiplayer/src/serialization/Serializer.cpp
     # Hybrid deferred+forward rendering with GPU culling
     src/RenderPass.cpp
     src/HybridRenderer.cpp
@@ -252,7 +252,7 @@ add_executable(GameEngine
 
 target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include)
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp enet ws2_32 winmm BulletDynamics BulletCollision LinearMath)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD
@@ -264,7 +264,7 @@ add_custom_command(TARGET GameEngine POST_BUILD
     $<TARGET_FILE_DIR:GameEngine>/shaders
 )
 
-option(BUILD_TESTS "Build unit tests" ON)
+option(BUILD_TESTS "Build unit tests" OFF)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)

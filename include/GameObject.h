@@ -92,7 +92,18 @@ public:
     void ResetQueryFrameCounter() { m_FramesSinceLastQuery = 0; }
     void IncrementQueryFrameCounter() { m_FramesSinceLastQuery++; }
 
+    // Audio
+    void AddAudioSource(std::shared_ptr<class AudioSource> source);
+    void RemoveAudioSource(std::shared_ptr<class AudioSource> source);
+    void RemoveAudioSource(int index);
+    void SetAudioSource(std::shared_ptr<class AudioSource> audioSource);
+    std::shared_ptr<class AudioSource> GetAudioSource() const;
+
+    void SetAudioListener(std::shared_ptr<class AudioListener> listener) { m_AudioListener = listener; }
+    std::shared_ptr<class AudioListener> GetAudioListener() const { return m_AudioListener; }
+
 private:
+
     std::string m_Name;
     Transform m_Transform;
     Mat4 m_WorldMatrix;
@@ -124,6 +135,10 @@ private:
     bool m_IsLODTransitioning = false;
     const float LOD_TRANSITION_DURATION = 1.0f; // Seconds to fade
 
+    // Physics/Audio
+    Vec3 m_Velocity;
+    Vec3 m_LastPosition;
+
     std::vector<std::shared_ptr<GameObject>> m_Children;
     std::weak_ptr<GameObject> m_Parent;
     
@@ -137,5 +152,7 @@ private:
     // Audio
     std::vector<std::shared_ptr<class AudioSource>> m_AudioSources;
     std::shared_ptr<class AudioListener> m_AudioListener;
-};
+    
 
+};
+```
