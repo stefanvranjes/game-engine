@@ -137,10 +137,10 @@ void ParticleSystem::Update(float deltaTime, const Vec3& cameraPos) {
     
     // 3. Update Emitters
     
-    // Prepare Physics Context
-    ParticleEmitter::PhysicsContext physCtx;
-    physCtx.wind = m_GlobalWind;
-    physCtx.attractors = &m_Attractors;
+    // Prepare Physics Context - DISABLED
+    // ParticleEmitter::PhysicsContext physCtx;
+    // physCtx.wind = m_GlobalWind;
+    // physCtx.attractors = &m_Attractors;
 
     for (auto& emitter : m_Emitters) {
         // Enforce limit on spawning logic inside emitter?
@@ -158,7 +158,7 @@ void ParticleSystem::Update(float deltaTime, const Vec3& cameraPos) {
              // For now, just Update.
         }
         
-        emitter->SetPhysicsContext(physCtx);
+        // emitter->SetPhysicsContext(physCtx); // DISABLED
         emitter->Update(deltaTime, cameraPos);
     }
 }
@@ -328,20 +328,21 @@ void ParticleSystem::SortParticlesGPU(const std::shared_ptr<ParticleEmitter>& em
         m_GPUShader->SetInt("u_UseSort", 0);
     }
     
+    
     // Draw using vertex pulling
     glBindVertexArray(m_QuadVAO); 
     
-    // Check for Indirect Draw
-    unsigned int indirectBuffer = emitter->GetIndirectBuffer();
-    if (indirectBuffer != 0) {
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer);
-        glDrawArraysIndirect(GL_TRIANGLES, 0);
-        glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
-    } else {
+    // Check for Indirect Draw - DISABLED (missing GL extensions)
+    // unsigned int indirectBuffer = emitter->GetIndirectBuffer();
+    // if (indirectBuffer != 0) {
+    //     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, indirectBuffer);
+    //     glDrawArraysIndirect(GL_TRIANGLES, 0);
+    //     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
+    // } else {
         // Fallback to CPU readback
         // (activeCount was readback earlier in UpdateGPU if fallback)
         glDrawArrays(GL_TRIANGLES, 0, activeCount * 6);
-    }
+    // }
     
     glBindVertexArray(0);
 }

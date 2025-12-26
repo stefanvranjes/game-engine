@@ -95,13 +95,13 @@ bool AudioSystem::Initialize() {
     ma_node_attach_output_bus(&m_reverbNode, 0, endpoint, 0);
     */
 
-    // Initialize advanced audio subsystems
-    AudioMixer::Get().Initialize(&m_engine);
-    AudioSpatializer::Get().Initialize();
-    AudioOcclusion::Get().Initialize();
+    // Initialize advanced audio subsystems - DISABLED
+    // AudioMixer::Get().Initialize(&m_engine);
+    // AudioSpatializer::Get().Initialize();
+    // AudioOcclusion::Get().Initialize();
 
     m_initialized = true;
-    std::cout << "Audio System Initialized (Reverb Disabled, Mixer/Spatialization/Occlusion Enabled)." << std::endl;
+    std::cout << "Audio System Initialized (Advanced features disabled)." << std::endl;
     return true;
 }
 
@@ -153,7 +153,7 @@ void AudioSystem::Update(float deltaTime) {
     if (!m_initialized) return;
 
     // Update mixer state (fades, time-based effects)
-    AudioMixer::Get().Update(deltaTime);
+    // AudioMixer::Get().Update(deltaTime);
 
     // Note: Spatializer and Occlusion updates are typically called per-frame
     // in the game loop when updating audio source positions

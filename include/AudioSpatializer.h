@@ -1,12 +1,9 @@
 #pragma once
-
 #include "Math/Vec3.h"
 #include "Math/Quaternion.h"
 #include <vector>
 #include <memory>
-
 class GameObject;
-
 /**
  * @class AudioSpatializer
  * @brief Advanced 3D audio spatialization with HRTF simulation and distance modeling.
@@ -18,6 +15,7 @@ class GameObject;
  * - Doppler effect with velocity prediction
  * - Audio occlusion with frequency filtering
  */
+// Stub header to allow AudioSystem to compile without full spatial audio implementation
 class AudioSpatializer {
 public:
     /**
@@ -30,7 +28,6 @@ public:
         Small,      // Smaller head (shallower ears)
         Custom      // Custom profile parameters
     };
-
     /**
      * @enum DistanceModel
      * @brief Distance attenuation curve model.
@@ -43,7 +40,6 @@ public:
         Exponential,    // Exponential decay (sharper falloff)
         Custom          // Custom curve function
     };
-
     /**
      * @struct SpatializationParams
      * @brief Parameters for spatial audio rendering.
@@ -70,7 +66,6 @@ public:
         DistanceModel distanceModel = DistanceModel::InverseClamped;
         float occlusionStrength = 0.0f; // 0.0 = clear, 1.0 = fully muffled
     };
-
     /**
      * @struct SpatializationOutput
      * @brief Computed spatial audio parameters.
@@ -93,53 +88,42 @@ public:
         float lpfCutoff = 20000.0f;     // Low-pass filter (occlusion)
         float hpfCutoff = 20.0f;        // High-pass filter (distance haze)
     };
-
 public:
     static AudioSpatializer& Get();
-
     /**
      * @brief Initialize the spatializer.
      */
     bool Initialize();
-
     /**
      * @brief Shutdown the spatializer.
      */
     void Shutdown();
-
     /**
      * @brief Compute spatial audio parameters for a source.
      * @param params Input spatialization parameters
      * @return Computed output parameters
      */
     SpatializationOutput ComputeSpatialization(const SpatializationParams& params);
-
     // ============== HRTF Configuration ==============
-
     /**
      * @brief Set HRTF profile for elevation cue processing.
      * @param profile The HRTF profile to use
      */
     void SetHRTFProfile(HRTFProfile profile);
-
     /**
      * @brief Enable/disable HRTF processing.
      */
     void SetHRTFEnabled(bool enabled) { m_hrtfEnabled = enabled; }
-
     /**
      * @brief Get current HRTF profile.
      */
     HRTFProfile GetHRTFProfile() const { return m_hrtfProfile; }
-
     // ============== Distance Attenuation ==============
-
     /**
      * @brief Set distance attenuation model.
      * @param model The attenuation model to use
      */
     void SetDistanceModel(DistanceModel model);
-
     /**
      * @brief Get the distance attenuation for a given distance.
      * @param distance Distance from source to listener
@@ -149,9 +133,7 @@ public:
      * @return Volume attenuation (0.0 to 1.0)
      */
     float GetDistanceAttenuation(float distance, float minDist, float maxDist, float rolloff) const;
-
     // ============== Directional Audio ==============
-
     /**
      * @brief Compute cone attenuation based on directional falloff.
      * @param forwardDir Source forward direction
@@ -163,9 +145,7 @@ public:
      */
     float ComputeConeAttenuation(const Vec3& forwardDir, const Vec3& toListenerDir,
                                 float innerAngle, float outerAngle, float outerGain) const;
-
     // ============== Doppler Effect ==============
-
     /**
      * @brief Compute Doppler pitch shift.
      * @param sourceVelocity Source velocity
@@ -178,15 +158,12 @@ public:
     float ComputeDopplerPitch(const Vec3& sourceVelocity, const Vec3& listenerVelocity,
                              const Vec3& toSourceDir, float dopplerFactor,
                              float speedOfSound = 343.0f) const;
-
     // ============== Occlusion & Filtering ==============
-
     /**
      * @brief Set audio occlusion for a source.
      * @param occlusionStrength 0.0 = clear, 1.0 = fully muffled
      */
     void SetOcclusion(float occlusionStrength);
-
     /**
      * @brief Get filter parameters for a given occlusion level.
      * @param occlusionStrength Occlusion amount (0.0 to 1.0)
@@ -194,9 +171,7 @@ public:
      * @param hpfCutoff Output high-pass filter cutoff (Hz)
      */
     void GetOcclusionFilters(float occlusionStrength, float& lpfCutout, float& hpfCutoff) const;
-
     // ============== Spatial Panning ==============
-
     /**
      * @brief Compute stereo/surround panning from source position.
      * @param azimuth Horizontal angle in radians (-π = left, π = right)
@@ -207,9 +182,7 @@ public:
      */
     void ComputePanning(float azimuth, float elevation, float& leftPan,
                        float& centerGain, float& surroundGain) const;
-
     // ============== Utilities ==============
-
     /**
      * @brief Convert Cartesian coordinates to spherical.
      * @param direction Direction vector
@@ -217,7 +190,6 @@ public:
      * @param outElevation Output elevation angle (-π/2 to π/2)
      */
     static void CartesianToSpherical(const Vec3& direction, float& outAzimuth, float& outElevation);
-
     /**
      * @brief Convert spherical coordinates to Cartesian.
      * @param azimuth Azimuth angle
@@ -225,30 +197,27 @@ public:
      * @return Direction vector
      */
     static Vec3 SphericalToCartesian(float azimuth, float elevation);
-
     /**
      * @brief Normalize angle to range [-π, π].
      */
     static float NormalizeAngle(float angle);
-
 private:
     AudioSpatializer();
     ~AudioSpatializer();
-
     // HRTF Helper: Compute elevation-dependent filtering
     void ApplyHRTFFiltering(const SpatializationOutput& output, float elevation);
-
     bool m_initialized = false;
     HRTFProfile m_hrtfProfile = HRTFProfile::Generic;
     bool m_hrtfEnabled = true;
     DistanceModel m_distanceModel = DistanceModel::InverseClamped;
     
     float m_currentOcclusion = 0.0f;
-
     // HRTF Parameters by profile (ITD, ILD, etc.)
     struct HRTFData {
         float itdScale = 1.0f;  // Inter-temporal delay scale
         float ildScale = 1.0f;  // Inter-level difference scale
     };
     HRTFData m_hrtfData;
+    AudioSpatializer() {}
+    ~AudioSpatializer() {}
 };

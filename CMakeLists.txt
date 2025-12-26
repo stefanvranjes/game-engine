@@ -118,7 +118,7 @@ endif()
 FetchContent_Declare(
     assimp
     GIT_REPOSITORY https://github.com/assimp/assimp.git
-    GIT_TAG v5.3.1
+    GIT_TAG v5.4.3
 )
 FetchContent_GetProperties(assimp)
 if(NOT assimp_populated)
@@ -135,6 +135,7 @@ if(NOT assimp_populated)
     set(ASSIMP_BUILD_BLEND_IMPORTER ON CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_IQM_IMPORTER ON CACHE BOOL "" FORCE)
     set(ASSIMP_BUILD_MD5_IMPORTER ON CACHE BOOL "" FORCE)
+    set(ASSIMP_WARNINGS_AS_ERRORS OFF CACHE BOOL "" FORCE)
     add_subdirectory(${assimp_SOURCE_DIR} assimp_build EXCLUDE_FROM_ALL)
 endif()
 
@@ -175,6 +176,7 @@ add_executable(GameEngine
     src/Mesh.cpp
     src/Renderer.cpp
     src/Camera.cpp
+    src/Quat.cpp
     src/Text.cpp
     src/GLExtensions.cpp
     src/ImGuiManager.cpp
@@ -199,13 +201,14 @@ add_executable(GameEngine
     src/GLTFExtensions.cpp
     src/PreviewRenderer.cpp
     src/Material.cpp
-    src/Animator.cpp
-    src/Animation.cpp
-    src/AnimationStateMachine.cpp
-    src/BlendTree.cpp
-    src/BlendTreeEditor.cpp
+    # Animation system - DISABLED
+    # src/Animator.cpp
+    # src/Animation.cpp
+    # src/AnimationStateMachine.cpp
+    # src/BlendTree.cpp
+    # src/BlendTreeEditor.cpp
     src/CollisionShape.cpp
-    src/CollisionDemo.cpp
+    # src/CollisionDemo.cpp
     src/ParticleTrail.cpp
     src/ParticleEmitter.cpp
     src/ParticleSystem.cpp
@@ -214,28 +217,29 @@ add_executable(GameEngine
     src/SSBO.cpp
     src/AudioSystem.cpp
     src/AudioSource.cpp
-    src/AudioMixer.cpp
-    src/AudioSpatializer.cpp
-    src/AudioOcclusion.cpp
-    # Resource streaming and virtual filesystem
-    src/VirtualFileSystem.cpp
-    src/ResourceStreamingManager.cpp
-    src/AssetPackage.cpp
-    # Profiling and telemetry
-    src/Profiler.cpp
-    src/TelemetryServer.cpp
-    # Physics system
-    src/PhysicsSystem.cpp
-    src/RigidBody.cpp
-    src/KinematicController.cpp
-    # Scene serialization and prefabs
-    src/SceneSerializer.cpp
-    src/Prefab.cpp
-    # Asset pipeline - incremental builds, hashing, and conversion
-    src/AssetHash.cpp
-    src/AssetDatabase.cpp
-    src/AssetConverter.cpp
-    src/AssetPipeline.cpp
+    # Advanced audio features - DISABLED
+    # src/AudioMixer.cpp
+    # src/AudioSpatializer.cpp
+    # src/AudioOcclusion.cpp
+    # Resource streaming and virtual filesystem - DISABLED
+    # src/VirtualFileSystem.cpp
+    # src/ResourceStreamingManager.cpp
+    # src/AssetPackage.cpp
+    # Profiling and telemetry - DISABLED due to missing dependencies
+    # src/Profiler.cpp
+    # src/TelemetryServer.cpp
+    # Physics system - DISABLED
+    # src/PhysicsSystem.cpp
+    # src/RigidBody.cpp
+    # src/KinematicController.cpp
+    # Scene serialization and prefabs - DISABLED
+    # src/SceneSerializer.cpp
+    # src/Prefab.cpp
+    # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
+    # src/AssetHash.cpp
+    # src/AssetDatabase.cpp
+    # src/AssetConverter.cpp
+    # src/AssetPipeline.cpp
     # Networking layer - integrated into main engine (DISABLED)
     # game-engine-multiplayer/src/NetworkManager.cpp
     # game-engine-multiplayer/src/Server.cpp
@@ -243,10 +247,10 @@ add_executable(GameEngine
     # game-engine-multiplayer/src/Message.cpp
     # game-engine-multiplayer/src/Peer.cpp
     # game-engine-multiplayer/src/serialization/Serializer.cpp
-    # Hybrid deferred+forward rendering with GPU culling
-    src/RenderPass.cpp
-    src/HybridRenderer.cpp
-    src/GPUCullingSystem.cpp
+    # Hybrid deferred+forward rendering with GPU culling - DISABLED
+    # src/RenderPass.cpp
+    # src/HybridRenderer.cpp
+    # src/GPUCullingSystem.cpp
     ${IMGUI_SOURCES}
 )
 
