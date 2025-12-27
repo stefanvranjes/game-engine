@@ -281,6 +281,15 @@ extern PFNGLUNMAPBUFFERPROC glUnmapBuffer;
 typedef void (APIENTRYP PFNGLGETBUFFERSUBDATAPROC) (GLenum target, GLintptr offset, GLsizeiptr size, void *data);
 extern PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData;
 
+// Integer textures
+#define GL_R32I 0x8235
+#define GL_RED_INTEGER 0x8D94
+#define GL_R32UI 0x8236
+#define GL_RGBA32F 0x8814
+#define GL_DRAW_INDIRECT_BUFFER 0x8F3F
+
+typedef void (APIENTRYP PFNGLCLEARBUFFERDATAPROC) (GLenum target, GLenum internalformat, GLenum format, GLenum type, const void *data);
+extern PFNGLCLEARBUFFERDATAPROC glClearBufferData;
 
 // Function to load OpenGL extensions
 bool LoadGLExtensions();

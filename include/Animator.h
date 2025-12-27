@@ -8,6 +8,7 @@
 #include <vector>
 #include "IK.h"
 #include "AnimationStateMachine.h"
+#include "BoneMask.h"
 
 class BlendTree1D;
 class BlendTree2D;
@@ -106,7 +107,7 @@ public:
     void SetLayerBlendTree2D(int layerIndex, int treeIndex);
     void SetLayerBlendTree3D(int layerIndex, int treeIndex);
     
-    void SetLayerBlendTree3D(int layerIndex, int treeIndex);
+
     
     // Editor Helpers
     int GetBlendTree1DCount() const { return static_cast<int>(m_BlendTrees1D.size()); }
@@ -159,7 +160,6 @@ private:
     // Animation layers for partial blending
     enum class LayerType {
         SingleAnimation,
-        BlendTree1D,
         BlendTree1D,
         BlendTree2D,
         BlendTree3D

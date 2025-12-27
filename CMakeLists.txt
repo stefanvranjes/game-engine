@@ -201,6 +201,7 @@ add_executable(GameEngine
     src/GLTFExtensions.cpp
     src/PreviewRenderer.cpp
     src/Material.cpp
+    src/Decal.cpp
     # Animation system - DISABLED
     # src/Animator.cpp
     # src/Animation.cpp

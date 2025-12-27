@@ -5,7 +5,8 @@
 
 VolumetricFog::VolumetricFog() 
     : m_FBO(0), m_FogTexture(0), m_Width(0), m_Height(0), 
-      m_Density(0.05f), m_Anisotropy(0.8f), m_MaxSteps(100), m_StepSize(0.5f) {
+      m_Density(0.01f), m_Anisotropy(0.8f), m_MaxSteps(100), m_StepSize(0.5f),
+      m_FogHeight(0.0f), m_HeightFalloff(0.1f), m_HeightFogDensity(0.02f) {
 }
 
 VolumetricFog::~VolumetricFog() {
@@ -103,6 +104,10 @@ void VolumetricFog::Render(unsigned int depthTexture, unsigned int shadowMapText
     m_Shader->SetFloat("u_Anisotropy", m_Anisotropy);
     m_Shader->SetInt("u_MaxSteps", m_MaxSteps);
     m_Shader->SetFloat("u_StepSize", m_StepSize);
+
+    m_Shader->SetFloat("u_Height", m_FogHeight);
+    m_Shader->SetFloat("u_HeightFalloff", m_HeightFalloff);
+    m_Shader->SetFloat("u_HeightFogDensity", m_HeightFogDensity);
     
     RenderQuad();
     

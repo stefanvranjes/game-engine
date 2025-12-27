@@ -136,7 +136,15 @@ private:
     
     std::vector<RenderItem> m_TransparentItems;
     void SortItems(std::vector<RenderItem>& items, bool frontToBack);
+
     void RenderTransparentItems(Shader* shader, const Mat4& view, const Mat4& projection);
+    
+    // Decals
+    void RenderDecals(const Mat4& view, const Mat4& projection);
+    void CollectDecals(GameObject* obj, std::vector<GameObject*>& decalObjects);
+    unsigned int m_UnitCubeVAO = 0;
+    unsigned int m_UnitCubeVBO = 0;
+    void RenderUnitCube(); // Helper for drawing decal volume
 
     // IBL
     void InitIBL();
@@ -154,6 +162,7 @@ private:
     std::unique_ptr<Shader> m_DepthShader;
     std::unique_ptr<Shader> m_GeometryShader;
     std::unique_ptr<Shader> m_LightingShader;
+    std::unique_ptr<Shader> m_DecalShader; // Decal Shader
     std::shared_ptr<Texture> m_Texture; // Default texture
     Camera* m_Camera;
     std::unique_ptr<Skybox> m_Skybox;

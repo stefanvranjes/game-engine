@@ -323,13 +323,13 @@ ModelLoader::LoadResult ModelLoader::LoadWithAssimp(const std::string& path,
                 aiQuaternion rot;
                 node->mTransformation.Decompose(scale, rot, pos);
                 
-                gameObj->GetTransform().SetPosition(Vec3(pos.x, pos.y, pos.z));
-                gameObj->GetTransform().SetScale(Vec3(scale.x, scale.y, scale.z));
-                gameObj->GetTransform().SetRotation(Vec3(
+                gameObj->GetTransform().position = Vec3(pos.x, pos.y, pos.z);
+                gameObj->GetTransform().scale = Vec3(scale.x, scale.y, scale.z);
+                gameObj->GetTransform().rotation = Vec3(
                     std::atan2(2.0f * (rot.w * rot.x + rot.y * rot.z), 1.0f - 2.0f * (rot.x * rot.x + rot.y * rot.y)),
                     std::asin(std::clamp(2.0f * (rot.w * rot.y - rot.z * rot.x), -1.0f, 1.0f)),
                     std::atan2(2.0f * (rot.w * rot.z + rot.x * rot.y), 1.0f - 2.0f * (rot.y * rot.y + rot.z * rot.z))
-                ) * 180.0f / 3.14159f);
+                ) * 180.0f / 3.14159f;
 
                 // Process meshes
                 for (unsigned int i = 0; i < node->mNumMeshes; ++i) {

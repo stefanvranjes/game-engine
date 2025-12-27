@@ -4,6 +4,7 @@
 #include "GLExtensions.h"
 #include "GLTFLoader.h"
 #include "Profiler.h"
+#include "Decal.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -397,6 +398,7 @@ void Renderer::UpdateShaders() {
     if (m_PrefilterShader) m_PrefilterShader->CheckForUpdates();
     if (m_BRDFShader) m_BRDFShader->CheckForUpdates();
     if (m_PointShadowShader) m_PointShadowShader->CheckForUpdates();
+    if (m_DecalShader) m_DecalShader->CheckForUpdates();
 }
 
 void Renderer::SetupScene() {
@@ -581,6 +583,13 @@ bool Renderer::Init() {
     m_LightingShader = std::make_unique<Shader>();
     if (!m_LightingShader->LoadFromFiles("shaders/lighting_pass.vert", "shaders/lighting_pass.frag")) {
         std::cerr << "Failed to load lighting pass shaders" << std::endl;
+        return false;
+    }
+
+    // Load decal shader
+    m_DecalShader = std::make_unique<Shader>();
+    if (!m_DecalShader->LoadFromFiles("shaders/decal.vert", "shaders/decal.frag")) {
+        std::cerr << "Failed to load decal shaders" << std::endl;
         return false;
     }
 
@@ -1336,6 +1345,9 @@ void Renderer::Render() {
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+
+    // ===== PASS 4.1: Decal Pass =====
+    RenderDecals(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
 
     // ===== PASS 4.5: SSAO Pass =====
     if (m_SSAOEnabled) {
@@ -2318,3 +2330,142 @@ void Renderer::RenderTransparentItems(Shader* shader, const Mat4& view, const Ma
     glDisable(GL_BLEND);
 }
 
+// Decals
+void Renderer::RenderDecals(const Mat4& view, const Mat4& projection) {
+    if (!m_DecalShader) return;
+    
+    // Collect decals
+    std::vector<GameObject*> decalObjects;
+    if (m_Root) {
+        CollectDecals(m_Root.get(), decalObjects);
+    }
+    
+    if (decalObjects.empty()) return;
+    
+    SCOPED_PROFILE("RenderDecals");
+    SCOPED_GPU_PROFILE("DecalPass", glm::vec4(1.0f, 0.0f, 1.0f, 1.0f));
+    
+    m_DecalShader->Use();
+    
+    // Set common uniforms
+    m_DecalShader->SetMat4("u_InvView", view.Inverse().m);
+    m_DecalShader->SetMat4("u_InvProjection", projection.Inverse().m);
+    
+    int width, height;
+    glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
+    m_DecalShader->SetVec2("u_ScreenSize", (float)width, (float)height);
+    
+    // Bind G-Buffer Depth for position reconstruction
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->GetDepthTexture());
+    m_DecalShader->SetInt("gDepth", 0);
+    
+    // Bind G-Buffer FBO (without clear) to render onto Albedo/Normal
+    m_GBuffer->BindForWriting();
+    
+    // Enable blending for decals
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // Simple alpha blend for Albedo
+    
+    // Disable Depth Write, Enable Depth Test
+    glDepthMask(GL_FALSE);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE); // Render both sides to be safe
+    
+    for (auto obj : decalObjects) {
+        auto decal = obj->GetDecal();
+        if (!decal) continue;
+        
+        // Bind Textures
+        if (decal->GetAlbedoTexture()) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, decal->GetAlbedoTexture()->GetID());
+            m_DecalShader->SetInt("u_DecalAlbedo", 1);
+        }
+        
+        // Uniforms
+        Mat4 model = obj->GetWorldMatrix();
+        m_DecalShader->SetMat4("u_MVP", (projection * view * model).m);
+        m_DecalShader->SetMat4("u_InvModel", model.Inverse().m);
+        
+        RenderUnitCube();
+    }
+    
+    // Restore State
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer::CollectDecals(GameObject* obj, std::vector<GameObject*>& decalObjects) {
+    if (!obj) return;
+    
+    if (obj->GetDecal()) {
+        decalObjects.push_back(obj);
+    }
+    
+    for (auto& child : obj->GetChildren()) {
+        CollectDecals(child.get(), decalObjects);
+    }
+}
+
+void Renderer::RenderUnitCube() {
+    if (m_UnitCubeVAO == 0) {
+        float vertices[] = {
+            // Back face
+            -0.5f, -0.5f, -0.5f,
+             0.5f,  0.5f, -0.5f,
+             0.5f, -0.5f, -0.5f,
+             0.5f,  0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,
+            -0.5f,  0.5f, -0.5f,
+            // Front face
+            -0.5f, -0.5f,  0.5f,
+             0.5f, -0.5f,  0.5f,
+             0.5f,  0.5f,  0.5f,
+             0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,
+            -0.5f, -0.5f,  0.5f,
+            // Left face
+            -0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,
+            -0.5f, -0.5f, -0.5f,
+            -0.5f, -0.5f,  0.5f,
+            -0.5f,  0.5f,  0.5f,
+            // Right face
+             0.5f,  0.5f,  0.5f,
+             0.5f, -0.5f, -0.5f,
+             0.5f,  0.5f, -0.5f,
+             0.5f, -0.5f, -0.5f,
+             0.5f,  0.5f,  0.5f,
+             0.5f, -0.5f,  0.5f,
+            // Bottom face
+            -0.5f, -0.5f, -0.5f,
+             0.5f, -0.5f, -0.5f,
+             0.5f, -0.5f,  0.5f,
+             0.5f, -0.5f,  0.5f,
+            -0.5f, -0.5f,  0.5f,
+            -0.5f, -0.5f, -0.5f,
+            // Top face
+            -0.5f,  0.5f, -0.5f,
+             0.5f,  0.5f,  0.5f,
+             0.5f,  0.5f, -0.5f,
+             0.5f,  0.5f,  0.5f,
+            -0.5f,  0.5f, -0.5f,
+            -0.5f,  0.5f,  0.5f
+        };
+        glGenVertexArrays(1, &m_UnitCubeVAO);
+        glGenBuffers(1, &m_UnitCubeVBO);
+        glBindVertexArray(m_UnitCubeVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_UnitCubeVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    }
+    glBindVertexArray(m_UnitCubeVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glBindVertexArray(0);
+}

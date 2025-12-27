@@ -13,6 +13,7 @@
 // Forward declarations
 class RigidBody;
 class KinematicController;
+class Decal;
 
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
@@ -62,6 +63,10 @@ public:
     // Physics - Kinematic Controllers
     void SetKinematicController(std::shared_ptr<KinematicController> controller) { m_KinematicController = controller; }
     std::shared_ptr<KinematicController> GetKinematicController() const { return m_KinematicController; }
+
+    // Decals
+    void SetDecal(std::shared_ptr<class Decal> decal) { m_Decal = decal; }
+    std::shared_ptr<class Decal> GetDecal() const { return m_Decal; }
     
     // Auto-LOD Grouping
     void ProcessLODGroups();
@@ -152,6 +157,9 @@ private:
     // Audio
     std::vector<std::shared_ptr<class AudioSource>> m_AudioSources;
     std::shared_ptr<class AudioListener> m_AudioListener;
+    
+    // Decal
+    std::shared_ptr<class Decal> m_Decal;
     
 
 };

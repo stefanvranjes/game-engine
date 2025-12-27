@@ -107,6 +107,7 @@ public:
     
     // Spawning
     void Burst(int count);
+    void SpawnAtPosition(const Vec3& pos, int count);
 
     // Getters/Setters for basic props...
     void SetPosition(const Vec3& pos) { m_Position = pos; }
@@ -260,9 +261,24 @@ private:
     // Physics Enhancements
     float m_VelocityInheritance;
     Vec3 m_LastPosition;
+    Vec3 m_LastPosition;
     Vec3 m_CalculatedEmitterVelocity;
     
+    // Turbulence
+    bool m_EnableTurbulence;
+    float m_TurbulenceStrength;
+    
+    void SetTurbulence(bool enable, float strength) {
+        m_EnableTurbulence = enable;
+        m_TurbulenceStrength = strength;
+    }
+    
     // Visuals
+    void AddGradientStop(float t, const Vec4& color);
+    void AddSizeCurvePoint(float size);
+    float EvaluateSize(float t) const;
+    Vec4 EvaluateGradient(float t) const;
+
     std::vector<GradientStop> m_ColorGradient;
     std::vector<float> m_SizeCurve; // Stores size values at t=index/size
     std::shared_ptr<ParticleEmitter> m_SubEmitterDeath;

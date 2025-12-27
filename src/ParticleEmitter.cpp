@@ -7,6 +7,7 @@
 #include <ctime>
 #include <cmath>
 #include <iostream>
+#include <algorithm>
 
 // Helper for bitonic sort size
 static unsigned int NextPowerOfTwo(unsigned int v) {
@@ -40,6 +41,8 @@ ParticleEmitter::ParticleEmitter(const Vec3& position, int maxParticles)
     , m_Texture(nullptr)
     , m_Parent(nullptr)
     , m_Active(true)
+    , m_EnableTurbulence(false)
+    , m_TurbulenceStrength(1.0f)
     , m_SpawnAccumulator(0.0f)
     , m_ActiveParticleCount(0)
     , m_SpringSSBO(0)
@@ -319,8 +322,8 @@ void ParticleEmitter::UpdateCPU(float deltaTime) {
         
         // Update Trail
         if (p.hasTrail && p.trail) {
-             p.trail->Update(deltaTime, p.position); // Assuming Trail has Update
-             // Or AddPoint logic
+             p.trail->AddPoint(p.position, p.color, m_TrailWidth * p.size);
+             p.trail->Update(deltaTime);
         }
     }
 }
@@ -543,8 +546,8 @@ void ParticleEmitter::UpdateGPU(float deltaTime) {
         // Convert CPU particles to GPU layout
         for (size_t i = 0; i < m_Particles.size(); ++i) {
             const auto& p = m_Particles[i];
-            m_GPUParticles[i].position = Vec4(p.position, p.size);
-            m_GPUParticles[i].velocity = Vec4(p.velocity, p.lifetime);
+            m_GPUParticles[i].position = Vec4(p.position.x, p.position.y, p.position.z, p.size);
+            m_GPUParticles[i].velocity = Vec4(p.velocity.x, p.velocity.y, p.velocity.z, p.lifetime);
             m_GPUParticles[i].color = p.color;
             m_GPUParticles[i].properties = Vec4(p.age, p.lifetime > 0 ? p.lifeRatio : 0.0f, p.active ? 1.0f : 0.0f, 0.0f);
         }
@@ -625,74 +628,8 @@ void ParticleEmitter::UpdateGPU(float deltaTime) {
     }
 }
 
-void ParticleEmitter::UpdateCPU(float deltaTime) {
-    // Original CPU update code
-    for (auto& particle : m_Particles) {
-        if (!particle.active) continue;
-        
-        particle.age += deltaTime;
-        
-        // Kill old particles
-        if (particle.age >= particle.lifetime) {
-            particle.active = false;
-            continue;
-        }
-        
-        // Update physics
-        particle.velocity = particle.velocity + m_Gravity * deltaTime;
-        particle.position = particle.position + particle.velocity * deltaTime;
-        
-        // Interpolate color and size based on age
-        float t = particle.age / particle.lifetime;
-        particle.lifeRatio = t;
-        particle.color = Vec4(
-            m_ColorStart.x + (m_ColorEnd.x - m_ColorStart.x) * t,
-            m_ColorStart.y + (m_ColorEnd.y - m_ColorStart.y) * t,
-            m_ColorStart.z + (m_ColorEnd.z - m_ColorStart.z) * t,
-            m_ColorStart.w + (m_ColorEnd.w - m_ColorStart.w) * t
-        );
-        particle.size = m_SizeStart + (m_SizeEnd - m_SizeStart) * t;
-        
-        // Update trails
-        if (particle.hasTrail && particle.trail) {
-            // Calculate trail position with optional turbulence
-            Vec3 trailPosition = particle.position;
-            
-            if (m_TrailTurbulence > 0.0f) {
-                // Apply 3D noise for turbulence
-                float noiseX = NoiseGenerator::Noise3D(
-                    particle.position.x * m_TrailTurbulenceFrequency,
-                    particle.position.y * m_TrailTurbulenceFrequency,
-                    m_Time * m_TrailTurbulenceSpeed
-                );
-                float noiseY = NoiseGenerator::Noise3D(
-                    particle.position.y * m_TrailTurbulenceFrequency,
-                    particle.position.z * m_TrailTurbulenceFrequency,
-                    m_Time * m_TrailTurbulenceSpeed + 100.0f
-                );
-                float noiseZ = NoiseGenerator::Noise3D(
-                    particle.position.z * m_TrailTurbulenceFrequency,
-                    particle.position.x * m_TrailTurbulenceFrequency,
-                    m_Time * m_TrailTurbulenceSpeed + 200.0f
-                );
-                
-                Vec3 noiseOffset(noiseX, noiseY, noiseZ);
-                noiseOffset = noiseOffset * m_TrailTurbulence;
-                trailPosition = trailPosition + noiseOffset;
-            }
-            
-            // Add point to trail
-            particle.trail->AddPoint(
-                trailPosition,
-                particle.color,
-                m_TrailWidth * particle.size
-            );
-            
-            // Update trail points
-            particle.trail->Update(deltaTime);
-        }
-    }
-}
+
+
 
 void ParticleEmitter::InitGPUCollision() {
     // Load Shaders
@@ -743,10 +680,10 @@ void ParticleEmitter::InitGPUCollision() {
     
     // Indirect Draw Buffer (Atomic)
     glGenBuffers(1, &m_IndirectBuffer);
-    glBindBuffer(GL_draw_indirect_buffer, m_IndirectBuffer);
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_IndirectBuffer);
     // DrawArraysIndirectCommand: 4 * uint = 16 bytes
-    glBufferData(GL_draw_indirect_buffer, 4 * sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_draw_indirect_buffer, 0);
+    glBufferData(GL_DRAW_INDIRECT_BUFFER, 4 * sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_DRAW_INDIRECT_BUFFER, 0);
 
     // Create Grid Buffer
     // Size: GridSize * 2 (Start, End) * sizeof(uint)

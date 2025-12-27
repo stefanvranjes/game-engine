@@ -20,10 +20,15 @@ uniform mat4 cascadeLightSpaceMatrices[3];
 uniform float cascadePlaneDistances[3];
 
 // Fog Info
-uniform float u_Density;
+uniform float u_Density; // Global/Base Density
 uniform float u_Anisotropy; // g factor (-1 to 1)
 uniform int u_MaxSteps;
 uniform float u_StepSize;
+
+// Height Fog Info
+uniform float u_Height;
+uniform float u_HeightFalloff;
+uniform float u_HeightFogDensity;
 
 // Utils to reconstruct world position
 vec3 ReconstructWorldPos(float depth, vec2 texCoord) {
@@ -113,11 +118,20 @@ void main() {
         if (shadow < 1.0) { // If not in shadow (1.0 means fully shadowed in our CalculateShadow func above? Wait check logic)
             // Logic above: returns 1.0 if shadowed. So we want shadow < 1.0 (lit)
             
-            float density = u_Density;
+            // Calculate Density
+            float density = u_Density; // Base density
             
-            // Optional: Height fog
-            // float heightFactor = exp(-heightFalloff * currentPos.y);
-            // density *= heightFactor;
+            // Height Fog Calculation
+            // Density increases as we get closer to u_Height, and falls off exponentially above it
+            // We can also model it as: density = base + exp( -falloff * (y - height) )
+            // Valid only if y > height. If y < height, it's just max density or we can clamp.
+            // A common simple model: density = global + heightDensity * exp(-falloff * (y - height))
+            
+            float heightDiff = currentPos.y - u_Height;
+            float heightFactor = exp(-u_HeightFalloff * heightDiff);
+            density += u_HeightFogDensity * heightFactor;
+            
+            if (density < 0.0) density = 0.0;
             
             float scattering = ComputeScattering(dot(rayDir, -lightDir));
             
@@ -126,10 +140,24 @@ void main() {
             
             // Accumulate
             accumulatedLight += lightContribution * accumulatedTransmittance; // * (1.0 - shadow) handled by if check
+            
+            // Attenuate transmittance
+             accumulatedTransmittance *= exp(-density * stepLen);
+        } else {
+             // Still need to attenuate transmittance even if in shadow?
+             // Yes, fog still blocks view even if unlit (absorption). 
+             // Although typically "volumetric lighting" is additive light. 
+             // Use "extinction" logic.
+             // But for simple God Rays, we often only add light if lit.
+             // However, to have "fog" that obscures the background, we must always attenuate transmittance based on density.
+             
+            float density = u_Density; 
+            float heightDiff = currentPos.y - u_Height;
+            float heightFactor = exp(-u_HeightFalloff * heightDiff);
+            density += u_HeightFogDensity * heightFactor;
+             
+             accumulatedTransmittance *= exp(-density * stepLen);
         }
-        
-        // Attenuate transmittance
-        accumulatedTransmittance *= exp(-u_Density * stepLen);
         
         currentPos += rayDir * stepLen;
     }

@@ -1,6 +1,6 @@
 #pragma once
 #include "Math/Vec3.h"
-#include "Math/Quaternion.h"
+#include "Math/Quat.h"
 #include <vector>
 #include <memory>
 class GameObject;
@@ -202,8 +202,6 @@ public:
      */
     static float NormalizeAngle(float angle);
 private:
-    AudioSpatializer();
-    ~AudioSpatializer();
     // HRTF Helper: Compute elevation-dependent filtering
     void ApplyHRTFFiltering(const SpatializationOutput& output, float elevation);
     bool m_initialized = false;

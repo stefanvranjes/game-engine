@@ -75,6 +75,7 @@ PFNGLGETINTEGERI_VPROC glGetIntegeri_v = nullptr;
 PFNGLMAPBUFFERPROC glMapBuffer = nullptr;
 PFNGLUNMAPBUFFERPROC glUnmapBuffer = nullptr;
 PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData = nullptr;
+PFNGLCLEARBUFFERDATAPROC glClearBufferData = nullptr;
 
 
 bool LoadGLExtensions() {
@@ -151,6 +152,7 @@ bool LoadGLExtensions() {
     glMapBuffer = (PFNGLMAPBUFFERPROC)wglGetProcAddress("glMapBuffer");
     glUnmapBuffer = (PFNGLUNMAPBUFFERPROC)wglGetProcAddress("glUnmapBuffer");
     glGetBufferSubData = (PFNGLGETBUFFERSUBDATAPROC)wglGetProcAddress("glGetBufferSubData");
+    glClearBufferData = (PFNGLCLEARBUFFERDATAPROC)wglGetProcAddress("glClearBufferData");
     
     // Note: Compute shader functions are optional (OpenGL 4.3+)
     // We don't fail if they're not available, but log a warning

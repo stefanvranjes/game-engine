@@ -148,8 +148,8 @@ public:
      */
     int GetObstacleCount() const { return static_cast<int>(m_obstacles.size()); }
 private:
-    AudioOcclusion();
-    ~AudioOcclusion();
+    AudioOcclusion() {}
+    ~AudioOcclusion() {}
     // Raycast helpers
     bool RaycastToSource(const Vec3& from, const Vec3& to, GameObject* excludeObject,
                         OcclusionResult& outResult);
@@ -174,6 +174,4 @@ private:
     float m_lpfOcclusionScale = 1.0f;
     // Cache for last computation
     OcclusionResult m_lastResult;
-    AudioOcclusion() {}
-    ~AudioOcclusion() {}
 };

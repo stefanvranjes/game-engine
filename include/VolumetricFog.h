@@ -33,6 +33,15 @@ public:
     int GetMaxSteps() const { return m_MaxSteps; }
     float GetStepSize() const { return m_StepSize; }
 
+    // Height Fog Parameters
+    void SetFogHeight(float height) { m_FogHeight = height; }
+    void SetHeightFalloff(float falloff) { m_HeightFalloff = falloff; }
+    void SetHeightFogDensity(float density) { m_HeightFogDensity = density; }
+
+    float GetFogHeight() const { return m_FogHeight; }
+    float GetHeightFalloff() const { return m_HeightFalloff; }
+    float GetHeightFogDensity() const { return m_HeightFogDensity; }
+
 private:
     void RenderQuad();
 
@@ -45,10 +54,16 @@ private:
     std::unique_ptr<Shader> m_Shader;
     
     // Config
-    float m_Density;
+    // Config
+    float m_Density; // Base global density (Exponential factor 1)
     float m_Anisotropy;
     int m_MaxSteps;
     float m_StepSize;
+
+    // Height Fog Config
+    float m_FogHeight;         // Base height (Y)
+    float m_HeightFalloff;  // How quickly it thins out as you go up
+    float m_HeightFogDensity; // Multiplier for the height fog component
     
     // Quad resources
     unsigned int m_QuadVAO = 0;

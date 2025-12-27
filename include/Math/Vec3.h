@@ -8,6 +8,7 @@ public:
 
     Vec3() : x(0.0f), y(0.0f), z(0.0f) {}
     Vec3(float x, float y, float z) : x(x), y(y), z(z) {}
+    explicit Vec3(float s) : x(s), y(s), z(s) {}
 
     // Vector addition
     Vec3 operator+(const Vec3& other) const {

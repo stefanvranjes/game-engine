@@ -97,13 +97,5 @@ bool Material::LoadFromFile(const std::string& filepath, TextureManager* texMana
     return true;
 }
 
-void Material::SetAmbient(const Vec3& v) { m_Ambient = v; m_Overrides |= PropAmbient; }
-void Material::SetDiffuse(const Vec3& v) { m_Diffuse = v; m_Overrides |= PropDiffuse; }
-void Material::SetSpecular(const Vec3& v) { m_Specular = v; m_Overrides |= PropSpecular; }
-void Material::SetShininess(float v) { m_Shininess = v; m_Overrides |= PropShininess; }
-void Material::SetRoughnessX(float v) { m_Roughness = v; m_Overrides |= PropRoughness; }
-void Material::SetMetalnessX(float v) { m_Metallic = v; m_Overrides |= PropMetallic; }
-void Material::SetParallaxX(float v) { m_HeightScale = v; m_Overrides |= PropHeightScale; }
-void Material::SetEmissiveColor(const Vec3& v) { m_EmissiveColor = v; m_Overrides |= PropEmissiveColor; }
-void Material::SetMyAlpha(float opacity) { m_Opacity = opacity; m_Overrides |= PropOpacity; }
-void Material::SetMyTrans(bool transparent) { m_IsTransparent = transparent; m_Overrides |= PropTransparent; }
+// Setters are defined inline in MaterialNew.h
+// Duplicate definitions removed. Implemented in header.
