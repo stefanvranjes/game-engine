@@ -13,6 +13,7 @@
 class GameObject;
 class PostProcessing;
 class ParticleSystem;
+class GlobalIllumination;
 
 /**
  * @class HybridRenderer
@@ -87,11 +88,17 @@ public:
     void SetShowGBuffer(bool show) { m_ShowGBuffer = show; }
     void SetShowLightHeatmap(bool show) { m_ShowLightHeatmap = show; }
 
+    // Global Illumination
+    class GlobalIllumination* GetGlobalIllumination() { return m_GlobalIllumination.get(); }
+    void SetGIEnabled(bool enabled);
+    bool GetGIEnabled() const;
+
 private:
     // ===== Pipeline Execution =====
     void ExecuteShadowPass();
     void ExecuteGPUCulling();
     void ExecuteGeometryPass();
+    void ExecuteGlobalIlluminationPass();
     void ExecuteLightingPass();
     void ExecuteTransparentPass();
     void ExecutePostProcessing();
@@ -139,6 +146,9 @@ private:
     // Post-processing
     std::unique_ptr<PostProcessing> m_PostProcessing;
     std::unique_ptr<ParticleSystem> m_ParticleSystem;
+
+    // Global Illumination
+    std::unique_ptr<GlobalIllumination> m_GlobalIllumination;
 
     // Debug state
     bool m_ShowCullingBounds;

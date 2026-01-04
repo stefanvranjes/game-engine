@@ -74,6 +74,21 @@ uniform samplerCube u_ReflectionProbeCubemaps[4];
 uniform sampler2D volumetricFogTexture;
 uniform int volumetricFogEnabled;
 
+// Global Illumination
+uniform int u_GIEnabled;
+uniform int u_GITechnique;  // 0=None, 1=VCT, 2=LPV, 3=SSGI, 4=Hybrid
+uniform float u_GIIntensity;
+uniform sampler2D giTexture;  // Pre-computed GI from GI pass
+uniform sampler3D voxelAlbedo;  // For VCT
+uniform sampler3D voxelNormal;  // For VCT
+uniform sampler3D lpvTextureR;  // For LPV
+uniform sampler3D lpvTextureG;  // For LPV
+uniform sampler3D lpvTextureB;  // For LPV
+uniform vec3 u_VoxelGridMin;
+uniform vec3 u_VoxelGridMax;
+uniform vec3 u_LPVGridMin;
+uniform vec3 u_LPVGridMax;
+
 // Array of offset direction for sampling
 vec3 gridSamplingDisk[20] = vec3[]
 (
@@ -357,6 +372,28 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// Sample LPV for indirect lighting
+vec3 SampleLPV(vec3 worldPos, vec3 normal)
+{
+    // Convert world position to LPV grid coordinates
+    vec3 gridPos = (worldPos - u_LPVGridMin) / (u_LPVGridMax - u_LPVGridMin);
+    
+    if (any(lessThan(gridPos, vec3(0.0))) || any(greaterThan(gridPos, vec3(1.0)))) {
+        return vec3(0.0);
+    }
+    
+    // Sample spherical harmonic coefficients
+    vec4 shR = texture(lpvTextureR, gridPos);
+    vec4 shG = texture(lpvTextureG, gridPos);
+    vec4 shB = texture(lpvTextureB, gridPos);
+    
+    // Evaluate SH with normal direction (simplified)
+    // In full implementation, use proper SH evaluation
+    vec3 indirectLight = vec3(shR.r, shG.r, shB.r);
+    
+    return indirectLight;
+}
+
 void main()
 {
     // Retrieve data from G-Buffer
@@ -561,7 +598,28 @@ void main()
         }
     }
     
-    vec3 ambient = (kD * diffuse + specular) * AO;
+    // === Global Illumination ===
+    vec3 indirectDiffuse = vec3(0.0);
+    
+    if (u_GIEnabled == 1) {
+        if (u_GITechnique == 1) {  // VCT
+            // Sample pre-computed GI texture from cone tracing pass
+            indirectDiffuse = texture(giTexture, TexCoord).rgb;
+        } else if (u_GITechnique == 2) {  // LPV
+            indirectDiffuse = SampleLPV(FragPos, N);
+        } else if (u_GITechnique == 3) {  // SSGI
+            indirectDiffuse = texture(giTexture, TexCoord).rgb;
+        } else if (u_GITechnique == 4) {  // Hybrid (VCT + SSGI)
+            vec3 vctGI = texture(giTexture, TexCoord).rgb;
+            // SSGI is blended in the GI pass itself
+            indirectDiffuse = vctGI;
+        }
+        
+        // Apply GI intensity
+        indirectDiffuse *= u_GIIntensity;
+    }
+    
+    vec3 ambient = (kD * diffuse + specular) * AO + indirectDiffuse;
     
     // Fallback ambient if IBL is not loaded (prevents black screen)
     float iblStrength = max(max(irradiance.r, irradiance.g), irradiance.b);

@@ -218,6 +218,10 @@ add_executable(GameEngine
     src/SSBO.cpp
     src/AudioSystem.cpp
     src/AudioSource.cpp
+    # Global Illumination system
+    src/GlobalIllumination.cpp
+    src/VoxelGrid.cpp
+    src/LightPropagationVolume.cpp
     # Advanced audio features - DISABLED
     # src/AudioMixer.cpp
     # src/AudioSpatializer.cpp
