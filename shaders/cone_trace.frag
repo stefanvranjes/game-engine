@@ -3,21 +3,21 @@
 out vec4 FragColor;
 in vec2 TexCoord;
 
-uniform sampler3D voxelAlbedo;
-uniform sampler3D voxelNormal;
+uniform sampler3D u_VoxelAlbedo[3];
+uniform sampler3D u_VoxelNormal[3];
 uniform sampler2D gPosition;
 uniform sampler2D gNormal;
 uniform sampler2D gAlbedoSpec;
 
 uniform vec3 u_ViewPos;
-uniform vec3 u_GridMin;
-uniform vec3 u_GridMax;
-uniform float u_VoxelSize;
+uniform vec3 u_CascadeMin[3];
+uniform vec3 u_CascadeMax[3];
+uniform float u_CascadeVoxelSize[3];
 uniform int u_NumCones;
 uniform float u_GIIntensity;
 
 const float PI = 3.14159265359;
-const float MAX_DISTANCE = 100.0;
+const float MAX_DISTANCE = 200.0;
 
 // Cone directions for diffuse cone tracing (5 cones)
 const vec3 coneDirections[5] = vec3[](
@@ -36,17 +36,25 @@ const float coneWeights[5] = float[](
     0.15   // Left-back-up
 );
 
-// Sample voxel grid with trilinear interpolation
-vec4 sampleVoxel(sampler3D voxelTex, vec3 worldPos, float lod)
+// Sample voxel grid with cascade selection and LOD calculation
+vec4 sampleVoxel(vec3 worldPos, float diameter)
 {
-    vec3 voxelPos = (worldPos - u_GridMin) / (u_GridMax - u_GridMin);
-    
-    // Check bounds
-    if (any(lessThan(voxelPos, vec3(0.0))) || any(greaterThan(voxelPos, vec3(1.0)))) {
-        return vec4(0.0);
+    for (int i = 0; i < 3; i++) {
+        vec3 minB = u_CascadeMin[i];
+        vec3 maxB = u_CascadeMax[i];
+        
+        if (all(greaterThanEqual(worldPos, minB)) && all(lessThanEqual(worldPos, maxB))) {
+             vec3 voxelPos = (worldPos - minB) / (maxB - minB);
+             
+             // Calculate LOD for this specific cascade
+             // Mip 0 = 1 voxel size
+             float voxelSize = u_CascadeVoxelSize[i];
+             float lod = log2(max(1.0, diameter / voxelSize));
+             
+             return textureLod(u_VoxelAlbedo[i], voxelPos, lod);
+        }
     }
-    
-    return textureLod(voxelTex, voxelPos, lod);
+    return vec4(0.0);
 }
 
 // Trace a cone through the voxel grid
@@ -54,10 +62,10 @@ vec3 traceCone(vec3 origin, vec3 direction, float aperture)
 {
     vec3 color = vec3(0.0);
     float alpha = 0.0;
-    float dist = u_VoxelSize; // Start one voxel away
+    float dist = u_CascadeVoxelSize[0]; // Start one voxel away (smallest)
     
     const int maxSteps = 128;
-    const float minDiameter = u_VoxelSize;
+    const float minDiameter = u_CascadeVoxelSize[0];
     
     for (int i = 0; i < maxSteps && alpha < 0.95 && dist < MAX_DISTANCE; i++)
     {
@@ -66,11 +74,8 @@ vec3 traceCone(vec3 origin, vec3 direction, float aperture)
         // Calculate cone diameter at current distance
         float diameter = max(minDiameter, 2.0 * aperture * dist);
         
-        // Calculate mip level based on cone diameter
-        float mipLevel = log2(diameter / u_VoxelSize);
-        
-        // Sample voxel grid
-        vec4 voxelSample = sampleVoxel(voxelAlbedo, samplePos, mipLevel);
+        // Sample voxel grid (handles cascade selection and LOD)
+        vec4 voxelSample = sampleVoxel(samplePos, diameter);
         
         // Accumulate color with front-to-back blending
         float sampleAlpha = voxelSample.a;
@@ -102,7 +107,7 @@ vec3 computeIndirectDiffuse(vec3 position, vec3 normal)
     for (int i = 0; i < numCones; i++)
     {
         vec3 coneDir = TBN * coneDirections[i];
-        vec3 coneColor = traceCone(position + normal * u_VoxelSize * 2.0, coneDir, aperture);
+        vec3 coneColor = traceCone(position + normal * u_CascadeVoxelSize[0] * 2.0, coneDir, aperture);
         indirectDiffuse += coneColor * coneWeights[i];
     }
     
@@ -117,7 +122,8 @@ vec3 computeIndirectSpecular(vec3 position, vec3 normal, vec3 viewDir, float rou
     // Cone aperture based on roughness
     float aperture = tan(roughness * PI * 0.5);
     
-    vec3 specularColor = traceCone(position + normal * u_VoxelSize * 2.0, reflectDir, aperture);
+    // Specular cone trace
+    vec3 specularColor = traceCone(position + normal * u_CascadeVoxelSize[0] * 2.0, reflectDir, aperture);
     
     return specularColor * u_GIIntensity * (1.0 - roughness);
 }

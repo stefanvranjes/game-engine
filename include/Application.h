@@ -21,6 +21,7 @@ public:
     bool Init();
     void Run();
     void Shutdown();
+    void LoadCornellBox(); // Test scene
 
 private:
     void Update(float deltaTime);

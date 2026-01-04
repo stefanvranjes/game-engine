@@ -90,6 +90,7 @@ private:
     void UpdateQualitySettings();
     void CreateGITexture(int width, int height);
     void CreateSSGIResources(int width, int height);
+    void RenderQuad(); // Helper for fullscreen draws
 
     // Configuration
     Technique m_Technique;
@@ -105,6 +106,9 @@ private:
     // GI output texture (RGBA16F)
     unsigned int m_GITexture;
     unsigned int m_GIFramebuffer;
+    
+    // Quad resources
+    unsigned int m_QuadVAO, m_QuadVBO;
 
     // Technique-specific systems
     std::unique_ptr<VoxelGrid> m_VoxelGrid;

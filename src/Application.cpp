@@ -347,6 +347,11 @@ void Application::RenderEditorUI() {
         m_SelectedObjectIndex = -1;
     }
     
+    ImGui::Separator();
+    if (ImGui::Button("Load Cornell Box")) {
+        LoadCornellBox();
+    }
+    
     ImGui::End();
     
     // Object Inspector Panel

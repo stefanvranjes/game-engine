@@ -5,6 +5,7 @@
 #include "GameObject.h"
 #include <glad/glad.h>
 #include <iostream>
+#include "Profiler.h"
 
 GlobalIllumination::GlobalIllumination()
     : m_Technique(Technique::VCT)
@@ -26,6 +27,8 @@ GlobalIllumination::GlobalIllumination()
     , m_DebugVAO(0)
     , m_DebugVBO(0)
     , m_ProbeBlendWeight(0.5f)
+    , m_QuadVAO(0)
+    , m_QuadVBO(0)
 {
     m_TemporalTexture[0] = 0;
     m_TemporalTexture[1] = 0;
@@ -45,6 +48,29 @@ bool GlobalIllumination::Initialize(int screenWidth, int screenHeight)
 
     // Create GI output texture
     CreateGITexture(screenWidth, screenHeight);
+
+    // Create Fullscreen Quad
+    float quadVertices[] = {
+        // positions   // texCoords
+        -1.0f,  1.0f,  0.0f, 1.0f,
+        -1.0f, -1.0f,  0.0f, 0.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+
+        -1.0f,  1.0f,  0.0f, 1.0f,
+         1.0f, -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f,  1.0f, 1.0f
+    };
+    
+    glGenVertexArrays(1, &m_QuadVAO);
+    glGenBuffers(1, &m_QuadVBO);
+    glBindVertexArray(m_QuadVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_QuadVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glBindVertexArray(0);
 
     // Initialize VoxelGrid
     m_VoxelGrid = std::make_unique<VoxelGrid>(m_VoxelResolution);
@@ -100,6 +126,8 @@ void GlobalIllumination::Shutdown()
     if (m_TemporalTexture[1]) glDeleteTextures(1, &m_TemporalTexture[1]);
     if (m_DebugVAO) glDeleteVertexArrays(1, &m_DebugVAO);
     if (m_DebugVBO) glDeleteBuffers(1, &m_DebugVBO);
+    if (m_QuadVAO) glDeleteVertexArrays(1, &m_QuadVAO);
+    if (m_QuadVBO) glDeleteBuffers(1, &m_QuadVBO);
 
     if (m_VoxelGrid) m_VoxelGrid->Shutdown();
     if (m_LPV) m_LPV->Shutdown();
@@ -116,6 +144,7 @@ void GlobalIllumination::Update(float deltaTime)
 void GlobalIllumination::Render(Camera* camera, const std::vector<Light>& lights,
                                 const std::vector<GameObject*>& objects)
 {
+    PROFILE_SCOPE("GlobalIllumination::Render");
     if (!m_Enabled) return;
 
     switch (m_Technique) {
@@ -139,6 +168,7 @@ void GlobalIllumination::Render(Camera* camera, const std::vector<Light>& lights
 void GlobalIllumination::RenderVCT(Camera* camera, const std::vector<Light>& lights,
                                    const std::vector<GameObject*>& objects)
 {
+    PROFILE_SCOPE("RenderVCT");
     // Step 1: Voxelize the scene
     m_VoxelGrid->Clear();
     m_VoxelGrid->Voxelize(objects, camera);
@@ -150,22 +180,36 @@ void GlobalIllumination::RenderVCT(Camera* camera, const std::vector<Light>& lig
     glClear(GL_COLOR_BUFFER_BIT);
 
     m_ConeTraceShader->Use();
-    m_ConeTraceShader->SetInt("voxelAlbedo", 0);
-    m_ConeTraceShader->SetInt("voxelNormal", 1);
+    
+    // Bind Voxel Cascades
+    for(int i=0; i<3; ++i) {
+        std::string iStr = std::to_string(i);
+        m_ConeTraceShader->SetInt("u_VoxelAlbedo[" + iStr + "]", 5 + i); // Units 5,6,7
+        m_ConeTraceShader->SetInt("u_VoxelNormal[" + iStr + "]", 8 + i); // Units 8,9,10
+        
+        glActiveTexture(GL_TEXTURE0 + 5 + i);
+        glBindTexture(GL_TEXTURE_3D, m_VoxelGrid->GetVoxelAlbedoTexture(i));
+        
+        glActiveTexture(GL_TEXTURE0 + 8 + i);
+        glBindTexture(GL_TEXTURE_3D, m_VoxelGrid->GetVoxelNormalTexture(i));
+        
+        auto cascade = m_VoxelGrid->GetCascade(i);
+        m_ConeTraceShader->SetVec3("u_CascadeMin[" + iStr + "]", cascade.min);
+        m_ConeTraceShader->SetVec3("u_CascadeMax[" + iStr + "]", cascade.max);
+        m_ConeTraceShader->SetFloat("u_CascadeVoxelSize[" + iStr + "]", cascade.voxelSize);
+    }
+
     m_ConeTraceShader->SetInt("gPosition", 2);
     m_ConeTraceShader->SetInt("gNormal", 3);
+    m_ConeTraceShader->SetInt("gAlbedoSpec", 4); // Added G-Buffer Albedo binding if needed
     m_ConeTraceShader->SetInt("numCones", m_NumDiffuseCones);
-    m_ConeTraceShader->SetFloat("voxelSize", m_VoxelGrid->GetVoxelSize());
-    m_ConeTraceShader->SetVec3("gridMin", m_VoxelGrid->GetGridMin());
-    m_ConeTraceShader->SetVec3("gridMax", m_VoxelGrid->GetGridMax());
+    // u_VoxelSize removed from shader globals, now per cascade
+    // m_ConeTraceShader->SetFloat("voxelSize", m_VoxelGrid->GetVoxelSize()); 
+    // m_ConeTraceShader->SetVec3("gridMin", m_VoxelGrid->GetGridMin());
+    // m_ConeTraceShader->SetVec3("gridMax", m_VoxelGrid->GetGridMax());
 
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_3D, m_VoxelGrid->GetVoxelAlbedoTexture());
-    glActiveTexture(GL_TEXTURE1);
-    glBindTexture(GL_TEXTURE_3D, m_VoxelGrid->GetVoxelNormalTexture());
-
-    // Render fullscreen quad (assumes utility function exists)
-    // RenderFullscreenQuad();
+    // Render fullscreen quad
+    RenderQuad();
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -313,4 +357,11 @@ void GlobalIllumination::RenderDebugVisualization(Camera* camera)
     if (!m_ShowVoxels || !m_VoxelGrid) return;
 
     m_VoxelGrid->RenderDebug(camera, m_VoxelDebugShader.get());
+}
+
+void GlobalIllumination::RenderQuad()
+{
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, 6);
+    glBindVertexArray(0);
 }

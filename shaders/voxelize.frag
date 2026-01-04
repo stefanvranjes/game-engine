@@ -19,6 +19,7 @@ uniform float u_VoxelSize;
 uniform int u_HasTexture;
 uniform sampler2D u_AlbedoTexture;
 uniform vec3 u_AlbedoColor;
+uniform vec3 u_EmissiveColor;
 
 void main()
 {
@@ -36,6 +37,9 @@ void main()
     if (u_HasTexture == 1) {
         albedo = texture(u_AlbedoTexture, fs_in.texCoord).rgb;
     }
+    
+    // Add emissive contribution
+    albedo += u_EmissiveColor;
     
     // Normalize normal
     vec3 normal = normalize(fs_in.normal);

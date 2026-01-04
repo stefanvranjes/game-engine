@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <vector>
+#include <array>
 #include <glm/glm.hpp>
 #include "Shader.h"
 #include "Camera.h"
@@ -29,19 +30,26 @@ public:
     void Clear();
     void GenerateMipmaps();
 
-    // Getters
-    unsigned int GetVoxelAlbedoTexture() const { return m_VoxelAlbedoTexture; }
-    unsigned int GetVoxelNormalTexture() const { return m_VoxelNormalTexture; }
-    int GetResolution() const { return m_Resolution; }
-    glm::vec3 GetGridCenter() const { return m_GridCenter; }
-    glm::vec3 GetGridMin() const { return m_GridMin; }
-    glm::vec3 GetGridMax() const { return m_GridMax; }
-    float GetVoxelSize() const { return m_VoxelSize; }
-
     // Configuration
-    void SetGridBounds(const glm::vec3& min, const glm::vec3& max);
-    void SetGridCenter(const glm::vec3& center, float extent);
+    void SetGridBounds(int cascadeIndex, const glm::vec3& min, const glm::vec3& max);
+    void SetGridCenter(const glm::vec3& center);
     void SetResolution(int resolution);
+
+    // Getters
+    unsigned int GetVoxelAlbedoTexture(int cascadeIndex) const { return m_VoxelAlbedoTexture[cascadeIndex]; }
+    unsigned int GetVoxelNormalTexture(int cascadeIndex) const { return m_VoxelNormalTexture[cascadeIndex]; }
+    int GetResolution() const { return m_Resolution; }
+    
+    struct CascadeData {
+        glm::vec3 min;
+        glm::vec3 max;
+        glm::vec3 center;
+        float voxelSize;
+        float extent; // Half-size
+    };
+    
+    const CascadeData& GetCascade(int index) const { return m_Cascades[index]; }
+    static const int MAX_CASCADES = 3;
 
     // Debug
     void RenderDebug(Camera* camera, Shader* debugShader);
@@ -49,19 +57,17 @@ public:
 private:
     void CreateVoxelTextures();
     void CreateVoxelizationResources();
-    void UpdateGridBounds(Camera* camera);
+    void UpdateCascadeBounds(Camera* camera);
 
     // Grid properties
     int m_Resolution;
-    glm::vec3 m_GridCenter;
-    glm::vec3 m_GridMin;
-    glm::vec3 m_GridMax;
-    float m_VoxelSize;
-    float m_GridExtent;  // Half-size of the grid
+    
+    // Cascade data
+    std::array<CascadeData, MAX_CASCADES> m_Cascades;
 
-    // 3D Textures
-    unsigned int m_VoxelAlbedoTexture;   // RGBA8: RGB=Albedo, A=Occlusion
-    unsigned int m_VoxelNormalTexture;   // RGBA8: RGB=Normal, A=Emissive
+    // 3D Textures Arrays
+    unsigned int m_VoxelAlbedoTexture[MAX_CASCADES];   
+    unsigned int m_VoxelNormalTexture[MAX_CASCADES];
 
     // Voxelization shaders
     std::unique_ptr<Shader> m_VoxelizeShader;
