@@ -1,0 +1,103 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+#include "ddgi_common.glsl"
+
+// Textures
+layout(binding = 0, rgb10_a2) uniform image2D irradianceImg;
+layout(binding = 1, rg16f) uniform image2D distanceImg;
+
+struct RayHit {
+    vec4 val;
+};
+layout(std430, binding = 0) readonly buffer RayHitBuffer {
+    RayHit hits[];
+};
+
+uniform int raysPerProbe;
+uniform float hysteresis;
+uniform ivec3 gridDim;
+
+// Shared memory for ray gathering?
+// 64 rays per probe is small enough to loop in registers or shared.
+
+void main() {
+    // Current mapping: This shader runs ONCE per PROBE?
+    // Wait, earlier I said "Dispatch(NumProbes)".
+    // So LocalSize=(8, 8) means we process 64 texels (Irradiance) per Group?
+    // Irradiance Res is 8x8 (6x6+border).
+    // Let's assume One Workgroup = One Probe.
+    
+    int probeIdx = int(gl_WorkGroupID.x);
+    if (probeIdx >= gridDim.x * gridDim.y * gridDim.z) return;
+    
+    ivec2 localTexel = ivec2(gl_LocalInvocationID.xy);
+    // Determine Atlas Offset for this probe
+    // Need helper to find TopLeft of this probe in atlas.
+    // Let's just assume we compute it here.
+    int totalProbes = gridDim.x * gridDim.y * gridDim.z;
+    int atlasCols = int(ceil(sqrt(float(totalProbes))));
+    int probeX = probeIdx % atlasCols;
+    int probeY = probeIdx / atlasCols;
+    
+    // Irradiance Block Size = 8 (6+2)
+    int irrSize = 8; 
+    ivec2 irrOffset = ivec2(probeX * irrSize, probeY * irrSize);
+    
+    ivec2 pixelCoord = irrOffset + localTexel; // 0..7
+    
+    // Only process interior pixels (1..6) for now? 
+    // Usually we process all and border copy later.
+    // Or we process core pixels and border copy in next pass.
+    
+    // Normalized Octahedral Coord for this pixel
+    // Map 0..7 to -1..1?
+    vec2 uv = (vec2(localTexel) + 0.5) / float(irrSize);
+    vec2 octCoord = uv * 2.0 - 1.0; // -1 to 1
+    
+    vec3 dir = OctDecode(octCoord);
+    
+    // Gather Rays
+    vec3 resultRad = vec3(0.0);
+    float totalWeight = 0.0;
+    
+    int baseRayIdx = probeIdx * raysPerProbe;
+    
+    for(int i=0; i<raysPerProbe; ++i) {
+        vec4 hit = hits[baseRayIdx + i].val;
+        vec3 rayDir = sphericalFibonacci(i, raysPerProbe); // Helper need to match
+        // Need rotation here too? Yes.
+        // Assuming we pass rotation or store rayDir in hit?
+        // Let's just dot product with hit.
+        
+        float weight = max(0.0, dot(dir, rayDir));
+        if (weight > 0.0) {
+           resultRad += hit.xyz * weight;
+           totalWeight += weight;
+        }
+    }
+    
+    if (totalWeight > 0.0) resultRad /= totalWeight;
+    
+    // Load Previous
+    vec4 prev = imageLoad(irradianceImg, pixelCoord);
+    vec3 prevRad = prev.xyz;
+    
+    // Hysteresis
+    vec3 blended = mix(resultRad, prevRad, hysteresis);
+    
+    imageStore(irradianceImg, pixelCoord, vec4(blended, 1.0));
+    
+    // Distance Update?
+    // Distance is 16x16. We can use same threads if we map carefully or dispatch separately.
+    // For MVP, just update Irradiance.
+}
+
+// Need repeat of sphericalFibonacci here or include
+vec3 sphericalFibonacci(int i, int n) {
+    const float PHI = 1.61803398875;
+    float phi = 2.0 * PI * (float(i) / PHI);
+    float cosTheta = 1.0 - (2.0 * float(i) + 1.0) / float(n);
+    float sinTheta = sqrt(clamp(1.0 - cosTheta * cosTheta, 0.0, 1.0));
+    return vec3(cos(phi) * sinTheta, sin(phi) * sinTheta, cosTheta);
+}

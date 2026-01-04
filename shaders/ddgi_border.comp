@@ -1,0 +1,33 @@
+#version 460 core
+layout(local_size_x = 8, local_size_y = 1, local_size_z = 1) in;
+
+layout(binding = 0, rgb10_a2) uniform image2D irradianceImg;
+// layout(binding = 1, rg16f) uniform image2D distanceImg;
+
+uniform ivec3 gridDim;
+
+void main() {
+    int probeIdx = int(gl_WorkGroupID.x);
+    // Similar Atlas ID calculation
+    int totalProbes = gridDim.x * gridDim.y * gridDim.z;
+    int atlasCols = int(ceil(sqrt(float(totalProbes))));
+    int probeX = probeIdx % atlasCols;
+    int probeY = probeIdx / atlasCols;
+    int irrSize = 8; 
+    ivec2 irrOffset = ivec2(probeX * irrSize, probeY * irrSize);
+    
+    // Thread ID maps to border pixels?
+    // 8x8 block.
+    // Top row: (x, 0) <- (1-x, 1) ? No, wrap or clamp?
+    // DDGI usually wraps edges.
+    
+    // Simple copy for row 0 and row 7
+    // Using simple clamp for now:
+    // row 0 = row 1
+    // row 7 = row 6
+    // col 0 = col 1
+    // col 7 = col 6
+    
+    // Placeholder: Full border update logic is complex wrapping.
+    // MVP: Just clamp edges.
+}

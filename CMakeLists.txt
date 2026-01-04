@@ -222,6 +222,8 @@ add_executable(GameEngine
     src/GlobalIllumination.cpp
     src/VoxelGrid.cpp
     src/LightPropagationVolume.cpp
+    src/ProbeGrid.cpp
+    src/ProbeBaker.cpp
     # Advanced audio features - DISABLED
     # src/AudioMixer.cpp
     # src/AudioSpatializer.cpp

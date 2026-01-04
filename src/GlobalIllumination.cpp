@@ -1,6 +1,7 @@
 #include "GlobalIllumination.h"
 #include "VoxelGrid.h"
 #include "LightPropagationVolume.h"
+#include "ProbeGrid.h"
 #include "GameObject.h"
 #include <glad/glad.h>
 #include <iostream>
@@ -24,6 +25,7 @@ GlobalIllumination::GlobalIllumination()
     , m_TemporalBlendFactor(0.9f)
     , m_DebugVAO(0)
     , m_DebugVBO(0)
+    , m_ProbeBlendWeight(0.5f)
 {
     m_TemporalTexture[0] = 0;
     m_TemporalTexture[1] = 0;
@@ -55,6 +57,16 @@ bool GlobalIllumination::Initialize(int screenWidth, int screenHeight)
     m_LPV = std::make_unique<LightPropagationVolume>(32);
     if (!m_LPV->Initialize()) {
         std::cerr << "[GI] Failed to initialize LPV!" << std::endl;
+        return false;
+    }
+
+    // Initialize ProbeGrid
+    glm::vec3 gridMin(-50.0f, 0.0f, -50.0f);
+    glm::vec3 gridMax(50.0f, 50.0f, 50.0f);
+    glm::ivec3 gridRes(8, 8, 8);
+    m_ProbeGrid = std::make_unique<ProbeGrid>(gridMin, gridMax, gridRes);
+    if (!m_ProbeGrid->Initialize()) {
+        std::cerr << "[GI] Failed to initialize ProbeGrid!" << std::endl;
         return false;
     }
 

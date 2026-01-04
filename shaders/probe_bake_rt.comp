@@ -1,0 +1,136 @@
+#version 460 core
+
+// Requires Vulkan/GL interoperability or recent OpenGL extension for Ray Tracing
+#extension GL_EXT_ray_query : require
+
+// Workgroup size
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+// === Inputs ===
+
+// Acceleration Structure
+layout(binding = 0) uniform accelerationStructureEXT tlas;
+
+// Output Buffer for SH Coefficients
+layout(std430, binding = 1) writeonly buffer ProbeOutput {
+    float outputSH[];
+};
+
+// Probe Positions
+struct ProbeInfo {
+    vec4 positionRadius; // xyz = position, w = radius
+};
+layout(std430, binding = 2) readonly buffer ProbePositions {
+    ProbeInfo probes[];
+};
+
+// Uniforms
+uniform int numProbes;
+uniform int u_ProbeOffset;
+uniform int samplesPerProbe;
+uniform float maxRayDistance;
+uniform vec3 skyColorTop;
+uniform vec3 skyColorHorizon;
+
+// Constants
+const float PI = 3.14159265359;
+
+// === Functions ===
+
+vec3 getSkyColor(vec3 direction) {
+    float t = direction.y * 0.5 + 0.5;
+    return mix(skyColorHorizon, skyColorTop, t);
+}
+
+// Fibonacci sphere sampling
+vec3 generateSample(int index, int totalSamples) {
+    float phi = PI * (3.0 - sqrt(5.0));
+    float y = 1.0 - (float(index) / float(totalSamples - 1)) * 2.0;
+    float r = sqrt(1.0 - y * y);
+    float theta = phi * float(index);
+    float x = cos(theta) * r;
+    float z = sin(theta) * r;
+    return normalize(vec3(x, y, z));
+}
+
+// Evaluate SH basis (L0, L1)
+void evaluateSH(vec3 dir, out float sh[9]) {
+    sh[0] = 0.282095;
+    sh[1] = 0.488603 * dir.y;
+    sh[2] = 0.488603 * dir.z;
+    sh[3] = 0.488603 * dir.x;
+    for(int i=4; i<9; ++i) sh[i] = 0.0;
+}
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x + gl_GlobalInvocationID.y * gl_NumWorkGroups.x * gl_WorkGroupSize.x;
+    if (idx >= numProbes) return;
+
+    vec3 origin = probes[idx].positionRadius.xyz;
+    
+    // Accumulators
+    float shAcc[27];
+    for(int i=0; i<27; ++i) shAcc[i] = 0.0;
+    
+    float weight = 4.0 * PI / float(samplesPerProbe);
+
+    for (int i = 0; i < samplesPerProbe; ++i) {
+        vec3 dir = generateSample(i, samplesPerProbe);
+        
+        // --- HARDWARE RAY TRACING ---
+        rayQueryEXT rayQuery;
+        rayQueryInitializeEXT(rayQuery, tlas, gl_RayFlagsOpaqueEXT, 0xFF,
+                              origin, 0.01 /* tMin */, dir, maxRayDistance);
+                              
+        // Traverse
+        while(rayQueryProceedEXT(rayQuery)) {
+            // Helper for alpha test would go here if needed
+        }
+        
+        vec3 radiance = vec3(0.0);
+        
+        // Check intersection
+        if (rayQueryGetIntersectionTypeEXT(rayQuery, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
+            // Hit geometry
+            // Retrieve instance attributes
+            // int instanceId = rayQueryGetIntersectionInstanceCustomIndexEXT(rayQuery, true);
+            // float t = rayQueryGetIntersectionTEXT(rayQuery, true);
+            
+            // For V1, simple Occlusion / Simple Shading
+            // We assume hit = occluded from sky = dark (0) or some ambient?
+            // Let's assume ambient term 0.1 for hit
+            radiance = vec3(0.1); 
+        } else {
+            // Miss: Sky Color
+            radiance = getSkyColor(dir);
+        }
+        
+        // Encode SH
+        float shBasis[9];
+        evaluateSH(dir, shBasis);
+        
+        // Acc R
+        shAcc[0] += radiance.r * shBasis[0] * weight;
+        shAcc[1] += radiance.r * shBasis[1] * weight;
+        shAcc[2] += radiance.r * shBasis[2] * weight;
+        shAcc[3] += radiance.r * shBasis[3] * weight;
+        
+        // Acc G
+        shAcc[9] += radiance.g * shBasis[0] * weight;
+        shAcc[10] += radiance.g * shBasis[1] * weight;
+        shAcc[11] += radiance.g * shBasis[2] * weight;
+        shAcc[12] += radiance.g * shBasis[3] * weight;
+        
+        // Acc B
+        shAcc[18] += radiance.b * shBasis[0] * weight;
+        shAcc[19] += radiance.b * shBasis[1] * weight;
+        shAcc[20] += radiance.b * shBasis[2] * weight;
+        shAcc[21] += radiance.b * shBasis[3] * weight;
+    }
+
+    // Write output
+    int offset = int(idx) * 27;
+    for (int i = 0; i < 27; ++i) {
+        outputSH[offset + i] = shAcc[i];
+    }
+}

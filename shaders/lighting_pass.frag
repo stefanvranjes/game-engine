@@ -76,7 +76,7 @@ uniform int volumetricFogEnabled;
 
 // Global Illumination
 uniform int u_GIEnabled;
-uniform int u_GITechnique;  // 0=None, 1=VCT, 2=LPV, 3=SSGI, 4=Hybrid
+uniform int u_GITechnique;  // 0=None, 1=VCT, 2=LPV, 3=SSGI, 4=Hybrid, 5=Probes, 6=ProbesVCT
 uniform float u_GIIntensity;
 uniform sampler2D giTexture;  // Pre-computed GI from GI pass
 uniform sampler3D voxelAlbedo;  // For VCT
@@ -88,6 +88,14 @@ uniform vec3 u_VoxelGridMin;
 uniform vec3 u_VoxelGridMax;
 uniform vec3 u_LPVGridMin;
 uniform vec3 u_LPVGridMax;
+
+// Probe-based GI
+uniform int u_UseProbes;
+uniform samplerBuffer u_ProbeData;  // Probe SSBO as texture buffer
+uniform vec3 u_ProbeGridMin;
+uniform vec3 u_ProbeGridMax;
+uniform ivec3 u_ProbeGridResolution;
+uniform float u_ProbeBlendWeight;
 
 // Array of offset direction for sampling
 vec3 gridSamplingDisk[20] = vec3[]
@@ -394,6 +402,73 @@ vec3 SampleLPV(vec3 worldPos, vec3 normal)
     return indirectLight;
 }
 
+// Sample probe grid for indirect lighting
+vec3 SampleProbeGrid(vec3 worldPos, vec3 normal)
+{
+    // Convert world position to grid coordinates
+    vec3 gridPos = (worldPos - u_ProbeGridMin) / (u_ProbeGridMax - u_ProbeGridMin);
+    gridPos = clamp(gridPos, vec3(0.0), vec3(1.0));
+    
+    vec3 gridCoord = gridPos * vec3(u_ProbeGridResolution - 1);
+    ivec3 baseCoord = ivec3(floor(gridCoord));
+    vec3 frac = fract(gridCoord);
+    
+    // Sample 8 surrounding probes with trilinear interpolation
+    vec3 irradiance = vec3(0.0);
+    
+    for (int z = 0; z < 2; z++) {
+        for (int y = 0; y < 2; y++) {
+            for (int x = 0; x < 2; x++) {
+                ivec3 coord = baseCoord + ivec3(x, y, z);
+                coord = clamp(coord, ivec3(0), u_ProbeGridResolution - 1);
+                
+                int probeIndex = coord.x + coord.y * u_ProbeGridResolution.x + 
+                                coord.z * u_ProbeGridResolution.x * u_ProbeGridResolution.y;
+                
+                // Fetch SH coefficients (simplified - L0 + L1 bands)
+                // Each probe: 32 floats (3 pos + 27 SH + flags + radius)
+                int baseOffset = probeIndex * 32 + 3;  // Skip position
+                
+                // Evaluate SH (L0 + L1 only for performance)
+                vec3 sh_l0 = vec3(
+                    texelFetch(u_ProbeData, baseOffset + 0).r,
+                    texelFetch(u_ProbeData, baseOffset + 9).r,
+                    texelFetch(u_ProbeData, baseOffset + 18).r
+                ) * 0.282095;
+                
+                vec3 sh_l1_y = vec3(
+                    texelFetch(u_ProbeData, baseOffset + 1).r,
+                    texelFetch(u_ProbeData, baseOffset + 10).r,
+                    texelFetch(u_ProbeData, baseOffset + 19).r
+                ) * 0.488603 * normal.y;
+                
+                vec3 sh_l1_z = vec3(
+                    texelFetch(u_ProbeData, baseOffset + 2).r,
+                    texelFetch(u_ProbeData, baseOffset + 11).r,
+                    texelFetch(u_ProbeData, baseOffset + 20).r
+                ) * 0.488603 * normal.z;
+                
+                vec3 sh_l1_x = vec3(
+                    texelFetch(u_ProbeData, baseOffset + 3).r,
+                    texelFetch(u_ProbeData, baseOffset + 12).r,
+                    texelFetch(u_ProbeData, baseOffset + 21).r
+                ) * 0.488603 * normal.x;
+                
+                vec3 probeIrradiance = sh_l0 + sh_l1_y + sh_l1_z + sh_l1_x;
+                probeIrradiance = max(probeIrradiance, vec3(0.0));
+                
+                // Trilinear weight
+                vec3 weight3D = mix(vec3(1.0) - frac, frac, vec3(x, y, z));
+                float weight = weight3D.x * weight3D.y * weight3D.z;
+                
+                irradiance += probeIrradiance * weight;
+            }
+        }
+    }
+    
+    return irradiance;
+}
+
 void main()
 {
     // Retrieve data from G-Buffer
@@ -613,6 +688,17 @@ void main()
             vec3 vctGI = texture(giTexture, TexCoord).rgb;
             // SSGI is blended in the GI pass itself
             indirectDiffuse = vctGI;
+        } else if (u_GITechnique == 5) {  // Probes only
+            if (u_UseProbes == 1) {
+                indirectDiffuse = SampleProbeGrid(FragPos, N);
+            }
+        } else if (u_GITechnique == 6) {  // Probes + VCT hybrid
+            vec3 probeGI = vec3(0.0);
+            if (u_UseProbes == 1) {
+                probeGI = SampleProbeGrid(FragPos, N);
+            }
+            vec3 vctGI = texture(giTexture, TexCoord).rgb;
+            indirectDiffuse = mix(probeGI, vctGI, u_ProbeBlendWeight);
         }
         
         // Apply GI intensity

@@ -26,7 +26,9 @@ public:
         VCT = 1,        // Voxel Cone Tracing
         LPV = 2,        // Light Propagation Volumes
         SSGI = 3,       // Screen Space GI
-        Hybrid = 4      // VCT + SSGI
+        Hybrid = 4,     // VCT + SSGI
+        Probes = 5,     // Probe-only
+        ProbesVCT = 6   // Probes + VCT hybrid
     };
     
     enum class Quality {
@@ -65,6 +67,11 @@ public:
     unsigned int GetGITexture() const { return m_GITexture; }
     VoxelGrid* GetVoxelGrid() const { return m_VoxelGrid.get(); }
     
+    // Probe management
+    class ProbeGrid* GetProbeGrid() const { return m_ProbeGrid.get(); }
+    void SetProbeBlendWeight(float weight) { m_ProbeBlendWeight = weight; }
+    float GetProbeBlendWeight() const { return m_ProbeBlendWeight; }
+    
     // Debug visualization
     void SetShowVoxels(bool show) { m_ShowVoxels = show; }
     bool GetShowVoxels() const { return m_ShowVoxels; }
@@ -102,6 +109,8 @@ private:
     // Technique-specific systems
     std::unique_ptr<VoxelGrid> m_VoxelGrid;
     std::unique_ptr<LightPropagationVolume> m_LPV;
+    std::unique_ptr<class ProbeGrid> m_ProbeGrid;
+    float m_ProbeBlendWeight;
 
     // SSGI resources
     unsigned int m_SSGITexture;
