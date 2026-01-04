@@ -17,19 +17,26 @@ layout(std430, binding = 0) readonly buffer RayHitBuffer {
 uniform int raysPerProbe;
 uniform float hysteresis;
 uniform ivec3 gridDim;
+uniform vec3 probeSpacing;
+uniform ivec3 gridOrigin;
+uniform ivec3 resetIndices; // -1 if none, 0..Dim-1 if specific plane to reset
 
 // Shared memory for ray gathering?
 // 64 rays per probe is small enough to loop in registers or shared.
 
-void main() {
-    // Current mapping: This shader runs ONCE per PROBE?
-    // Wait, earlier I said "Dispatch(NumProbes)".
-    // So LocalSize=(8, 8) means we process 64 texels (Irradiance) per Group?
-    // Irradiance Res is 8x8 (6x6+border).
-    // Let's assume One Workgroup = One Probe.
-    
+void main() {    
     int probeIdx = int(gl_WorkGroupID.x);
     if (probeIdx >= gridDim.x * gridDim.y * gridDim.z) return;
+    
+    // Determine Physical Coord
+    ivec3 physCoord = GetProbeGridCoord(probeIdx, gridDim);
+    
+    // Check if we need to reset history (Leading edge of scroll)
+    float currentHysteresis = hysteresis;
+    
+    if (resetIndices.x != -1 && physCoord.x == resetIndices.x) currentHysteresis = 0.0;
+    if (resetIndices.y != -1 && physCoord.y == resetIndices.y) currentHysteresis = 0.0;
+    if (resetIndices.z != -1 && physCoord.z == resetIndices.z) currentHysteresis = 0.0;
     
     ivec2 localTexel = ivec2(gl_LocalInvocationID.xy);
     // Determine Atlas Offset for this probe
@@ -84,7 +91,7 @@ void main() {
     vec3 prevRad = prev.xyz;
     
     // Hysteresis
-    vec3 blended = mix(resultRad, prevRad, hysteresis);
+    vec3 blended = mix(resultRad, prevRad, currentHysteresis);
     
     imageStore(irradianceImg, pixelCoord, vec4(blended, 1.0));
     

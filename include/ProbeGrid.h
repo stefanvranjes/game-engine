@@ -74,6 +74,12 @@ public:
     // GPU upload
     void UploadToGPU();
     unsigned int GetProbeSSBO() const { return m_ProbeSSBO; }
+    
+    // Irradiance Volume (3D Texture)
+    void CreateIrradianceTextures();
+    void UpdateIrradianceTextures();
+    void BindIrradianceTextures(int startUnit);
+    bool HasIrradianceVolume() const { return m_IrradianceTextures[0] != 0; }
 
     // Debug visualization
     void RenderDebug(class Camera* camera, class Shader* shader);
@@ -101,6 +107,7 @@ private:
 
     // GPU resources
     unsigned int m_ProbeSSBO;  // Shader Storage Buffer Object
+    unsigned int m_IrradianceTextures[2]; // 2 3D Textures: A(L0_RGB + L1_x_Luma), B(L1_y_Luma, L1_z_Luma)
 
     // Debug visualization
     unsigned int m_DebugVAO;

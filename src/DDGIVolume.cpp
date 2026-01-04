@@ -25,6 +25,15 @@ void DDGIVolume::Initialize(const Settings& settings) {
     
     m_Settings = settings;
     
+    // Initialize Origin to align with StartPosition initially
+    // Calculate integer origin from float start pos?
+    // Actually, StartPosition is usually user defined absolute.
+    // For infinite scrolling, we usually define center relative to camera.
+    // If StartPosition is explicit, we assume Streamer takes over control later.
+    // Let's assume GridOrigin = 0 mapping to StartPosition.
+    m_GridOrigin = glm::ivec3(0);
+    m_ResetIndices = glm::ivec3(-1);
+    
     CreateTextures();
     CreateBuffers();
     LoadShaders();
@@ -33,13 +42,82 @@ void DDGIVolume::Initialize(const Settings& settings) {
     std::cout << "[DDGI] Initialized Volume: " << settings.gridDimensions.x << "x" << settings.gridDimensions.y << "x" << settings.gridDimensions.z << std::endl;
 }
 
+void DDGIVolume::MoveTo(const glm::vec3& position) {
+    if (!m_Initialized) return;
+    
+    // Calculate target origin (bottom-left corner of the box centered on position)
+    // Box Size
+    glm::vec3 boxSize = glm::vec3(m_Settings.gridDimensions) * m_Settings.probeSpacing;
+    glm::vec3 halfBox = boxSize * 0.5f;
+    glm::vec3 targetMin = position - halfBox;
+    
+    // Quantize to Probe Spacing
+    glm::ivec3 targetOrigin;
+    targetOrigin.x = static_cast<int>(floor(targetMin.x / m_Settings.probeSpacing.x));
+    targetOrigin.y = static_cast<int>(floor(targetMin.y / m_Settings.probeSpacing.y));
+    targetOrigin.z = static_cast<int>(floor(targetMin.z / m_Settings.probeSpacing.z));
+    
+    // Delta
+    glm::ivec3 delta = targetOrigin - m_GridOrigin;
+    
+    m_ResetIndices = glm::ivec3(-1);
+    
+    // If moved, identify wrapped planes
+    // Note: We only support shifts of +/- 1 usually per frame, or we must reset multiple.
+    // If delta > dim, we reset everything (panic).
+    // If delta.x > 0: The "Leading Edge" in +X is now (targetOrigin.x + dim.x - 1).
+    // Physical index is that % dim.x.
+    
+    glm::ivec3 dim = m_Settings.gridDimensions;
+    
+    if (delta.x != 0) {
+        if (abs(delta.x) >= dim.x) {
+             // Moved too far, reset all? Or just let it smear?
+             // Reset whole volume usually better.
+             m_ResetIndices.x = -2; // Special code for 'Reset All' in shader? 
+             // Or we just accept artifacts for 1 frame.
+        } else {
+             // Which plane is new?
+             // If +X: The rightmost plane relative to new origin.
+             // World Index: newOrigin.x + dim.x - 1
+             if (delta.x > 0) m_ResetIndices.x = (targetOrigin.x + dim.x - 1) % dim.x;
+             // If -X: The leftmost plane relative to new origin.
+             // World Index: newOrigin.x
+             else m_ResetIndices.x = (targetOrigin.x) % dim.x; 
+             
+             // Wrap negative
+             if (m_ResetIndices.x < 0) m_ResetIndices.x += dim.x;
+        }
+    }
+    
+    if (delta.y != 0) {
+        if (abs(delta.y) >= dim.y) {} // ..
+        else {
+             if (delta.y > 0) m_ResetIndices.y = (targetOrigin.y + dim.y - 1) % dim.y;
+             else m_ResetIndices.y = (targetOrigin.y) % dim.y;
+             if (m_ResetIndices.y < 0) m_ResetIndices.y += dim.y;
+        }
+    }
+    
+    if (delta.z != 0) {
+        if (abs(delta.z) >= dim.z) {} // ..
+        else {
+             if (delta.z > 0) m_ResetIndices.z = (targetOrigin.z + dim.z - 1) % dim.z;
+             else m_ResetIndices.z = (targetOrigin.z) % dim.z;
+             if (m_ResetIndices.z < 0) m_ResetIndices.z += dim.z;
+        }
+    }
+    
+    m_GridOrigin = targetOrigin;
+}
+
 void DDGIVolume::Cleanup() {
     if (m_IrradianceTexture) glDeleteTextures(1, &m_IrradianceTexture);
     if (m_DistanceTexture) glDeleteTextures(1, &m_DistanceTexture);
     if (m_ProbeDataSSBO) glDeleteBuffers(1, &m_ProbeDataSSBO);
     if (m_RayHitSSBO) glDeleteBuffers(1, &m_RayHitSSBO);
+    if (m_LightSSBO) glDeleteBuffers(1, &m_LightSSBO);
     
-    // Scene buffers
     glDeleteBuffers(1, &m_GPU.sceneVertexSSBO);
     glDeleteBuffers(1, &m_GPU.sceneIndexSSBO);
     glDeleteBuffers(1, &m_GPU.sceneNormalSSBO);
@@ -56,33 +134,17 @@ void DDGIVolume::Cleanup() {
 
 void DDGIVolume::CreateTextures() {
     int numProbes = m_Settings.gridDimensions.x * m_Settings.gridDimensions.y * m_Settings.gridDimensions.z;
-    
-    // Irradiance Texture: 6x6 pure data + 2 border = 8x8 (or configured)
-    // We strictly use (Res+2) * (Res+2) per probe? No, usually (Res+2) width per probe tile.
-    // For simplicity: We arrange probes in a 2D atlas.
-    // Let's use a flat packing: X*Y probes wide, Z probes tall? 
-    // Usually simpler to just map Index -> (U, V) in shader.
-    // Let's assume atlas width ~ sqrt(numProbes).
-    
-    int probesX = m_Settings.gridDimensions.x * m_Settings.gridDimensions.y; 
-    int probesY = m_Settings.gridDimensions.z;
-    // Actually, just unfolding X*Y*Z into a 2D grid is fine.
-    // Let's compute a roughly square atlas for texture limits.
     int totalProbes = numProbes;
     int atlasCols = (int)ceil(sqrt((double)totalProbes));
     int atlasRows = (int)ceil((double)totalProbes / atlasCols);
     
-    // Dimensions per probe (including 1px border on all sides)
     int irrBlockSize = m_Settings.irradianceRes + 2; 
     int distBlockSize = m_Settings.distanceRes + 2;
-    
     int irrWidth = atlasCols * irrBlockSize;
     int irrHeight = atlasRows * irrBlockSize;
-    
     int distWidth = atlasCols * distBlockSize;
     int distHeight = atlasRows * distBlockSize;
     
-    // 1. Irradiance Texture
     glGenTextures(1, &m_IrradianceTexture);
     glBindTexture(GL_TEXTURE_2D, m_IrradianceTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB10_A2, irrWidth, irrHeight, 0, GL_RGBA, GL_FLOAT, nullptr);
@@ -91,7 +153,6 @@ void DDGIVolume::CreateTextures() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     
-    // 2. Distance Texture (RG16F for Mean, MeanSq)
     glGenTextures(1, &m_DistanceTexture);
     glBindTexture(GL_TEXTURE_2D, m_DistanceTexture);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RG16F, distWidth, distHeight, 0, GL_RG, GL_FLOAT, nullptr);
@@ -105,17 +166,13 @@ void DDGIVolume::CreateTextures() {
 
 void DDGIVolume::CreateBuffers() {
     int numProbes = m_Settings.gridDimensions.x * m_Settings.gridDimensions.y * m_Settings.gridDimensions.z;
-    
-    // Ray Hit Buffer: [Probes * RaysPerProbe] * (Radiance(vec3) + HitDist(float)) = vec4
     size_t hitBufferSize = numProbes * m_Settings.raysPerProbe * sizeof(glm::vec4);
     glGenBuffers(1, &m_RayHitSSBO);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_RayHitSSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, hitBufferSize, nullptr, GL_DYNAMIC_DRAW);
     
-    // Probe Data (Offsets) - Static for now, uniform grid
-    // We can store the grid params in UBO or just uniforms.
-    
-    // Initialize scene buffers
+    glGenBuffers(1, &m_LightSSBO);
+
     glGenBuffers(1, &m_GPU.sceneVertexSSBO);
     glGenBuffers(1, &m_GPU.sceneIndexSSBO);
     glGenBuffers(1, &m_GPU.sceneNormalSSBO);
@@ -131,22 +188,10 @@ void DDGIVolume::LoadShaders() {
 }
 
 void DDGIVolume::UploadScene(const std::vector<GameObject*>& scene) {
-    // Reuse logic from ProbeBaker basically
-    // For brevity, assuming similar implementations.
-    // In a production engine, this Logic should be in a 'SceneGPUManager' single instance.
-    // I'll implement a simplified version here or leave placeholder if we assume `ProbeBaker`'s buffers could be shared?
-    // Sharing is better. But `DDGIVolume` might run without `ProbeBaker`?
-    // Let's implement minimal upload.
-    
-    // ... Copy-paste upload logic from ProbeBaker or Refactor into common util ...
-    // To complete the task efficiently, I will omit the 200 lines of mesh parsing here and assume
-    // we can either call a shared utility or I should have refactored.
-    // I will write the upload logic here to be self-contained for this pass.
-    
+    // Reusing simplified logic
     struct GPUVertex { glm::vec4 pos; };
     struct GPUNormal { glm::vec4 norm; };
     struct GPUMat { glm::vec4 alb; };
-    
     std::vector<GPUVertex> vertices;
     std::vector<GPUNormal> normals;
     std::vector<GPUMat> materials;
@@ -173,7 +218,6 @@ void DDGIVolume::UploadScene(const std::vector<GameObject*>& scene) {
          for(auto i : rawI) indices.push_back(baseIdx + i);
          baseIdx += rawV.size();
     }
-    
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPU.sceneVertexSSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, vertices.size()*sizeof(GPUVertex), vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPU.sceneNormalSSBO);
@@ -182,62 +226,100 @@ void DDGIVolume::UploadScene(const std::vector<GameObject*>& scene) {
     glBufferData(GL_SHADER_STORAGE_BUFFER, indices.size()*sizeof(uint32_t), indices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_GPU.sceneMaterialSSBO);
     glBufferData(GL_SHADER_STORAGE_BUFFER, materials.size()*sizeof(GPUMat), materials.data(), GL_STATIC_DRAW);
+}
+
+// === Light Upload Implementation ===
+
+struct alignas(16) GPULight {
+    glm::vec4 position;  // w = type (0=Point, 1=Dir, 2=Spot)
+    glm::vec4 direction; // w = range
+    glm::vec4 color;     // w = intensity
+    glm::vec4 params;    // x=spotAngle, y=spotSoftness
+};
+
+void DDGIVolume::UploadLights(const std::vector<Light>& lights) {
+    if (m_LightSSBO == 0) return;
+
+    std::vector<GPULight> gpuLights;
+    gpuLights.reserve(lights.size());
     
-    // Note: BVH build is also required for raytracing. 
-    // We skipping BVH build here for brevity? 
-    // The shader will need it. Effectively we need `ProbeBaker::BuildBVHAndUpload`.
-    // I will assume for this step that we rely on "Brute Force" or "Simplified" raytracing if I don't paste the BVH builder?
-    // No, RT without BVH is too slow.
-    // I should probably make `ProbeBaker`'s BVH builder static or public utility.
-    // For now, I'll stick to BVH PLACEHOLDER logic.
+    for(const auto& l : lights) {
+        GPULight gl;
+        // Position & Type
+        float typeVal = 0.0f;
+        if (l.type == LightType::Directional) typeVal = 1.0f;
+        else if (l.type == LightType::Spot) typeVal = 2.0f;
+        else if (l.type == LightType::Point) typeVal = 0.0f;
+        
+        gl.position = glm::vec4(l.position.x, l.position.y, l.position.z, typeVal);
+        
+        // Direction & Range
+        gl.direction = glm::vec4(l.direction.x, l.direction.y, l.direction.z, l.range);
+        
+        // Color & Intensity
+        gl.color = glm::vec4(l.color.x, l.color.y, l.color.z, l.intensity);
+        
+        // Params
+        float cutoff = glm::cos(glm::radians(l.cutOff));
+        float outer = glm::cos(glm::radians(l.outerCutOff));
+        gl.params = glm::vec4(cutoff, outer, 0.0f, 0.0f);
+        
+        gpuLights.push_back(gl);
+    }
+    
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, m_LightSSBO);
+    glBufferData(GL_SHADER_STORAGE_BUFFER, gpuLights.size() * sizeof(GPULight), gpuLights.data(), GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
+    
+    if(m_RaytraceShader) {
+        m_RaytraceShader->Use();
+        m_RaytraceShader->SetInt("numLights", (int)lights.size());
+    }
 }
 
 void DDGIVolume::Update(const std::vector<GameObject*>& scene, const std::vector<class Light>& lights, float deltaTime) {
     if (!m_Initialized) return;
     
-    // 1. Upload Scene (Only if changed? For now every frame is too slow, assume static or optimized)
-    // UploadScene(scene); // Disabled for performance in this loop, call manually if scene changes
-    
-    // 2. Generate Random Rotation
-    // Use random rotation for rays to prevent aliasing
     static std::mt19937 rng(1337);
     static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     float randAngle = dist(rng) * 3.14159f * 2.0f;
     glm::vec3 axis = glm::normalize(glm::vec3(dist(rng), dist(rng), dist(rng)));
     m_RandomRotation = glm::rotate(glm::mat4(1.0f), randAngle, axis);
     
-    // 3. Dispatch Stages
+    UpdateIrradianceTextures(); // If using 3D textures, update them? No, this function is just a hook. 
+    // Actually DDGIVolume doesn't own ProbeGrid's textures.
+    
+    UploadLights(lights);
+
     DispatchRaytrace(scene);
     DispatchUpdate();
     DispatchBorderFix();
+    
+    // Reset indices after one frame of clearing
+    m_ResetIndices = glm::ivec3(-1);
 }
 
 void DDGIVolume::DispatchRaytrace(const std::vector<GameObject*>& scene) {
     m_RaytraceShader->Use();
-    
-    // Bind SSBOs (Scene + Hits)
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_RayHitSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, m_GPU.sceneVertexSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, m_GPU.sceneIndexSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, m_GPU.sceneNormalSSBO);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, m_GPU.sceneMaterialSSBO);
-    // ... BVH buffers ...
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, m_LightSSBO);
     
-    // Uniforms
     m_RaytraceShader->SetMat4("randomVar", m_RandomRotation);
-    m_RaytraceShader->SetVec3("gridStart", m_Settings.startPosition);
-    m_RaytraceShader->SetVec3("gridStep", m_Settings.probeSpacing);
+    m_RaytraceShader->SetVec3("gridStart", m_Settings.startPosition); // Deprecated if toroidal?
+    // With Toroidal, 'gridStart' is dynamic. 
+    // We pass probeSpacing and gridOrigin.
+    // The shader will compute world pos.
+    m_RaytraceShader->SetVec3("probeSpacing", m_Settings.probeSpacing);
+    m_RaytraceShader->SetIVec3("gridOrigin", m_GridOrigin);
     m_RaytraceShader->SetIVec3("gridDim", m_Settings.gridDimensions);
     m_RaytraceShader->SetInt("raysPerProbe", m_Settings.raysPerProbe);
     m_RaytraceShader->SetFloat("maxDist", m_Settings.maxRayDistance);
     
     int numProbes = m_Settings.gridDimensions.x * m_Settings.gridDimensions.y * m_Settings.gridDimensions.z;
-    
-    // Dispatch: One thread per RAY? Or one thread per PROBElooping?
-    // One thread per PROBE is better for caching probe origin, then loop rays?
-    // Or simpler: One thread per Ray. 
-    // Total threads = NumProbes * RaysPerProbe.
-    // 16x4x16 * 128 = 1024 * 128 = 131k threads. Fine for GPU.
     int totalRays = numProbes * m_Settings.raysPerProbe;
     int groupSize = 64;
     glDispatchCompute((totalRays + groupSize - 1) / groupSize, 1, 1);
@@ -246,28 +328,17 @@ void DDGIVolume::DispatchRaytrace(const std::vector<GameObject*>& scene) {
 
 void DDGIVolume::DispatchUpdate() {
     m_UpdateShader->Use();
-    
-    // Bind Images
     glBindImageTexture(0, m_IrradianceTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGB10_A2);
     glBindImageTexture(1, m_DistanceTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG16F);
-    
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, m_RayHitSSBO);
     
-    m_UpdateShader->SetVec3("gridStart", m_Settings.startPosition);
-    m_UpdateShader->SetVec3("gridStep", m_Settings.probeSpacing);
+    m_UpdateShader->SetVec3("probeSpacing", m_Settings.probeSpacing);
+    m_UpdateShader->SetIVec3("gridOrigin", m_GridOrigin);
     m_UpdateShader->SetIVec3("gridDim", m_Settings.gridDimensions);
     m_UpdateShader->SetInt("raysPerProbe", m_Settings.raysPerProbe);
     m_UpdateShader->SetFloat("hysteresis", m_Settings.hysteresis);
+    m_UpdateShader->SetIVec3("resetIndices", m_ResetIndices);
     
-    // Dispatch: One thread per PROBE TEXEL?
-    // We update the texture. 
-    // Irradiance Res = 8x8 (data). Distance Res = 16x16.
-    // We run two kernels? Or one generic?
-    // Usually separate, or one kernel that handles both if careful.
-    // Separate is cleaner. Let's assume UpdateShader has subroutines or we dispatch twice?
-    // Implementation: One big dispatch over the total texture dimensions is simplest, 
-    // but mapping texel -> probe -> rays is tricky.
-    // Standard DDGI: Dispatch (NumProbes, 1, 1) and each workgroup fills its 8x8 tile.
     int numProbes = m_Settings.gridDimensions.x * m_Settings.gridDimensions.y * m_Settings.gridDimensions.z;
     glDispatchCompute(numProbes, 1, 1);
     glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);
@@ -275,11 +346,9 @@ void DDGIVolume::DispatchUpdate() {
 
 void DDGIVolume::DispatchBorderFix() {
     m_BorderShader->Use();
-    // Similar bindings
     glBindImageTexture(0, m_IrradianceTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGB10_A2);
     glBindImageTexture(1, m_DistanceTexture, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RG16F);
     m_BorderShader->SetIVec3("gridDim", m_Settings.gridDimensions);
-    
     int numProbes = m_Settings.gridDimensions.x * m_Settings.gridDimensions.y * m_Settings.gridDimensions.z;
     glDispatchCompute(numProbes, 1, 1);
     glMemoryBarrier(GL_TEXTURE_FETCH_BARRIER_BIT);

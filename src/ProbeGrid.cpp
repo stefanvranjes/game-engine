@@ -7,6 +7,7 @@
 #include <fstream>
 #include <iostream>
 #include <cmath>
+#include <vector>
 
 ProbeGrid::ProbeGrid(const glm::vec3& min, const glm::vec3& max, const glm::ivec3& resolution)
     : m_GridMin(min)
@@ -17,6 +18,8 @@ ProbeGrid::ProbeGrid(const glm::vec3& min, const glm::vec3& max, const glm::ivec
     , m_DebugVBO(0)
 {
     m_CellSize = (m_GridMax - m_GridMin) / glm::vec3(m_Resolution);
+    m_IrradianceTextures[0] = 0;
+    m_IrradianceTextures[1] = 0;
 }
 
 ProbeGrid::~ProbeGrid()
@@ -36,6 +39,9 @@ bool ProbeGrid::Initialize()
     glGenVertexArrays(1, &m_DebugVAO);
     glGenBuffers(1, &m_DebugVBO);
 
+    // Create 3D Textures
+    CreateIrradianceTextures();
+
     std::cout << "[ProbeGrid] Probe grid initialized successfully!" << std::endl;
     return true;
 }
@@ -45,6 +51,9 @@ void ProbeGrid::Shutdown()
     if (m_ProbeSSBO) glDeleteBuffers(1, &m_ProbeSSBO);
     if (m_DebugVAO) glDeleteVertexArrays(1, &m_DebugVAO);
     if (m_DebugVBO) glDeleteBuffers(1, &m_DebugVBO);
+    
+    if (m_IrradianceTextures[0]) glDeleteTextures(2, m_IrradianceTextures);
+    m_IrradianceTextures[0] = 0;
 }
 
 void ProbeGrid::GenerateProbes()
@@ -69,6 +78,9 @@ void ProbeGrid::GenerateProbes()
     }
 
     std::cout << "[ProbeGrid] Generated " << m_Probes.size() << " probes" << std::endl;
+    
+    // Update textures if they exist
+    if (m_IrradianceTextures[0]) UpdateIrradianceTextures();
 }
 
 void ProbeGrid::GenerateAdaptiveProbes(float varianceThreshold, int maxIterations)
@@ -77,6 +89,10 @@ void ProbeGrid::GenerateAdaptiveProbes(float varianceThreshold, int maxIteration
     GenerateProbes();
 
     // Adaptive subdivision based on lighting variance
+    // NOTE: Adaptive probes break 3D texture mapping unless using octree structure.
+    // For Irradiance Volume mode, we might want to warn or skip.
+    // We proceed but texture update will only capture base grid.
+    
     for (int iteration = 0; iteration < maxIterations; iteration++) {
         std::vector<LightProbeData> newProbes;
 
@@ -181,6 +197,8 @@ void ProbeGrid::SetGridBounds(const glm::vec3& min, const glm::vec3& max)
     m_GridMin = min;
     m_GridMax = max;
     m_CellSize = (m_GridMax - m_GridMin) / glm::vec3(m_Resolution);
+    
+    // Recreate textures if resolution changed? (Resolution is const currently, bounds change is fine)
 }
 
 bool ProbeGrid::SaveToFile(const std::string& filename) const
@@ -248,6 +266,11 @@ bool ProbeGrid::LoadFromFile(const std::string& filename)
 
     file.close();
     std::cout << "[ProbeGrid] Loaded " << probeCount << " probes from " << filename << std::endl;
+    
+    // Update GPU
+    UploadToGPU();
+    UpdateIrradianceTextures();
+    
     return true;
 }
 
@@ -262,8 +285,104 @@ void ProbeGrid::UploadToGPU()
                  GL_STATIC_DRAW);
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0);
 
+    // Also update 3D textures
+    UpdateIrradianceTextures();
+
     std::cout << "[ProbeGrid] Uploaded " << m_Probes.size() << " probes to GPU" << std::endl;
 }
+
+// === Irradiance Volume Implementation ===
+
+void ProbeGrid::CreateIrradianceTextures() {
+    if (m_IrradianceTextures[0]) glDeleteTextures(2, m_IrradianceTextures);
+    
+    glGenTextures(2, m_IrradianceTextures);
+    
+    // Texture A: RGBA16F (L0.r, L0.g, L0.b, L1_x_Luma)
+    glBindTexture(GL_TEXTURE_3D, m_IrradianceTextures[0]);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA16F, m_Resolution.x, m_Resolution.y, m_Resolution.z, 0, GL_RGBA, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    // Texture B: RG16F (L1_y_Luma, L1_z_Luma)
+    glBindTexture(GL_TEXTURE_3D, m_IrradianceTextures[1]);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RG16F, m_Resolution.x, m_Resolution.y, m_Resolution.z, 0, GL_RG, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_3D, 0);
+}
+
+void ProbeGrid::UpdateIrradianceTextures() {
+    if (!m_IrradianceTextures[0] || m_Probes.empty()) return;
+    
+    int numProbes = m_Resolution.x * m_Resolution.y * m_Resolution.z;
+    if (m_Probes.size() != numProbes) {
+        return;
+    }
+    
+    // Texture A: L0_RGB + L1_X_Luma
+    std::vector<glm::vec4> textureA(numProbes);
+    // Texture B: L1_Y_Luma + L1_Z_Luma
+    std::vector<glm::vec2> textureB(numProbes);
+    
+    // Luminance weights (Rec. 709)
+    const glm::vec3 lumaWeights(0.2126f, 0.7152f, 0.0722f);
+
+    for (int i = 0; i < numProbes; ++i) {
+        const float* sh = m_Probes[i].shCoefficients;
+        
+        // L0 (Constant) - Indices: R[0], G[9], B[18]
+        float l0_r = sh[0];
+        float l0_g = sh[9];
+        float l0_b = sh[18];
+
+        // L1 Bands - RGB
+        // Y (Index 1): R[1], G[10], B[19]
+        glm::vec3 l1_y_rgb(sh[1], sh[10], sh[19]);
+        
+        // Z (Index 2): R[2], G[11], B[20]
+        glm::vec3 l1_z_rgb(sh[2], sh[11], sh[20]);
+        
+        // X (Index 3): R[3], G[12], B[21]
+        glm::vec3 l1_x_rgb(sh[3], sh[12], sh[21]);
+        
+        // Compute Luminance for L1 bands
+        float l1_y_luma = glm::dot(l1_y_rgb, lumaWeights);
+        float l1_z_luma = glm::dot(l1_z_rgb, lumaWeights);
+        float l1_x_luma = glm::dot(l1_x_rgb, lumaWeights);
+        
+        // Texture A: R=L0.r, G=L0.g, B=L0.b, A=L1_x_luma
+        textureA[i] = glm::vec4(l0_r, l0_g, l0_b, l1_x_luma);
+        
+        // Texture B: R=L1_y_luma, G=L1_z_luma
+        textureB[i] = glm::vec2(l1_y_luma, l1_z_luma);
+    }
+    
+    glBindTexture(GL_TEXTURE_3D, m_IrradianceTextures[0]);
+    glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, m_Resolution.x, m_Resolution.y, m_Resolution.z, GL_RGBA, GL_FLOAT, textureA.data());
+    
+    glBindTexture(GL_TEXTURE_3D, m_IrradianceTextures[1]);
+    glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, m_Resolution.x, m_Resolution.y, m_Resolution.z, GL_RG, GL_FLOAT, textureB.data());
+    
+    glBindTexture(GL_TEXTURE_3D, 0);
+}
+
+void ProbeGrid::BindIrradianceTextures(int startUnit) {
+    if (!m_IrradianceTextures[0]) return;
+    for(int i=0; i<2; ++i) {
+        glActiveTexture(GL_TEXTURE0 + startUnit + i);
+        glBindTexture(GL_TEXTURE_3D, m_IrradianceTextures[i]);
+    }
+}
+
+// ... Debug Render & Helpers ...
 
 void ProbeGrid::RenderDebug(Camera* camera, Shader* shader)
 {

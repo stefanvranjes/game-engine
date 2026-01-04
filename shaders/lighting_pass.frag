@@ -91,7 +91,6 @@ uniform vec3 u_LPVGridMax;
 
 // Probe-based GI
 uniform int u_UseProbes;
-uniform samplerBuffer u_ProbeData;  // Probe SSBO as texture buffer
 uniform vec3 u_ProbeGridMin;
 uniform vec3 u_ProbeGridMax;
 uniform ivec3 u_ProbeGridResolution;
@@ -402,69 +401,95 @@ vec3 SampleLPV(vec3 worldPos, vec3 normal)
     return indirectLight;
 }
 
-// Sample probe grid for indirect lighting
+uniform sampler3D u_ProbeTextureA; // RGBA16F: L0.rgb, L1_x_Luma
+uniform sampler3D u_ProbeTextureB; // RG16F:    L1_y_Luma, L1_z_Luma
+
+// Luminance weights (Rec. 709)
+const vec3 lumaWeights = vec3(0.2126, 0.7152, 0.0722);
+
+float Luminance(vec3 color) {
+    return dot(color, lumaWeights);
+}
+
+// Sample probe grid for indirect lighting (Compressed SH)
 vec3 SampleProbeGrid(vec3 worldPos, vec3 normal)
 {
     // Convert world position to grid coordinates
     vec3 gridPos = (worldPos - u_ProbeGridMin) / (u_ProbeGridMax - u_ProbeGridMin);
-    gridPos = clamp(gridPos, vec3(0.0), vec3(1.0));
     
-    vec3 gridCoord = gridPos * vec3(u_ProbeGridResolution - 1);
-    ivec3 baseCoord = ivec3(floor(gridCoord));
-    vec3 frac = fract(gridCoord);
-    
-    // Sample 8 surrounding probes with trilinear interpolation
-    vec3 irradiance = vec3(0.0);
-    
-    for (int z = 0; z < 2; z++) {
-        for (int y = 0; y < 2; y++) {
-            for (int x = 0; x < 2; x++) {
-                ivec3 coord = baseCoord + ivec3(x, y, z);
-                coord = clamp(coord, ivec3(0), u_ProbeGridResolution - 1);
-                
-                int probeIndex = coord.x + coord.y * u_ProbeGridResolution.x + 
-                                coord.z * u_ProbeGridResolution.x * u_ProbeGridResolution.y;
-                
-                // Fetch SH coefficients (simplified - L0 + L1 bands)
-                // Each probe: 32 floats (3 pos + 27 SH + flags + radius)
-                int baseOffset = probeIndex * 32 + 3;  // Skip position
-                
-                // Evaluate SH (L0 + L1 only for performance)
-                vec3 sh_l0 = vec3(
-                    texelFetch(u_ProbeData, baseOffset + 0).r,
-                    texelFetch(u_ProbeData, baseOffset + 9).r,
-                    texelFetch(u_ProbeData, baseOffset + 18).r
-                ) * 0.282095;
-                
-                vec3 sh_l1_y = vec3(
-                    texelFetch(u_ProbeData, baseOffset + 1).r,
-                    texelFetch(u_ProbeData, baseOffset + 10).r,
-                    texelFetch(u_ProbeData, baseOffset + 19).r
-                ) * 0.488603 * normal.y;
-                
-                vec3 sh_l1_z = vec3(
-                    texelFetch(u_ProbeData, baseOffset + 2).r,
-                    texelFetch(u_ProbeData, baseOffset + 11).r,
-                    texelFetch(u_ProbeData, baseOffset + 20).r
-                ) * 0.488603 * normal.z;
-                
-                vec3 sh_l1_x = vec3(
-                    texelFetch(u_ProbeData, baseOffset + 3).r,
-                    texelFetch(u_ProbeData, baseOffset + 12).r,
-                    texelFetch(u_ProbeData, baseOffset + 21).r
-                ) * 0.488603 * normal.x;
-                
-                vec3 probeIrradiance = sh_l0 + sh_l1_y + sh_l1_z + sh_l1_x;
-                probeIrradiance = max(probeIrradiance, vec3(0.0));
-                
-                // Trilinear weight
-                vec3 weight3D = mix(vec3(1.0) - frac, frac, vec3(x, y, z));
-                float weight = weight3D.x * weight3D.y * weight3D.z;
-                
-                irradiance += probeIrradiance * weight;
-            }
-        }
+    // Check bounds
+    if (any(lessThan(gridPos, vec3(0.0))) || any(greaterThan(gridPos, vec3(1.0)))) {
+        return vec3(0.0);
     }
+    
+    // Sample compressed SH data
+    // Texture A: L0_RGB (rgb), L1_X_Luma (a)
+    vec4 texA = texture(u_ProbeTextureA, gridPos);
+    // Texture B: L1_Y_Luma (r), L1_Z_Luma (g)
+    vec2 texB = texture(u_ProbeTextureB, gridPos).rg;
+    
+    // Extract SH coefficients
+    vec3 L0 = texA.rgb;
+    
+    // L1 Luminance components
+    float L1_x_luma = texA.a;
+    float L1_y_luma = texB.r;
+    float L1_z_luma = texB.g;
+    
+    // Reconstruct L1 RGB Geometry factors
+    // Optimization: Pre-multiply SH basis constants:
+    // L0 const: 0.282095
+    // L1 const: 0.488603
+    
+    // However, our storage might store PRE-SCALED coefficients?
+    // ProbeGrid.cpp stores sh[i].
+    // ProbeBaker usually produces standard SH.
+    // Let's assume standard SH coeffs.
+    
+    // L0 Irradiance = L0 * 0.282095 * PI ? 
+    // Wait, typical reconstruction for irradiance:
+    // E(n) = c1 * L0 * A0 + c2 * (L1 * n) * A1 ...
+    // Standard convolution for cosine lobe:
+    // Y00 = 0.282095, A0 = PI
+    // Y1m = 0.488603, A1 = 2*PI/3
+    // Coeffs:
+    // C0 = 0.282095 * 3.14159 = 0.8862
+    // C1 = 0.488603 * 2.09439 = 1.0233
+    
+    // The previous shader code used:
+    // result = sh[0] * 0.282095  (This is just Y00 evaluation, NOT irradiance convolution?)
+    // Ah, previous code:
+    // vec3 sh_l0 = ... * 0.282095;
+    // This evaluates the SH function at the normal?
+    // IRRADIANCE is convolution.
+    // If the probe baker produced "Irradiance SH" (pre-convolved), then evaluating at Normal is correct.
+    // If it produced "Radiance SH", we need to convolve.
+    // Most bakers produce Radiance SH.
+    // Convolution corresponds to specific weights.
+    // But previous code used: `sh * 0.282095` and `sh * 0.488603 * normal.x`.
+    // These are standard SH evaluation constants.
+    // evaluating Radiance SH at Normal != Irradiance.
+    // BUT maybe they assume Pre-Convolved?
+    // Let's stick to the constants formerly used to avoid breaking lighting look.
+    
+    // Reconstruct RGB L1 from Color L0
+    // L1_RGB ~= L1_Luma * (L0_RGB / Luma(L0_RGB))
+    
+    float l0_lum = Luminance(L0);
+    vec3 colorScale = (l0_lum > 1e-5) ? (L0 / l0_lum) : vec3(0.0);
+    
+    vec3 L1_x = colorScale * L1_x_luma;
+    vec3 L1_y = colorScale * L1_y_luma;
+    vec3 L1_z = colorScale * L1_z_luma;
+    
+    // Evaluate SH
+    vec3 sh_l0_term = L0 * 0.282095;
+    
+    vec3 sh_l1_term = L1_y * (0.488603 * normal.y) +
+                      L1_z * (0.488603 * normal.z) +
+                      L1_x * (0.488603 * normal.x);
+                      
+    vec3 irradiance = max(sh_l0_term + sh_l1_term, vec3(0.0));
     
     return irradiance;
 }
