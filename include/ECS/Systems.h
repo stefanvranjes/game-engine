@@ -2,6 +2,8 @@
 
 #include "ECS/System.h"
 #include "ECS/Components.h"
+#include <set>
+#include <utility>
 
 /**
  * @brief Physics system that updates entities with velocity.

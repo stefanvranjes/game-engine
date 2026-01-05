@@ -261,7 +261,6 @@ private:
     // Physics Enhancements
     float m_VelocityInheritance;
     Vec3 m_LastPosition;
-    Vec3 m_LastPosition;
     Vec3 m_CalculatedEmitterVelocity;
     
     // Turbulence

@@ -1,0 +1,95 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba32f) readonly uniform image2D u_H0k;
+layout(binding = 1, rgba32f) writeonly uniform image2D u_Hkt;
+
+uniform float u_Time;
+uniform int u_N;
+uniform int u_L;
+
+const float PI = 3.14159265359;
+const float G = 9.81;
+
+// Complex multiplication
+vec2 CA_mult(vec2 a, vec2 b) {
+    return vec2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    if (id.x >= u_N || id.y >= u_N) return;
+    
+    float n = float(u_N);
+    float l = float(u_L);
+    
+    // Calculate k relative to center
+    // NOTE: If using standard FFT packing (0..N/2, -N/2..-1), coordinates differ.
+    // Assuming centered for now, need permutation later?
+    // Let's assume centered inputs because H0k generated that way.
+    
+    vec2 k;
+    k.x = (2.0 * PI * (float(id.x) - n * 0.5)) / l;
+    k.y = (2.0 * PI * (float(id.y) - n * 0.5)) / l;
+    
+    float k_len = length(k);
+    // Dispersion relation
+    float w = sqrt(G * k_len);
+    
+    float wt = w * u_Time;
+    
+    // Euler formula: exp(i*wt) = cos(wt) + i*sin(wt)
+    vec2 exp_iwt = vec2(cos(wt), sin(wt));
+    vec2 exp_inv_iwt = vec2(cos(wt), -sin(wt)); // conjugate of exp(iwt) = exp(-iwt)
+    
+    // Read Initial Spectrum
+    vec4 h0_data = imageLoad(u_H0k, id);
+    vec2 h0 = h0_data.xy;
+    vec2 h0_conj = h0_data.zw; // This was stored as h0*(-k)
+    
+    // h(k,t) = h0(k) * exp(iwt) + h0*(-k) * exp(-iwt)
+    vec2 hkt_dy = CA_mult(h0, exp_iwt) + CA_mult(h0_conj, exp_inv_iwt);
+    
+    // Choppy Calculation (X and Z displacement)
+    // Dx = -i * (kx/k) * h(k,t)
+    // Dz = -i * (ky/k) * h(k,t)
+    
+    vec2 hkt_dx = vec2(0.0);
+    vec2 hkt_dz = vec2(0.0);
+    
+    if (k_len > 0.0001) {
+        vec2 i = vec2(0.0, 1.0); // Imaginary unit
+        hkt_dx = CA_mult(vec2(0.0, -1.0), CA_mult(vec2(k.x / k_len, 0.0), hkt_dy)); // Simply -i * (kx/k) * val?
+        // Wait, (kx/k) is scalar. -i * complex = (y, -x).
+        // Let's use scalar multiplication
+        
+        vec2 disp_factor = vec2(0.0, -1.0); // -i
+        
+        // hkt_dx = -i * kx/k * hkt_dy
+        hkt_dx = CA_mult(disp_factor, hkt_dy) * (k.x / k_len);
+        
+        // hkt_dz = -i * ky/k * hkt_dy
+        hkt_dz = CA_mult(disp_factor, hkt_dy) * (k.y / k_len);
+    }
+    
+    // Store: 
+    // We need to store 3 complex values?
+    // Actually we run 3 FFTs usually?
+    // Or we pack them.
+    // Single image output u_Hkt:
+    // This shader only outputs ONE complex value hkt_dy if using 1 texture?
+    // To support choppiness, we probably need MULTIPLE outputs or multiple passes / textures.
+    // For now, let's output ONLY Height (hkt_dy) to test basics.
+    // If we want chopping, we need 3 textures or a layered texture.
+    
+    // Hack: Store Height in XY, Choppy X in ZW? No, Choppy X is complex.
+    // We have 3 complex numbers per frequency domain point.
+    // We cannot fit 6 floats in RGBA32F.
+    
+    // Solution: Just Height for now (verify vertical movement).
+    // Or use multiple render targets (imageStore to binding 1, 2, 3).
+    // Let's stick to Height in binding 1.
+    
+    imageStore(u_Hkt, id, vec4(hkt_dy, 0.0, 1.0));
+}

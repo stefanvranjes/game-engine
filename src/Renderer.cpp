@@ -421,6 +421,18 @@ void Renderer::SetupScene() {
     floor->SetMaterial(mat);
     
     if (m_Root) m_Root->AddChild(floor);
+
+    // Add Water Plane
+    auto waterPlane = std::make_shared<GameObject>("Water");
+    waterPlane->SetMesh(Mesh::CreateCube()); // Use cube flattened as plane
+    waterPlane->GetTransform() = Transform(Vec3(0, -1, 0), Vec3(0, 0, 0), Vec3(20, 0.1f, 20)); // Large plane
+    
+    auto waterComp = std::make_shared<Water>();
+    waterComp->SetNormalMap(m_TextureManager->LoadTexture("assets/water_normal.png")); // Ensure this exists or use default
+    // If not exists, it might fail to load, shader should handle null or default
+    waterPlane->SetWater(waterComp);
+    
+    if (m_Root) m_Root->AddChild(waterPlane);
     
     // Simulate Imported LOD Group
     auto lodGroupRoot = std::make_shared<GameObject>("Imported_Model_Root");
@@ -592,6 +604,22 @@ bool Renderer::Init() {
         std::cerr << "Failed to load decal shaders" << std::endl;
         return false;
     }
+
+    // Load water shader
+    m_WaterShader = std::make_unique<Shader>();
+    if (!m_WaterShader->LoadFromFiles("shaders/water.vert", "shaders/water.frag")) {
+        std::cerr << "Failed to load water shaders" << std::endl;
+        return false;
+    }
+
+    // Initialize Refraction Texture
+    glGenTextures(1, &m_RefractionTexture);
+    glBindTexture(GL_TEXTURE_2D, m_RefractionTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, width, height, 0, GL_RGB, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 
     // Setup fullscreen quad for lighting pass
     float quadVertices[] = {
@@ -991,6 +1019,28 @@ void Renderer::RenderSceneForward(Shader* shader) {
 void Renderer::Update(float deltaTime) {
     SCOPED_PROFILE("Renderer::Update");
     
+    // Update Particle System
+    if (m_ParticleSystem) {
+        m_ParticleSystem->Update(deltaTime);
+    }
+
+    // Update Water Components (FFT Simulation)
+    if (m_Root) {
+        auto& children = m_Root->GetChildren();
+        for (auto& child : children) {
+            auto water = child->GetWater();
+            if (water) {
+                if (!water->InitFFT()) continue; // Ensure initialized
+                 
+                 // Accumulate time for water animation
+                 static float waterTime = 0.0f;
+                 waterTime += deltaTime * water->m_WaveSpeed; // Use speed factor
+                 
+                 water->UpdateFFT(waterTime);
+            }
+        }
+    }
+
     // Update camera matrices
     if (m_Camera) {
         m_Camera->UpdateMatrices();
@@ -1569,6 +1619,35 @@ void Renderer::Render() {
     // Render fullscreen quad
     RenderQuad();
 
+    // ===== PASS 5.25: Skybox (Render Background) =====
+    {
+        GLint currentDrawFBO = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &currentDrawFBO);
+
+        // Copy depth from G-Buffer to HDR framebuffer to ensure Skybox respects depth
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetFBO());
+        glBlitFramebuffer(0, 0, m_GBuffer->GetWidth(), m_GBuffer->GetHeight(),
+                          0, 0, m_GBuffer->GetWidth(), m_GBuffer->GetHeight(),
+                          GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+                          
+        // Restore Read FBO to current Draw FBO (HDR FBO) for subsequent operations
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, currentDrawFBO);
+        
+        if (m_Skybox) {
+            m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+        }
+        
+        // ===== PASS 5.3: Water Refraction Copy =====
+        // Copy current HDR buffer (Opaque + Skybox) to Refraction Texture
+        if (m_RefractionTexture) {
+            glBindTexture(GL_TEXTURE_2D, m_RefractionTexture);
+            glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, m_GBuffer->GetWidth(), m_GBuffer->GetHeight());
+        }
+        
+        // ===== PASS 5.4: Water Pass =====
+        RenderWater(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+    }
+
     // ===== PASS 5.5: Transparent Pass =====
     // Render transparent objects forward
     // Use m_Shader (textured) for now, assuming it handles lighting or is unlit
@@ -1580,15 +1659,7 @@ void Renderer::Render() {
         m_ParticleSystem->Render(m_Camera, m_GBuffer.get());
     }
 
-    // ===== PASS 6: Forward Pass for Skybox (still in HDR) =====
-    // Copy depth buffer from G-Buffer to HDR framebuffer
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetPositionTexture());
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // Will be handled by post-processing
-    
-    // Draw Skybox to HDR framebuffer
-    if (m_Skybox) {
-        m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
-    }
+
     
     // ===== PASS 6.5: TAA Pass =====
     if (m_TAAEnabled) {
@@ -2468,4 +2539,108 @@ void Renderer::RenderUnitCube() {
     glBindVertexArray(m_UnitCubeVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
     glBindVertexArray(0);
+}
+
+void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
+    if (!m_WaterShader) return;
+    if (!m_Root) return;
+    
+    // Find Water Objects
+    std::vector<GameObject*> waterObjects;
+    std::vector<GameObject*> queue = { m_Root.get() };
+    
+    while (!queue.empty()) {
+        auto obj = queue.back();
+        queue.pop_back();
+        
+        if (obj->GetWater()) {
+            waterObjects.push_back(obj);
+        }
+        
+        for (auto& child : obj->GetChildren()) {
+            queue.push_back(child.get());
+        }
+    }
+    
+    if (waterObjects.empty()) return;
+
+    SCOPED_PROFILE("RenderWater");
+    SCOPED_GPU_PROFILE("WaterPass", glm::vec4(0.0f, 0.5f, 1.0f, 1.0f));
+
+    m_WaterShader->Use();
+    
+    // Set Common Uniforms
+    m_WaterShader->SetMat4("u_Projection", projection.m);
+    m_WaterShader->SetMat4("u_View", view.m);
+    m_WaterShader->SetVec3("u_ViewPos", m_Camera->GetPosition().x, m_Camera->GetPosition().y, m_Camera->GetPosition().z);
+    
+    // Time
+    float time = (float)glfwGetTime();
+    m_WaterShader->SetFloat("u_Time", time);
+    
+    // Directional Light
+    Light dirLight;
+    bool foundDir = false;
+    for (const auto& l : m_Lights) {
+        if (l.type == LightType::Directional) {
+            dirLight = l;
+            foundDir = true;
+            break;
+        }
+    }
+    if (!foundDir && !m_Lights.empty()) dirLight = m_Lights[0];
+    
+    m_WaterShader->SetVec3("u_DirectionalLight.direction", dirLight.direction.x, dirLight.direction.y, dirLight.direction.z);
+    m_WaterShader->SetVec3("u_DirectionalLight.color", dirLight.color.x, dirLight.color.y, dirLight.color.z);
+    
+    // Bind Environment
+    glActiveTexture(GL_TEXTURE1);
+    if (m_EnvCubemap) {
+        glBindTexture(GL_TEXTURE_CUBE_MAP, m_EnvCubemap);
+    } else {
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0); 
+    }
+    m_WaterShader->SetInt("u_Skybox", 1);
+    
+    // Bind Refraction Texture
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D, m_RefractionTexture);
+    m_WaterShader->SetInt("u_RefractionMap", 2); 
+    
+    // Render Objects
+    for (auto obj : waterObjects) {
+        auto water = obj->GetWater();
+        
+        // Properties
+        m_WaterShader->SetVec3("u_DeepColor", water->m_DeepColor.x, water->m_DeepColor.y, water->m_DeepColor.z);
+        m_WaterShader->SetVec3("u_ShallowColor", water->m_ShallowColor.x, water->m_ShallowColor.y, water->m_ShallowColor.z);
+        m_WaterShader->SetFloat("u_L", water->m_OceanSize);
+        m_WaterShader->SetFloat("u_WaveSpeed", water->m_WaveSpeed);
+        m_WaterShader->SetFloat("u_WaveStrength", water->m_WaveStrength);
+        m_WaterShader->SetFloat("u_WaveFoamThreshold", water->m_WaveFoamThreshold);
+        m_WaterShader->SetFloat("u_Clarity", water->m_Clarity);
+        
+        // Bind Textures
+        glActiveTexture(GL_TEXTURE0);
+        if (water->GetNormalMap()) {
+            glBindTexture(GL_TEXTURE_2D, water->GetNormalMap()->GetID());
+        } else {
+             // Bind FFT Normal if available, or default
+             glBindTexture(GL_TEXTURE_2D, m_Texture->GetID());
+        }
+        m_WaterShader->SetInt("u_NormalMap", 0);
+        
+        // Bind FFT Resources
+        // Displacement: Unit 5
+        // Normal (FFT): Unit 6
+        water->BindFFTResources(5);
+        m_WaterShader->SetInt("u_DisplacementMap", 5);
+        m_WaterShader->SetInt("u_DerivativesMap", 6); // Using FFT Normal as derivatives/normal
+        
+        // Draw
+        Mat4 model = obj->GetWorldMatrix();
+        m_WaterShader->SetMat4("u_Model", model.m);
+        
+        obj->Draw(m_WaterShader.get(), view, projection);
+    }
 }

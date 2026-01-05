@@ -18,6 +18,7 @@ public:
     unsigned int GetEmissiveTexture() const { return m_EmissiveTexture; }
     unsigned int GetVelocityTexture() const { return m_VelocityTexture; }
     unsigned int GetDepthTexture() const { return m_DepthTexture; }
+    unsigned int GetFBO() const { return m_FBO; }
     
     unsigned int GetWidth() const { return m_Width; }
     unsigned int GetHeight() const { return m_Height; }

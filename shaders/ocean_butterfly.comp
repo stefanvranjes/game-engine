@@ -1,0 +1,55 @@
+#version 430 core
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+layout(binding = 0, rgba32f) readonly uniform image2D u_Twiddle;
+layout(binding = 1, rgba32f) readonly uniform image2D u_Input;
+layout(binding = 2, rgba32f) writeonly uniform image2D u_Output; // Or PingPong
+
+uniform int u_Stage;
+uniform int u_Direction; // 0 = Horizontal, 1 = Vertical
+
+void main() {
+    ivec2 id = ivec2(gl_GlobalInvocationID.xy);
+    
+    // Fetch Twiddle Data
+    // Twiddle texture is size [log2 N, N]
+    // x = stage, y = row index
+    
+    vec4 data;
+    if (u_Direction == 0) {
+        // Horizontal: butterfly per row
+        data = imageLoad(u_Twiddle, ivec2(u_Stage, id.y));
+    } else {
+        // Vertical: butterfly per column
+        data = imageLoad(u_Twiddle, ivec2(u_Stage, id.x));
+    }
+    
+    vec2 w = data.xy; // Complex weight
+    ivec2 indices = ivec2(data.zw); // Indices of inputs
+    
+    // Inputs (Complex)
+    vec2 i1, i2;
+    if (u_Direction == 0) {
+        // Horizontal: varying x, const y
+        i1 = imageLoad(u_Input, ivec2(indices.x, id.y)).xy;
+        i2 = imageLoad(u_Input, ivec2(indices.y, id.y)).xy;
+    } else {
+        // Vertical: const x, varying y
+        i1 = imageLoad(u_Input, ivec2(id.x, indices.x)).xy;
+        i2 = imageLoad(u_Input, ivec2(id.x, indices.y)).xy;
+    }
+    
+    // Butterfly Operation
+    // H(k) = H_even(k) + w * H_odd(k)
+    // Actually the indices logic handles the even/odd selection.
+    // The standard formula:
+    // val = p + w * q
+    
+    // Complex mult w * i2
+    vec2 w_q = vec2(w.x * i2.x - w.y * i2.y, w.x * i2.y + w.y * i2.x);
+    
+    vec2 res = i1 + w_q;
+    
+    imageStore(u_Output, id, vec4(res, 0.0, 1.0));
+}

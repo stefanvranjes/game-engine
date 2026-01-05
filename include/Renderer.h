@@ -19,6 +19,7 @@
 #include "VolumetricFog.h"
 #include "SceneSerializer.h"
 #include "Prefab.h"
+#include "Water.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -163,6 +164,8 @@ private:
     std::unique_ptr<Shader> m_GeometryShader;
     std::unique_ptr<Shader> m_LightingShader;
     std::unique_ptr<Shader> m_DecalShader; // Decal Shader
+    std::unique_ptr<Shader> m_WaterShader; // Water Shader
+    unsigned int m_RefractionTexture; // Texture for refraction
     std::shared_ptr<Texture> m_Texture; // Default texture
     Camera* m_Camera;
     std::unique_ptr<Skybox> m_Skybox;
@@ -200,6 +203,7 @@ private:
     void BakeProbe(LightProbe* probe);
     void CaptureProbe(ReflectionProbe* probe);
     void RenderSceneForward(Shader* shader);
+    void RenderWater(const Mat4& view, const Mat4& projection);
 
     // Debug
     bool m_ShowCascades;
