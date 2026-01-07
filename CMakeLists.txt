@@ -5,6 +5,9 @@ project(GameEngine VERSION 0.1.0 LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+add_compile_definitions(NOMINMAX)
+add_compile_definitions(WIN32_LEAN_AND_MEAN)
+
 # Build type defaults
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -186,6 +189,14 @@ if(NOT lua_populated)
     target_compile_definitions(lua PUBLIC LUA_USE_WINDOWS) 
 endif()
 
+# Fetch pybind11
+FetchContent_Declare(
+    pybind11
+    GIT_REPOSITORY https://github.com/pybind/pybind11.git
+    GIT_TAG v2.11.1
+)
+FetchContent_MakeAvailable(pybind11)
+
 # ImGui sources
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
@@ -289,6 +300,7 @@ add_executable(GameEngine
     src/GizmoManager.cpp
     # Scripting System
     src/ScriptSystem.cpp
+    src/PythonScriptSystem.cpp
     src/ScriptComponent.cpp
     # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
     # src/AssetHash.cpp
@@ -311,7 +323,7 @@ add_executable(GameEngine
 
 target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include)
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath lua)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath lua pybind11::embed)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD
@@ -352,6 +364,7 @@ if(BUILD_TESTS)
         tests/game-engine-multiplayer/test_message.cpp
         tests/game-engine-multiplayer/test_serializer.cpp
         tests/test_scripting.cpp
+        tests/test_python_scripting.cpp
     )
     
     target_include_directories(tests PRIVATE 

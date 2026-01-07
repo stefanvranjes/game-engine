@@ -3,6 +3,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include "PythonScriptSystem.h"
 
 ScriptComponent::ScriptComponent(std::weak_ptr<GameObject> owner) : m_Owner(owner) {
 }
@@ -19,7 +20,7 @@ void ScriptComponent::LoadScript(const std::string& filepath) {
     // Ideally, to support multiple objects, the script should return a table or class.
     
     // For this iteration, let's execute the script immediately.
-    ScriptSystem::GetInstance().RunScript(filepath);
+    PythonScriptSystem::GetInstance().RunScript(filepath);
 }
 
 void ScriptComponent::Init() {

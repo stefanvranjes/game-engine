@@ -246,6 +246,16 @@ extern PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor;
 typedef void (APIENTRYP PFNGLDISABLEVERTEXATTRIBARRAYPROC) (GLuint index);
 extern PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray;
 
+// Missing extensions
+#define GL_INT 0x1404
+#define GL_SHADER_IMAGE_ACCESS_BARRIER_BIT 0x00000020
+
+typedef void (APIENTRYP PFNGLVERTEXATTRIBIPOINTERPROC) (GLuint index, GLint size, GLenum type, GLsizei stride, const void *pointer);
+extern PFNGLVERTEXATTRIBIPOINTERPROC glVertexAttribIPointer;
+
+typedef void (APIENTRYP PFNGLBINDIMAGETEXTUREPROC) (GLuint unit, GLuint texture, GLint level, GLboolean layered, GLint layer, GLenum access, GLenum format);
+extern PFNGLBINDIMAGETEXTUREPROC glBindImageTexture;
+
 typedef void (APIENTRYP PFNGLDRAWELEMENTSINSTANCEDPROC) (GLenum mode, GLsizei count, GLenum type, const void *indices, GLsizei instancecount);
 extern PFNGLDRAWELEMENTSINSTANCEDPROC glDrawElementsInstanced;
 

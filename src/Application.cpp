@@ -3,7 +3,10 @@
 #include "GLTFLoader.h"
 #include "BlendTreeEditor.h"
 #include "AudioSystem.h"
-#include "ScriptSystem.h"
+#include "AudioListener.h"
+#include "PhysicsSystem.h"
+#include "ScriptSystem.h" // Defines LuaScriptSystem (should be renamed ideally)
+#include "PythonScriptSystem.h"
 #include <iostream>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -33,7 +36,8 @@ void Application::Shutdown() {
     }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
-    ScriptSystem::GetInstance().Shutdown();
+    // LuaScriptSystem::GetInstance().Shutdown();
+    PythonScriptSystem::GetInstance().Shutdown();
     m_Running = false;
 }
 
@@ -41,8 +45,9 @@ bool Application::Init() {
     RemoteProfiler::Instance().Initialize(8080);
     std::cout << "Remote Profiler initialized. View at: http://localhost:8080" << std::endl;
     
-    // Initialize Script System
-    ScriptSystem::GetInstance().Init();
+    // Initialize Script System (Choose one: Lua or Python)
+    // LuaScriptSystem::GetInstance().Init();
+    PythonScriptSystem::GetInstance().Init();
 
     // Create window
     m_Window = std::make_unique<Window>(800, 600, "Game Engine");
@@ -210,10 +215,7 @@ void Application::Update(float deltaTime) {
         AABB playerBounds(newPos - playerSize, newPos + playerSize);
 
         // Check collision
-        if (m_Renderer->CheckCollision(playerBounds)) {
-            // Revert position if collision detected
-            // Simple response: just revert to old position
-            // Ideally we would slide along the wall, but this prevents walking through objects
+        // Check collision
         if (m_Renderer->CheckCollision(playerBounds)) {
             // Revert position if collision detected
             // Simple response: just revert to old position

@@ -1,6 +1,6 @@
 #include "AssetThumbnailGenerator.h"
 #include "Texture.h"
-#include <GL/glew.h>
+#include "GLExtensions.h"
 #include <filesystem>
 #include <fstream>
 #include <iostream>

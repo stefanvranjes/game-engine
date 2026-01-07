@@ -60,6 +60,9 @@ PFNGLGETQUERYOBJECTUIVPROC glGetQueryObjectuiv = nullptr;
 PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
 PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
 PFNGLDISABLEVERTEXATTRIBARRAYPROC glDisableVertexAttribArray = nullptr;
+
+PFNGLVERTEXATTRIBIPOINTERPROC glVertexAttribIPointer = nullptr;
+PFNGLBINDIMAGETEXTUREPROC glBindImageTexture = nullptr;
 PFNGLDRAWELEMENTSINSTANCEDPROC glDrawElementsInstanced = nullptr;
 PFNGLBLENDEQUATIONPROC glBlendEquation = nullptr;
 
@@ -138,6 +141,9 @@ bool LoadGLExtensions() {
     glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress("glVertexAttribDivisor");
     glDisableVertexAttribArray = (PFNGLDISABLEVERTEXATTRIBARRAYPROC)wglGetProcAddress("glDisableVertexAttribArray");
     glDrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)wglGetProcAddress("glDrawElementsInstanced");
+    
+    glVertexAttribIPointer = (PFNGLVERTEXATTRIBIPOINTERPROC)wglGetProcAddress("glVertexAttribIPointer");
+    glBindImageTexture = (PFNGLBINDIMAGETEXTUREPROC)wglGetProcAddress("glBindImageTexture");
     glBlendEquation = (PFNGLBLENDEQUATIONPROC)wglGetProcAddress("glBlendEquation");
 
     // Load Compute Shader functions (OpenGL 4.3+, optional)

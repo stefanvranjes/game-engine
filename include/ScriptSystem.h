@@ -1,5 +1,6 @@
 #pragma once
 
+#include "IScriptSystem.h"
 #include <string>
 #include <memory>
 extern "C" {
@@ -12,31 +13,30 @@ extern "C" {
 class GameObject;
 class ScriptComponent;
 
-class ScriptSystem {
+// Renamed to LuaScriptSystem, but for now we keep the class name "ScriptSystem" 
+// to avoid breaking all existing code immediately, or we rename it and update widely.
+// Let's alias it or rename. Rename is cleaner.
+class LuaScriptSystem : public IScriptSystem {
 public:
-    static ScriptSystem& GetInstance() {
-        static ScriptSystem instance;
+    static LuaScriptSystem& GetInstance() {
+        static LuaScriptSystem instance;
         return instance;
     }
 
-    ScriptSystem(const ScriptSystem&) = delete;
-    ScriptSystem& operator=(const ScriptSystem&) = delete;
-
-    void Init();
-    void Shutdown();
-    void Update(float deltaTime);
+    // IScriptSystem Implementation
+    void Init() override;
+    void Shutdown() override;
+    void Update(float deltaTime) override;
+    bool RunScript(const std::string& filepath) override;
 
     lua_State* GetLuaState() const { return L; }
-
-    // Helper to run a script file
-    bool RunScript(const std::string& filepath);
 
     // Register engine types
     void RegisterTypes();
 
 private:
-    ScriptSystem();
-    ~ScriptSystem();
+    LuaScriptSystem();
+    ~LuaScriptSystem();
 
     lua_State* L = nullptr;
 };

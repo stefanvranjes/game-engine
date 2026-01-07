@@ -1,7 +1,7 @@
 #include "Gizmo.h"
 #include "Camera.h"
 #include "Shader.h"
-#include <glad/glad.h>
+#include "GLExtensions.h"
 #include <cmath>
 #include <algorithm>
 
