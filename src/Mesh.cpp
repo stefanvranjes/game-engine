@@ -130,6 +130,48 @@ void Mesh::SetupMesh(const std::vector<float>& vertices, const std::vector<unsig
     glBindVertexArray(0);
 }
 
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+void Mesh::UpdateVertices(const std::vector<float>& newVertices) {
+    if (newVertices.size() != m_Vertices.size()) {
+        std::cerr << "Error: UpdateVertices called with different size than original mesh." << std::endl;
+        return;
+    }
+    
+    m_Vertices = newVertices;
+    
+    glBindBuffer(GL_ARRAY_BUFFER, m_VBO);
+    // Use glBufferSubData for partial updates if possible, but here we replace all.
+    // Or glBufferData with NULL to orphan? 
+    // For now simple subdata
+    glBufferSubData(GL_ARRAY_BUFFER, 0, m_Vertices.size() * sizeof(float), m_Vertices.data());
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    
+    // Recalculate Bounds?
+    // Ideally yes.
+    if (!m_Vertices.empty()) {
+        Vec3 minBounds(m_Vertices[0], m_Vertices[1], m_Vertices[2]);
+        Vec3 maxBounds(m_Vertices[0], m_Vertices[1], m_Vertices[2]);
+        
+        for (size_t i = 0; i < m_Vertices.size(); i += 8) { // 8 is stride
+            float x = m_Vertices[i];
+            float y = m_Vertices[i+1];
+            float z = m_Vertices[i+2];
+            
+            if (x < minBounds.x) minBounds.x = x;
+            if (y < minBounds.y) minBounds.y = y;
+            if (z < minBounds.z) minBounds.z = z;
+            
+            if (x > maxBounds.x) maxBounds.x = x;
+            if (y > maxBounds.y) maxBounds.y = y;
+            if (z > maxBounds.z) maxBounds.z = z;
+        }
+        m_Bounds = AABB(minBounds, maxBounds);
+    }
+}
+
 void Mesh::Draw() const {
     Bind();
     glDrawElements(GL_TRIANGLES, m_IndexCount, GL_UNSIGNED_INT, 0);

@@ -89,6 +89,44 @@ float Gizmo::RayClosestPoint(const Ray& ray, const Vec3& point) {
     return projection;
 }
 
+// Möller–Trumbore intersection algorithm
+bool Gizmo::RayIntersectTriangle(const Ray& ray, const Vec3& v0, const Vec3& v1, const Vec3& v2, float& t, Vec3& intersectionPoint) {
+    const float EPSILON = 0.0000001f;
+    Vec3 edge1, edge2, h, s, q;
+    float a, f, u, v;
+    
+    edge1 = v1 - v0;
+    edge2 = v2 - v0;
+    h = ray.direction.Cross(edge2);
+    a = edge1.Dot(h);
+    
+    if (a > -EPSILON && a < EPSILON)
+        return false;    // This ray is parallel to this triangle.
+        
+    f = 1.0f / a;
+    s = ray.origin - v0;
+    u = f * s.Dot(h);
+    
+    if (u < 0.0f || u > 1.0f)
+        return false;
+        
+    q = s.Cross(edge1);
+    v = f * ray.direction.Dot(q);
+    
+    if (v < 0.0f || u + v > 1.0f)
+        return false;
+        
+    // At this stage we can compute t to find out where the intersection point is on the line.
+    t = f * edge2.Dot(q);
+    
+    if (t > EPSILON) { // ray intersection
+        intersectionPoint = ray.origin + ray.direction * t;
+        return true;
+    } else { // This means that there is a line intersection but not a ray intersection.
+        return false;
+    }
+}
+
 
 // ----------------------------------------------------------------------------
 // Geometry Initialization & Drawing

@@ -33,6 +33,39 @@ GameObject::~GameObject() {
     }
 }
 
+    }
+}
+
+std::shared_ptr<GameObject> GameObject::Clone() {
+    auto clone = std::make_shared<GameObject>(m_Name + " (Copy)");
+    
+    // Copy Components (Value)
+    clone->m_Transform = m_Transform;
+    clone->m_Visible = m_Visible;
+    clone->m_UVOffset = m_UVOffset;
+    clone->m_UVScale = m_UVScale;
+    
+    // Share Components (Reference)
+    clone->m_Mesh = m_Mesh;
+    clone->m_Material = m_Material; // Share material for now (editing one changes all?) Yes, standard Unity behavior.
+    clone->m_Model = m_Model;
+    clone->m_LODs = m_LODs;
+    clone->m_Decal = m_Decal;
+    clone->m_Water = m_Water;
+    clone->m_Terrain = m_Terrain;
+    
+    // Deep Copy Children
+    for (const auto& child : m_Children) {
+        auto childClone = child->Clone();
+        clone->AddChild(childClone);
+    }
+    
+    // TODO: Clone specific components like Animator or AudioSource if they have unique state?
+    // For now, share read-only, skip unique state ones.
+    
+    return clone;
+}
+
 void GameObject::Update(const Mat4& parentMatrix, float deltaTime) {
     // Calculate world matrix based on parent and local transform
     m_WorldMatrix = parentMatrix * m_Transform.GetModelMatrix();

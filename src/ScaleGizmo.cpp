@@ -167,6 +167,15 @@ void ScaleGizmo::OnMouseDrag(const Ray& ray, const Camera& camera) {
             else if (m_DragAxis == GizmoAxis::Y) newScale.y *= factor;
             else newScale.z *= factor;
             
+            if (m_SnappingEnabled && m_SnapValue > 0.001f) {
+                 auto Snap = [&](float val) -> float {
+                     return std::round(val / m_SnapValue) * m_SnapValue;
+                 };
+                 newScale.x = Snap(newScale.x);
+                 newScale.y = Snap(newScale.y);
+                 newScale.z = Snap(newScale.z);
+            }
+            
             m_Transform->scale = newScale;
         }
     }

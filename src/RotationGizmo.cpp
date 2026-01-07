@@ -107,8 +107,34 @@ void RotationGizmo::OnMouseDrag(const Ray& ray, const Camera& camera) {
         // Convert to degrees
         float degrees = deltaAngle * 180.0f / 3.14159f;
         
+        // Snapping Logic (Relative)
+        if (m_SnappingEnabled && m_SnapValue > 0.001f) {
+            // We want to snap the *delta* or the *total angle*?
+            // "Discrete steps" feel: Accumulate 'degrees' and only apply when it crosses threshold?
+            // Or Round(NewRot) = Round(Start + Delta).
+            
+            // Let's do Absolute snapping for now, it's often more useful for precise alignment (e.g. 90 deg).
+            // But if user starts at 45.5, snapping to 15 might jump to 45.0. That's acceptable.
+            
+            // Actually, for rotation, snapping the "Delta" is tricky if we want to land on exactly 90.
+            // Let's accumulate delta and snap the resulting target rotation?
+            
+            // Simpler: Just Snap the *New Rotation Value* for the active axis.
+            
+            float* targetVal = nullptr;
+            if (m_DragAxis == GizmoAxis::X) targetVal = &m_DragOriginalRot.x;
+            else if (m_DragAxis == GizmoAxis::Y) targetVal = &m_DragOriginalRot.y;
+            else targetVal = &m_DragOriginalRot.z;
+            
+            float rawNewVal = *targetVal + degrees;
+            float snappedVal = std::round(rawNewVal / m_SnapValue) * m_SnapValue;
+            
+            // Apply diff
+            degrees = snappedVal - *targetVal;
+        }
+
         Vec3 newRot = m_DragOriginalRot;
-        if (m_DragAxis == GizmoAxis::X) { newRot.x += degrees; } // Check sign
+        if (m_DragAxis == GizmoAxis::X) { newRot.x += degrees; } 
         else if (m_DragAxis == GizmoAxis::Y) { newRot.y += degrees; }
         else { newRot.z += degrees; }
         

@@ -190,17 +190,17 @@ void TranslationGizmo::OnMouseDrag(const Ray& ray, const Camera& camera) {
         // Apply offset
         newPos = hitPoint - m_DragOffset;
         
-        // Constrain to axis/plane if needed? 
-        // The math above already constrained 'hitPoint' to the axis or plane.
-        
-        // However, we subtract m_DragOffset.
-        // The m_DragOffset vector might have components NOT on the axis (if we clicked slightly off-axis).
-        // For Axis drag, 'hitPoint' is ON the axis line.
-        // 'm_DragOffset' is "HitPoint_Start - Pos_Start".
-        // So NewPos = HitPoint_New - (HitPoint_Start - Pos_Start)
-        //          = Pos_Start + (HitPoint_New - HitPoint_Start)
-        // Since both HitPoints are on the axis, the difference is along the axis. Good.
-        // So it works correctly.
+        // Snapping Logic
+        if (m_SnappingEnabled && m_SnapValue > 0.001f) {
+             // Snap to nearest grid increment
+             auto Snap = [&](float val) -> float {
+                 return std::round(val / m_SnapValue) * m_SnapValue;
+             };
+             
+             newPos.x = Snap(newPos.x);
+             newPos.y = Snap(newPos.y);
+             newPos.z = Snap(newPos.z);
+        }
         
         m_Transform->position = newPos;
     }

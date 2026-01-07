@@ -22,6 +22,8 @@ public:
     GameObject(const std::string& name = "GameObject");
     virtual ~GameObject();
 
+    std::shared_ptr<GameObject> Clone();
+
     virtual void Update(const Mat4& parentMatrix, float deltaTime);
     void UpdateAnimator(float deltaTime);  // Update animation state
     void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr, bool forceRender = false);

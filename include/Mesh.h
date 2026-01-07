@@ -37,6 +37,9 @@ public:
 
     const std::vector<float>& GetVertices() const { return m_Vertices; }
     const std::vector<unsigned int>& GetIndices() const { return m_Indices; }
+    
+    // Updates vertex data (must match original size/layout for now)
+    void UpdateVertices(const std::vector<float>& newVertices);
 
 private:
     void SetupMesh(const std::vector<float>& vertices, const std::vector<unsigned int>& indices);

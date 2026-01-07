@@ -209,8 +209,54 @@ void Application::Update(float deltaTime) {
             // Revert position if collision detected
             // Simple response: just revert to old position
             // Ideally we would slide along the wall, but this prevents walking through objects
+        if (m_Renderer->CheckCollision(playerBounds)) {
+            // Revert position if collision detected
+            // Simple response: just revert to old position
+            // Ideally we would slide along the wall, but this prevents walking through objects
             m_Camera->SetPosition(oldPos);
         }
+        
+        // Input: Duplication (Ctrl + D)
+        static bool s_CtrlDPressed = false;
+        bool ctrlD = (glfwGetKey(m_Window->GetGLFWWindow(), GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS || 
+                      glfwGetKey(m_Window->GetGLFWWindow(), GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS) &&
+                      glfwGetKey(m_Window->GetGLFWWindow(), GLFW_KEY_D) == GLFW_PRESS;
+                      
+        if (ctrlD && !s_CtrlDPressed) {
+            // Trigger duplication
+            if (m_GizmoManager) {
+                // We need to get the selected object from GizmoManager? 
+                // Currently GizmoManager has m_SelectedObject but no public getter?
+                // Actually Application tracks m_SelectedObjectIndex.
+                // But better to ask GizmoManager or trust the index if it's synced.
+                // Let's assume m_SelectedObjectIndex is reliable for root objects.
+                // Wait, GizmoManager supports picking ANY object. m_SelectedObjectIndex in Application.cpp was for the flat list in UI.
+                
+                // Let's rely on the Selection capability.
+                // If GizmoManager has selection, use that.
+                // But GizmoManager interface doesn't expose GetSelectedObject().
+                
+                // Let's use the m_SelectedObjectIndex for now as it's what the UI uses.
+                // BUT, if we picked via 3D ray (future), the UI index might be stale if not synced.
+                // Let's stick to the UI list for MVP.
+                
+                auto root = m_Renderer->GetRoot();
+                if (root && m_SelectedObjectIndex >= 0) {
+                     auto& children = root->GetChildren();
+                     if (m_SelectedObjectIndex < children.size()) {
+                         auto original = children[m_SelectedObjectIndex];
+                         auto clone = original->Clone();
+                         m_Renderer->GetRoot()->AddChild(clone);
+                         
+                         // Select new object
+                         // This is tricky because indices shift or append.
+                         m_SelectedObjectIndex = (int)children.size() - 1; 
+                         m_GizmoManager->SetSelectedObject(clone);
+                     }
+                }
+            }
+        }
+        s_CtrlDPressed = ctrlD;
         
         Vec3 listenerPos = m_Camera->GetPosition();
         Vec3 listenerFwd = m_Camera->GetFront();

@@ -43,7 +43,10 @@ bool GizmoManager::IsDragging() const {
 }
 
 void GizmoManager::Update(float deltaTime) {
-    // Update logic if any
+    // Propagate snap settings to all gizmos (or just active one)
+    m_TranslationGizmo->SetSnapping(m_SnappingEnabled, m_TranslationSnap);
+    m_RotationGizmo->SetSnapping(m_SnappingEnabled, m_RotationSnap);
+    m_ScaleGizmo->SetSnapping(m_SnappingEnabled, m_ScaleSnap);
 }
 
 void GizmoManager::Render(Shader* shader, const Camera& camera) {

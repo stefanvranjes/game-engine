@@ -61,6 +61,7 @@ protected:
     // Ray intersection helpers
     float RayIntersectPlane(const Ray& ray, const Vec3& planeNormal, const Vec3& planePoint);
     bool RayIntersectBox(const Ray& ray, const Vec3& boxMin, const Vec3& boxMax, float& t);
+    bool RayIntersectTriangle(const Ray& ray, const Vec3& v0, const Vec3& v1, const Vec3& v2, float& t, Vec3& intersectionPoint);
     float RayClosestPoint(const Ray& ray, const Vec3& point);
 
     // Common Rendering Helpers
@@ -72,6 +73,11 @@ protected:
     Transform* m_Transform = nullptr;
     bool m_Enabled = true;
     bool m_IsDragging = false;
+    
+    bool m_SnappingEnabled = false;
+    float m_SnapValue = 0.0f;
+
+    GizmoType m_Type = GizmoType::None;
     GizmoAxis m_HoverAxis = GizmoAxis::None;
     GizmoAxis m_DragAxis = GizmoAxis::None;
     
