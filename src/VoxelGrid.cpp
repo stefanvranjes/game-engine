@@ -135,9 +135,9 @@ void VoxelGrid::Voxelize(const std::vector<GameObject*>& objects, Camera* camera
         glm::mat4 projZ = glm::ortho(cascade.min.x, cascade.max.x, cascade.min.y, cascade.max.y,
                                       cascade.min.z, cascade.max.z);
 
-        m_VoxelizeShader->SetMat4("u_ProjectionX", projX);
-        m_VoxelizeShader->SetMat4("u_ProjectionY", projY);
-        m_VoxelizeShader->SetMat4("u_ProjectionZ", projZ);
+        m_VoxelizeShader->SetMat4("u_ProjectionX", &projX[0][0]);
+        m_VoxelizeShader->SetMat4("u_ProjectionY", &projY[0][0]);
+        m_VoxelizeShader->SetMat4("u_ProjectionZ", &projZ[0][0]);
 
         // Render objects
         // Optimization: Cull objects outside this cascade
@@ -151,7 +151,7 @@ void VoxelGrid::Voxelize(const std::vector<GameObject*>& objects, Camera* camera
             
             if (!mesh || !material) continue;
 
-            m_VoxelizeShader->SetMat4("u_Model", obj->GetTransform().GetWorldMatrix());
+            m_VoxelizeShader->SetMat4("u_Model", obj->GetTransform().GetModelMatrix().m);
 
             if (material->HasTexture()) {
                 m_VoxelizeShader->SetInt("u_HasTexture", 1);
@@ -260,7 +260,7 @@ void VoxelGrid::RenderDebug(Camera* camera, Shader* debugShader)
     if (!debugShader) return;
 
     debugShader->Use();
-    debugShader->SetMat4("u_ViewProjection", camera->GetProjectionMatrix() * camera->GetViewMatrix());
+    debugShader->SetMat4("u_ViewProjection", (camera->GetProjectionMatrix() * camera->GetViewMatrix()).m);
     
     // Just render Cascade 0 for now or cycle?
     // Let's render Cascade 0

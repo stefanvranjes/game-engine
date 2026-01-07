@@ -278,7 +278,7 @@ private:
                 Mat4 scale = Mat4::Identity();
                 
                 if (node.translation.size() == 3) {
-                    translation = Mat4::Translation(Vec3(node.translation[0], node.translation[1], node.translation[2]));
+                    translation = Mat4::Translate(Vec3(node.translation[0], node.translation[1], node.translation[2]));
                 }
                 if (node.rotation.size() == 4) {
                     Quaternion q(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]);

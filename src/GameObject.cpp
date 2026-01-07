@@ -2,7 +2,11 @@
 #include "Frustum.h"
 #include "GLExtensions.h"
 #include "Animator.h"
+#include "Animator.h"
 #include "ScriptComponent.h"
+#include "AudioSource.h"
+#include "AudioListener.h"
+#include "AudioSource.h"
 #include <algorithm>
 #include <iostream>
 
@@ -323,10 +327,10 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
              // CameraPos = -R^T * T_vec
              // T_vec = [ m12 m13 m14 ]
              
-             float m0 = view.m[0][0], m4 = view.m[1][0], m8 = view.m[2][0];
-             float m1 = view.m[0][1], m5 = view.m[1][1], m9 = view.m[2][1];
-             float m2 = view.m[0][2], m6 = view.m[1][2], m10= view.m[2][2];
-             float m12= view.m[3][0], m13= view.m[3][1], m14= view.m[3][2];
+             float m0 = view.m[0], m4 = view.m[4], m8 = view.m[8];
+             float m1 = view.m[1], m5 = view.m[5], m9 = view.m[9];
+             float m2 = view.m[2], m6 = view.m[6], m10= view.m[10];
+             float m12= view.m[12], m13= view.m[13], m14= view.m[14];
              
              // Check matrix access. Mat4 is usually m[col][row] or m[row][col]? 
              // Math/Mat4.h usually column-major internal array if OpenGL compatible.
@@ -656,4 +660,58 @@ AABB GameObject::GetWorldAABB() const {
     // Fallback for no mesh: return point AABB at position
     Vec3 pos = m_WorldMatrix.GetTranslation();
     return AABB(pos, pos);
+}
+
+void GameObject::InitQuery() {
+    if (m_QueryID == 0) {
+        glGenQueries(1, &m_QueryID);
+    }
+}
+
+void GameObject::RenderBoundingBox(Shader* shader, const Mat4& view, const Mat4& projection) {
+    if (!shader) return;
+    
+    // Simple wireframe cube or bounding box
+    // For now, just setting up the call to ensure linker satisfaction
+    // and basic functionality.
+    
+    AABB aabb = GetWorldAABB();
+    Vec3 center = aabb.GetCenter();
+    Vec3 size = aabb.GetSize();
+    
+    Mat4 model = Mat4::Translate(center) * Mat4::Scale(size);
+    
+    shader->Use();
+    shader->SetMat4("u_Model", model.m);
+    shader->SetMat4("u_View", view.m);
+    shader->SetMat4("u_Projection", projection.m);
+    shader->SetVec3("u_Color", 1.0f, 1.0f, 0.0f);
+    
+    // Reuse unit cube if s_UnitCube exists, or skipping draw for now 
+    // to strictly fix the build error first.
+    // If s_UnitCube is null, we can't draw.
+    if (s_UnitCube) {
+       s_UnitCube->Draw();
+    }
+}
+
+bool GameObject::ShouldIssueQuery() const {
+    if (m_FramesSinceLastQuery >= m_QueryFrameInterval) {
+        return true;
+    }
+    return false;
+}
+
+void GameObject::UpdateQueryInterval() {
+    // Basic adaptive logic
+    if (m_Visible == m_PreviousVisible) {
+        m_VisibilityStableFrames++;
+    } else {
+        m_VisibilityStableFrames = 0;
+    }
+    m_PreviousVisible = m_Visible;
+    
+    m_QueryFrameInterval = 1 + std::min(m_VisibilityStableFrames / 10, 10);
+    // Clamp
+    if (m_QueryFrameInterval > MAX_QUERY_INTERVAL) m_QueryFrameInterval = MAX_QUERY_INTERVAL;
 }

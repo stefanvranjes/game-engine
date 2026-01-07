@@ -78,10 +78,6 @@ ParticleEmitter::ParticleEmitter(const Vec3& position, int maxParticles)
     }
 }
 
-    // Default LOD
-    m_ActiveLOD = EmitterLOD();
-}
-
 void ParticleEmitter::UpdateLOD(float distance) {
     m_CurrentDistance = distance;
     
@@ -152,11 +148,6 @@ void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
                 HandleParticleCollisions(deltaTime);
             }
             
-        if (m_ActiveLOD.enableCollisions) {
-            if (m_EnableParticleCollisions) {
-                HandleParticleCollisions(deltaTime);
-            }
-            
             // Shape Collisions
             for (auto& particle : m_Particles) {
                 if (particle.active) HandleShapeCollisions(particle, deltaTime);
@@ -166,6 +157,7 @@ void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
         // Update Last Position for next frame velocity calc
         m_LastPosition = m_Position;
     }
+}
 }
 
 void ParticleEmitter::Burst(int count) {

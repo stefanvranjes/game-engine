@@ -1,9 +1,9 @@
 #include "ECS/Systems.h"
 #include "ECS/EntityManager.h"
 
-// === PhysicsSystem ===
-
-void PhysicsSystem::Update(EntityManager& manager, float deltaTime) {
+// === SimplePhysicsSystem ===
+ 
+void SimplePhysicsSystem::Update(EntityManager& manager, float deltaTime) {
     auto entities = manager.GetEntitiesWithComponents<VelocityComponent, RigidbodyComponent>();
 
     for (const auto& entity : entities) {

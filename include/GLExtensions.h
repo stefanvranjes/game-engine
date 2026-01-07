@@ -236,6 +236,10 @@ extern PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
 extern PFNGLTEXIMAGE3DPROC glTexImage3D;
 extern PFNGLTEXIMAGE3DPROC glTexImage3D;
 extern PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer;
+extern PFNGLTEXIMAGE3DPROC glTexImage3D;
+
+typedef void (APIENTRYP PFNGLTEXSTORAGE2DPROC) (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
+extern PFNGLTEXSTORAGE2DPROC glTexStorage2D;
 
 typedef void (APIENTRYP PFNGLDRAWARRAYSINSTANCEDPROC) (GLenum mode, GLint first, GLsizei count, GLsizei instancecount);
 extern PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced;

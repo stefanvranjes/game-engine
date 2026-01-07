@@ -49,3 +49,6 @@ Makefile
 
 # Allow OBJ models in assets
 !assets/*.obj
+
+# Build error logs
+build_err*

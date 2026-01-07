@@ -130,10 +130,6 @@ void Mesh::SetupMesh(const std::vector<float>& vertices, const std::vector<unsig
     glBindVertexArray(0);
 }
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-}
-
 void Mesh::UpdateVertices(const std::vector<float>& newVertices) {
     if (newVertices.size() != m_Vertices.size()) {
         std::cerr << "Error: UpdateVertices called with different size than original mesh." << std::endl;

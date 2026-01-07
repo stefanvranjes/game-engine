@@ -49,6 +49,7 @@ PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer = nullptr;
 PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers = nullptr;
 PFNGLTEXIMAGE3DPROC glTexImage3D = nullptr;
 PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer = nullptr;
+PFNGLTEXSTORAGE2DPROC glTexStorage2D = nullptr;
 
 // Query functions
 PFNGLGENQUERIESPROC glGenQueries = nullptr;
@@ -129,6 +130,7 @@ bool LoadGLExtensions() {
     glDeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)wglGetProcAddress("glDeleteRenderbuffers");
     glTexImage3D = (PFNGLTEXIMAGE3DPROC)wglGetProcAddress("glTexImage3D");
     glFramebufferTextureLayer = (PFNGLFRAMEBUFFERTEXTURELAYERPROC)wglGetProcAddress("glFramebufferTextureLayer");
+    glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
     
     // Load Query functions
     glGenQueries = (PFNGLGENQUERIESPROC)wglGetProcAddress("glGenQueries");
@@ -181,7 +183,7 @@ bool LoadGLExtensions() {
         !glFramebufferTexture2D || !glCheckFramebufferStatus || !glDeleteFramebuffers ||
         !glDrawBuffers || !glBlitFramebuffer || !glFramebufferTexture || !glGenRenderbuffers || !glBindRenderbuffer ||
         !glRenderbufferStorage || !glFramebufferRenderbuffer || !glDeleteRenderbuffers ||
-        !glTexImage3D || !glFramebufferTextureLayer) {
+        !glTexImage3D || !glFramebufferTextureLayer || !glTexStorage2D) {
 
         std::cerr << "Failed to load OpenGL extensions" << std::endl;
         return false;

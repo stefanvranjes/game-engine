@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.10)
 
 project(GameEngine VERSION 0.1.0 LANGUAGES CXX C)
 
+if(POLICY CMP0048)
+    cmake_policy(SET CMP0048 NEW) 
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -61,8 +65,18 @@ if(ENABLE_CLANG_TIDY)
     endif()
 endif()
 
-# Fetch GLFW
+# FetchContent
 include(FetchContent)
+
+# Fetch GLM
+FetchContent_Declare(
+    glm
+    GIT_REPOSITORY https://github.com/g-truc/glm.git
+    GIT_TAG 1.0.1
+)
+FetchContent_MakeAvailable(glm)
+
+# Fetch GLFW
 
 FetchContent_Declare(
     glfw
@@ -197,7 +211,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
-# ImGui sources
+# Add cmake module path
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Find Mono
+# find_package(Mono REQUIRED)
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
     src/imgui/imgui_draw.cpp
@@ -301,6 +319,9 @@ add_executable(GameEngine
     # Scripting System
     src/ScriptSystem.cpp
     src/PythonScriptSystem.cpp
+    # src/CSharpScriptSystem.cpp
+    src/CustomScriptSystem.cpp
+    src/VirtualMachine.cpp
     src/ScriptComponent.cpp
     # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
     # src/AssetHash.cpp
@@ -321,9 +342,9 @@ add_executable(GameEngine
     ${IMGUI_SOURCES}
 )
 
-target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include)
+target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include ${MONO_INCLUDE_DIRS})
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath lua pybind11::embed)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath lua pybind11::embed glm::glm)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD
@@ -365,6 +386,8 @@ if(BUILD_TESTS)
         tests/game-engine-multiplayer/test_serializer.cpp
         tests/test_scripting.cpp
         tests/test_python_scripting.cpp
+        tests/test_csharp_scripting.cpp
+        tests/test_vm.cpp
     )
     
     target_include_directories(tests PRIVATE 

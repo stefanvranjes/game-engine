@@ -45,6 +45,20 @@ public:
         return *this;
     }
 
+    Vec3& operator*=(float scalar) {
+        x *= scalar;
+        y *= scalar;
+        z *= scalar;
+        return *this;
+    }
+
+    Vec3& operator/=(float scalar) {
+        x /= scalar;
+        y /= scalar;
+        z /= scalar;
+        return *this;
+    }
+
     // Dot product
     float Dot(const Vec3& other) const {
         return x * other.x + y * other.y + z * other.z;

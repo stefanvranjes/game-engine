@@ -29,6 +29,39 @@ public:
         return Vec4(x / scalar, y / scalar, z / scalar, w / scalar);
     }
 
+    // Compound assignment
+    Vec4& operator+=(const Vec4& other) {
+        x += other.x;
+        y += other.y;
+        z += other.z;
+        w += other.w;
+        return *this;
+    }
+
+    Vec4& operator-=(const Vec4& other) {
+        x -= other.x;
+        y -= other.y;
+        z -= other.z;
+        w -= other.w;
+        return *this;
+    }
+
+    Vec4& operator*=(float scalar) {
+        x *= scalar;
+        y *= scalar;
+        z *= scalar;
+        w *= scalar;
+        return *this;
+    }
+
+    Vec4& operator/=(float scalar) {
+        x /= scalar;
+        y /= scalar;
+        z /= scalar;
+        w /= scalar;
+        return *this;
+    }
+
     // Dot product
     float Dot(const Vec4& other) const {
         return x * other.x + y * other.y + z * other.z + w * other.w;

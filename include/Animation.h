@@ -56,7 +56,6 @@ public:
     float GetDuration() const { return m_Duration; }
     
     void AddChannel(const AnimationChannel& channel);
-    void AddChannel(const AnimationChannel& channel);
     const std::vector<AnimationChannel>& GetChannels() const { return m_Channels; }
     
     void SetSyncGroup(const std::string& group) { m_SyncGroup = group; }

@@ -31,4 +31,8 @@ public:
         // Combine: Translation * Rotation * Scale
         return translation * rotationY * rotationX * rotationZ * scaling;
     }
+
+    Mat4 GetMatrix() const {
+        return GetModelMatrix();
+    }
 };

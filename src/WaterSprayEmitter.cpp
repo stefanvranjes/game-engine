@@ -19,7 +19,7 @@ bool WaterSprayEmitter::Init(GameObject* waterObject, int maxParticles) {
     }
 
     m_WaterObject = waterObject;
-    m_Water = waterObject->GetWater();
+    m_Water = waterObject->GetWater().get();
 
     // Create the underlying particle emitter
     m_Emitter = std::make_unique<ParticleEmitter>(Vec3(0, 0, 0), maxParticles);

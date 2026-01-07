@@ -6,6 +6,7 @@
 #include "Profiler.h"
 #include "Decal.h"
 #include "PlanarReflection.h"
+#include "Shader.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -13,6 +14,11 @@
 #include <algorithm>
 #include <cmath>
 #include <GLFW/glfw3.h>
+#include "Animator.h"
+#include "Light.h"
+#include "Camera.h"
+#include "GameObject.h"
+#include "GBuffer.h"
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
@@ -257,7 +263,7 @@ std::shared_ptr<Texture> Renderer::GenerateImpostorTexture(std::shared_ptr<GameO
             glClear(GL_DEPTH_BUFFER_BIT); // Keep color (accumulate), Clear Depth
             glDisable(GL_SCISSOR_TEST);
             
-            obj->Draw(m_Shader.get());
+            obj->Draw(m_Shader.get(), view, projection);
         }
     }
     
@@ -1195,7 +1201,9 @@ void Renderer::Render() {
             
             m_DepthShader->SetMat4("u_LightSpaceMatrix", spotLightMatrix.m);
             
-            glViewport(0, 0, m_SpotShadows[spotShadowIndex]->GetWidth(), m_SpotShadows[spotShadowIndex]->GetHeight());
+            unsigned int shadowWidth = m_SpotShadows[spotShadowIndex]->GetWidth();
+            unsigned int shadowHeight = m_SpotShadows[spotShadowIndex]->GetHeight();
+            glViewport(0, 0, shadowWidth, shadowHeight);
             m_SpotShadows[spotShadowIndex]->BindForWriting();
             glClear(GL_DEPTH_BUFFER_BIT);
             
@@ -1253,7 +1261,6 @@ void Renderer::Render() {
         }
         
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
     }
 
     // Get framebuffer size

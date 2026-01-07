@@ -36,6 +36,7 @@ public:
     void SetMesh(Mesh&& mesh) { m_Mesh = std::make_shared<Mesh>(std::move(mesh)); }
     void SetMaterial(std::shared_ptr<Material> material) { m_Material = material; }
     void SetModel(std::shared_ptr<Model> model) { m_Model = model; }
+    std::shared_ptr<Model> GetModel() const { return m_Model; }
     
     Transform& GetTransform() { return m_Transform; }
     const Mat4& GetWorldMatrix() const { return m_WorldMatrix; }
@@ -95,7 +96,7 @@ public:
         bool isBillboard = false; // Flag to enable billboard shader
     };
 
-    void AddLOD(std::shared_ptr<Mesh> mesh, float minDistance);
+    void AddLOD(std::shared_ptr<Mesh> mesh, float minDistance, bool isBillboard = false);
     void AddLOD(std::shared_ptr<Model> model, float minDistance);
 
     // Occlusion Culling

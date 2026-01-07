@@ -9,6 +9,7 @@
 #include <mutex>
 #include <thread>
 #include <nlohmann/json.hpp>
+#include <glm/glm.hpp>
 
 using json = nlohmann::json;
 

@@ -11,7 +11,7 @@
  * Applies gravity and velocity to entities with both VelocityComponent
  * and RigidbodyComponent.
  */
-class PhysicsSystem : public System {
+class SimplePhysicsSystem : public System {
 public:
     void SetGravity(const Vec3& gravity) { m_Gravity = gravity; }
     Vec3 GetGravity() const { return m_Gravity; }

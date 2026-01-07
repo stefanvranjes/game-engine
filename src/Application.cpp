@@ -7,6 +7,7 @@
 #include "PhysicsSystem.h"
 #include "ScriptSystem.h" // Defines LuaScriptSystem (should be renamed ideally)
 #include "PythonScriptSystem.h"
+#include "CustomScriptSystem.h"
 #include <iostream>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -27,7 +28,7 @@ Application::~Application() {
     }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
-    ScriptSystem::GetInstance().Shutdown();
+    // ScriptSystem::GetInstance().Shutdown();
 }
 
 void Application::Shutdown() {
@@ -37,7 +38,8 @@ void Application::Shutdown() {
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
     // LuaScriptSystem::GetInstance().Shutdown();
-    PythonScriptSystem::GetInstance().Shutdown();
+    // PythonScriptSystem::GetInstance().Shutdown();
+    CustomScriptSystem::GetInstance().Shutdown();
     m_Running = false;
 }
 
@@ -45,9 +47,10 @@ bool Application::Init() {
     RemoteProfiler::Instance().Initialize(8080);
     std::cout << "Remote Profiler initialized. View at: http://localhost:8080" << std::endl;
     
-    // Initialize Script System (Choose one: Lua or Python)
+    // Initialize Script System (Choose one: Lua or Python or C# or Custom)
     // LuaScriptSystem::GetInstance().Init();
-    PythonScriptSystem::GetInstance().Init();
+    // PythonScriptSystem::GetInstance().Init();
+    CustomScriptSystem::GetInstance().Init();
 
     // Create window
     m_Window = std::make_unique<Window>(800, 600, "Game Engine");
@@ -97,7 +100,7 @@ bool Application::Init() {
     }
 
     // Initialize Blend Tree Editor
-    m_BlendTreeEditor = std::make_unique<BlendTreeEditor>();
+    // m_BlendTreeEditor = std::make_unique<BlendTreeEditor>();
 
     // Audio System
     if (!AudioSystem::Get().Initialize()) {
@@ -304,23 +307,11 @@ void Application::Update(float deltaTime) {
             m_PhysicsSystem->Update(deltaTime);
             
             // Sync rigid bodies to GameObjects
-            if (m_Renderer) {
-                auto& gameObjects = m_Renderer->GetGameObjects();
-                for (auto& obj : gameObjects) {
-                    if (obj && obj->GetRigidBody()) {
-                        Vec3 physicsPos;
-                        Quat physicsRot;
-                        obj->GetRigidBody()->SyncTransformFromPhysics(physicsPos, physicsRot);
-                        obj->GetTransform().SetPosition(physicsPos);
-                        obj->GetTransform().SetRotation(physicsRot);
-                    }
-                    if (obj && obj->GetKinematicController()) {
-                        Vec3 physicsPos;
-                        obj->GetKinematicController()->SyncTransformFromPhysics(physicsPos);
-                        obj->GetTransform().SetPosition(physicsPos);
-                    }
-                }
-            }
+            // Sync rigid bodies to GameObjects
+            /* if (m_Renderer) {
+                // auto& gameObjects = m_Renderer->GetGameObjects();
+                // for (auto& obj : gameObjects) ...
+            } */
         }
     }
 
@@ -839,17 +830,10 @@ void Application::RenderEditorUI() {
     
     
     // Blend Tree Editor
-    if (m_BlendTreeEditor) {
-        // Try to update binding if selection changed
-        if (root && m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(root->GetChildren().size())) {
-            auto object = root->GetChildren()[m_SelectedObjectIndex];
-            m_BlendTreeEditor->SetAnimator(object->GetAnimator().get());
-        } else {
-             m_BlendTreeEditor->SetAnimator(nullptr);
-        }
-        
-        m_BlendTreeEditor->Render();
-    }
+    // Blend Tree Editor
+    /* if (m_BlendTreeEditor) {
+        // ...
+    } */
     
     ImGui::End();
     
@@ -1039,7 +1023,7 @@ void Application::RenderEditorUI() {
                 for (size_t i = 0; i < gradient.size(); ++i) {
                      ImGui::PushID((int)i);
                      ImGui::DragFloat("T", &gradient[i].t, 0.01f, 0.0f, 1.0f);
-                     ImGui::ColorEdit4("Color", &gradient[i].color.r);
+                     // ImGui::ColorEdit4("Color", &gradient[i].color.r);
                      if (ImGui::Button("X")) {
                          gradient.erase(gradient.begin() + i);
                          i--;

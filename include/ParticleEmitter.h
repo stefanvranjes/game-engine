@@ -224,6 +224,20 @@ public:
     void InitCloth(int width, int height, float spacing, float stiffness, float damping);
     void InitSoftBody(int width, int height, int depth, float spacing, float stiffness, float damping);
 
+    // Visuals (Moved from private)
+    void AddGradientStop(float t, const Vec4& color);
+    void AddSizeCurvePoint(float size);
+    float EvaluateSize(float t) const; // Keep these public too if needed
+    Vec4 EvaluateGradient(float t) const;
+    
+    std::vector<float>& GetSizeCurve() { return m_SizeCurve; }
+    const std::vector<float>& GetSizeCurve() const { return m_SizeCurve; }
+
+    std::vector<GradientStop>& GetGradient() { return m_ColorGradient; } 
+    const std::vector<GradientStop>& GetGradient() const { return m_ColorGradient; }
+    std::shared_ptr<ParticleEmitter> GetSubEmitterDeath() const { return m_SubEmitterDeath; }
+    void SetSubEmitterDeath(std::shared_ptr<ParticleEmitter> emitter) { m_SubEmitterDeath = emitter; }
+
 private:
     void SpawnParticle();
     Vec3 GetRandomVelocity();
@@ -273,11 +287,9 @@ private:
     }
     
     // Visuals
-    void AddGradientStop(float t, const Vec4& color);
-    void AddSizeCurvePoint(float size);
-    float EvaluateSize(float t) const;
-    Vec4 EvaluateGradient(float t) const;
+    // void AddGradientStop... (moved public)
 
+private:
     std::vector<GradientStop> m_ColorGradient;
     std::vector<float> m_SizeCurve; // Stores size values at t=index/size
     std::shared_ptr<ParticleEmitter> m_SubEmitterDeath;
