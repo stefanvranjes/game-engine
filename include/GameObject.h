@@ -16,6 +16,7 @@ class KinematicController;
 class Decal;
 class Water;
 class Terrain;
+class ScriptComponent;
 
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
@@ -79,6 +80,10 @@ public:
     // Terrain
     void SetTerrain(std::shared_ptr<class Terrain> terrain) { m_Terrain = terrain; }
     std::shared_ptr<class Terrain> GetTerrain() const { return m_Terrain; }
+
+    // Scripting
+    void SetScriptComponent(std::shared_ptr<class ScriptComponent> script) { m_ScriptComponent = script; }
+    std::shared_ptr<class ScriptComponent> GetScriptComponent() const { return m_ScriptComponent; }
     
     // Auto-LOD Grouping
     void ProcessLODGroups();
@@ -178,6 +183,9 @@ private:
     
     // Terrain
     std::shared_ptr<class Terrain> m_Terrain;
+
+    // Scripting
+    std::shared_ptr<class ScriptComponent> m_ScriptComponent;
     
 
 };

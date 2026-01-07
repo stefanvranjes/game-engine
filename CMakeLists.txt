@@ -157,6 +157,35 @@ if(NOT bullet3_populated)
     FetchContent_MakeAvailable(bullet3)
 endif()
 
+# Fetch Lua
+FetchContent_Declare(
+    lua
+    GIT_REPOSITORY https://github.com/lua/lua.git
+    GIT_TAG v5.4.6
+)
+FetchContent_GetProperties(lua)
+if(NOT lua_populated)
+    FetchContent_Populate(lua)
+    
+    # Lua CMake is often non-existent or minimal in the official repo, 
+    # so we define a simple library here if needed, or rely on a fork.
+    # Actually, the official Lua repo is just source. 
+    # We will create a target manually for it.
+    
+    file(GLOB LUA_SOURCES 
+        "${lua_SOURCE_DIR}/*.c"
+    )
+    # Exclude lua.c and luac.c for the library build
+    list(FILTER LUA_SOURCES EXCLUDE REGEX "lua\\.c")
+    list(FILTER LUA_SOURCES EXCLUDE REGEX "luac\\.c")
+
+    add_library(lua STATIC ${LUA_SOURCES})
+    target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
+    
+    # Lua needs to be compiled as C++ if being linked into C++ project with C++ exceptions potential
+    target_compile_definitions(lua PUBLIC LUA_USE_WINDOWS) 
+endif()
+
 # ImGui sources
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
@@ -258,6 +287,9 @@ add_executable(GameEngine
     src/RotationGizmo.cpp
     src/ScaleGizmo.cpp
     src/GizmoManager.cpp
+    # Scripting System
+    src/ScriptSystem.cpp
+    src/ScriptComponent.cpp
     # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
     # src/AssetHash.cpp
     # src/AssetDatabase.cpp
@@ -279,7 +311,7 @@ add_executable(GameEngine
 
 target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include)
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath)
+target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath lua)
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD
@@ -302,7 +334,7 @@ if(BUILD_TESTS)
     FetchContent_Declare(
         googletest
         GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG release-1.14.0
+        GIT_TAG v1.14.0
     )
     # Disable warnings in googletest
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
@@ -317,7 +349,9 @@ if(BUILD_TESTS)
         tests/test_material.cpp
         tests/test_shader.cpp
         tests/game-engine-multiplayer/test_message.cpp
+        tests/game-engine-multiplayer/test_message.cpp
         tests/game-engine-multiplayer/test_serializer.cpp
+        tests/test_scripting.cpp
     )
     
     target_include_directories(tests PRIVATE 

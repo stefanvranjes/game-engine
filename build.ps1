@@ -8,7 +8,7 @@ param(
     
     [switch]$Parallel = $true,
     [int]$Jobs = 4,
-    [switch]$Verbose = $false
+    [switch]$ShowOutput = $false
 )
 
 $BuildDir = 'build'
@@ -98,7 +98,7 @@ function Check-Prerequisites {
         Write-Host "ERROR: CMake not found. Please install CMake." -ForegroundColor Red
         exit 1
     }
-    Write-Host "✓ CMake found: $($cmake.Source)" -ForegroundColor Green
+    Write-Host "[OK] CMake found: $($cmake.Source)" -ForegroundColor Green
     
     if ($EnableTidy) {
         $clangtidy = Get-Command clang-tidy -ErrorAction SilentlyContinue
@@ -106,7 +106,7 @@ function Check-Prerequisites {
             Write-Host "WARNING: clang-tidy not found. Skipping static analysis." -ForegroundColor Yellow
             $Script:EnableTidy = $false
         } else {
-            Write-Host "✓ Clang-tidy found: $($clangtidy.Source)" -ForegroundColor Green
+            Write-Host "[OK] Clang-tidy found: $($clangtidy.Source)" -ForegroundColor Green
         }
     }
 }
@@ -139,7 +139,7 @@ function Configure-CMake {
         exit 1
     }
     
-    if ($Verbose) {
+    if ($ShowOutput) {
         Write-Host $output -ForegroundColor Gray
     }
     
@@ -162,7 +162,7 @@ function Build-Project {
         '-j', $Jobs.ToString()
     )
     
-    if ($Verbose) {
+    if ($ShowOutput) {
         $buildArgs += '--verbose'
     }
     
@@ -177,7 +177,7 @@ function Build-Project {
     
     Write-Host "Build completed successfully!" -ForegroundColor Green
     
-    if ($Verbose) {
+    if ($ShowOutput) {
         Write-Host $output -ForegroundColor Gray
     }
     
@@ -194,7 +194,7 @@ function Run-Tests {
         "--build-config", $Config
     )
     
-    if ($Verbose) {
+    if ($ShowOutput) {
         $ctestArgs += '--verbose'
     }
     
@@ -231,7 +231,7 @@ function Show-Summary {
         Write-Host "  List all tests: $testExePath --gtest_list_tests`n"
     }
     
-    if ($Verbose) {
+    if ($ShowOutput) {
         Write-Host "Build completed at: $(Get-Date)" -ForegroundColor Gray
     }
 }
@@ -260,4 +260,4 @@ if ($BuildTests) {
 
 Show-Summary
 
-Write-Host "✓ Build process completed successfully!" -ForegroundColor Green
+Write-Host "[OK] Build process completed successfully!" -ForegroundColor Green

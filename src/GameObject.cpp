@@ -2,6 +2,7 @@
 #include "Frustum.h"
 #include "GLExtensions.h"
 #include "Animator.h"
+#include "ScriptComponent.h"
 #include <algorithm>
 #include <iostream>
 
@@ -30,9 +31,6 @@ GameObject::GameObject(const std::string& name)
 GameObject::~GameObject() {
     if (m_QueryID != 0) {
         glDeleteQueries(1, &m_QueryID);
-    }
-}
-
     }
 }
 
@@ -98,8 +96,14 @@ void GameObject::Update(const Mat4& parentMatrix, float deltaTime) {
         // Or cleaner: (m_WorldMatrix * Vec4(0,0,1,0)).xyz
         
         m_AudioListener->UpdateState(currentPos, forward, m_Velocity);
+        m_AudioListener->UpdateState(currentPos, forward, m_Velocity);
     }
     
+    // Update Script Component
+    if (m_ScriptComponent) {
+        m_ScriptComponent->Update(deltaTime);
+    }
+
     // Update children
     for (auto& child : m_Children) {
         child->Update(m_WorldMatrix, deltaTime);

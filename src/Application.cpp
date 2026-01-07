@@ -3,6 +3,7 @@
 #include "GLTFLoader.h"
 #include "BlendTreeEditor.h"
 #include "AudioSystem.h"
+#include "ScriptSystem.h"
 #include <iostream>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -23,6 +24,7 @@ Application::~Application() {
     }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
+    ScriptSystem::GetInstance().Shutdown();
 }
 
 void Application::Shutdown() {
@@ -31,14 +33,17 @@ void Application::Shutdown() {
     }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
+    ScriptSystem::GetInstance().Shutdown();
     m_Running = false;
 }
 
 bool Application::Init() {
-    // Initialize remote profiler (telemetry server on port 8080)
     RemoteProfiler::Instance().Initialize(8080);
     std::cout << "Remote Profiler initialized. View at: http://localhost:8080" << std::endl;
     
+    // Initialize Script System
+    ScriptSystem::GetInstance().Init();
+
     // Create window
     m_Window = std::make_unique<Window>(800, 600, "Game Engine");
     
