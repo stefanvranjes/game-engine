@@ -104,6 +104,30 @@ public:
         return result;
     }
 
+    static Mat4 RotationAxis(const Vec3& axis, float angle) {
+        Mat4 result;
+        float c = std::cos(angle);
+        float s = std::sin(angle);
+        float t = 1.0f - c;
+        
+        Vec3 a = axis.Normalized();
+        float x = a.x, y = a.y, z = a.z;
+
+        result.m[0] = t*x*x + c;
+        result.m[1] = t*x*y + s*z;
+        result.m[2] = t*x*z - s*y;
+        
+        result.m[4] = t*x*y - s*z;
+        result.m[5] = t*y*y + c;
+        result.m[6] = t*y*z + s*x;
+        
+        result.m[8] = t*x*z + s*y;
+        result.m[9] = t*y*z - s*x;
+        result.m[10] = t*z*z + c;
+        
+        return result;
+    }
+
     static Mat4 Perspective(float fov, float aspect, float nearPlane, float farPlane) {
         Mat4 result;
         std::memset(result.m, 0, sizeof(result.m));

@@ -5,6 +5,7 @@
 #include "Camera.h"
 #include "Text.h"
 #include "ImGuiManager.h"
+#include "GizmoManager.h"
 #include "PreviewRenderer.h"
 #include "Profiler.h"
 #include "TelemetryServer.h"
@@ -41,7 +42,9 @@ private:
     
     // ECS Architecture
     std::unique_ptr<EntityManager> m_EntityManager;
+    std::shared_ptr<class GizmoManager> m_GizmoManager; // Shared with Renderer
     
+    // Editor State
     int m_SelectedObjectIndex;
     
     float m_LastFrameTime;

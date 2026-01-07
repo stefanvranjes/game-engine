@@ -1683,20 +1683,6 @@ void Renderer::Render() {
     // Render fullscreen quad
     RenderQuad();
 
-    // ===== PASS 5.25: Skybox (Render Background) =====
-    {
-        GLint currentDrawFBO = 0;
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &currentDrawFBO);
-
-        // Copy depth from G-Buffer to HDR framebuffer to ensure Skybox respects depth
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, m_GBuffer->GetFBO());
-        glBlitFramebuffer(0, 0, m_GBuffer->GetWidth(), m_GBuffer->GetHeight(),
-                          0, 0, m_GBuffer->GetWidth(), m_GBuffer->GetHeight(),
-                          GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-                          
-        // Restore Read FBO to current Draw FBO (HDR FBO) for subsequent operations
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, currentDrawFBO);
-        
         if (m_Skybox) {
             m_Skybox->Draw(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
         }
@@ -3042,7 +3028,28 @@ void Renderer::RenderVegetation(const Mat4& view, const Mat4& projection, float 
         // Update visible instances based on camera
         veg->UpdateInstances(m_Camera->GetPosition());
         
-        // Render
-        veg->Render(m_GrassShader.get(), view, projection, time);
     }
 }
+
+#include "GizmoManager.h"
+#include "Shader.h"
+
+void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
+    if (m_GizmoManager) {
+        // Use a simple shader - typically loaded via Shader Manager
+        static Shader* gizmoShader = nullptr;
+        if (!gizmoShader) {
+             gizmoShader = new Shader("shaders/gizmo.vert", "shaders/gizmo.frag");
+        }
+        
+        gizmoShader->Use();
+        gizmoShader->SetMat4("view", view.m);
+        gizmoShader->SetMat4("projection", projection.m);
+        
+        // Clear depth to draw on top
+        glClear(GL_DEPTH_BUFFER_BIT); 
+        
+        m_GizmoManager->Render(gizmoShader, *m_Camera);
+    }
+}
+

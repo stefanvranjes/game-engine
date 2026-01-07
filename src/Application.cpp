@@ -57,6 +57,10 @@ bool Application::Init() {
     // Create camera
     m_Camera = std::make_unique<Camera>(Vec3(0, 0, 5), 45.0f, 800.0f / 600.0f);
     m_Renderer->SetCamera(m_Camera.get());
+
+    // Initialize Gizmo Manager
+    m_GizmoManager = std::make_shared<GizmoManager>();
+    m_Renderer->SetGizmoManager(m_GizmoManager);
     
     // Enable depth testing
     glEnable(GL_DEPTH_TEST);
@@ -159,6 +163,21 @@ void Application::Update(float deltaTime) {
         m_FPSTimer = 0.0f;
     }
 
+    // Update Gizmo Manager
+    if (m_GizmoManager && m_Camera) {
+        m_GizmoManager->Update(deltaTime);
+        // Process Input for Gizmos (intercepts if dragging)
+        m_GizmoManager->ProcessInput(m_Window->GetGLFWWindow(), deltaTime, *m_Camera);
+        
+        // Disable camera input if using gizmo
+        if (m_GizmoManager->IsDragging()) {
+             // We can hack this by "eating" the delta time for camera or similar?
+             // Or explicitly disabling camera input. 
+             // Camera::ProcessInput doesn't have an enable/disable flag visible here.
+             // But we can check before calling Camera::ProcessInput below.
+        }
+    }
+
     // Update ECS (core game logic)
     {
         SCOPED_PROFILE("ECS::Update");
@@ -172,7 +191,13 @@ void Application::Update(float deltaTime) {
         SCOPED_PROFILE("Camera::Update");
         if (m_Camera) {
         Vec3 oldPos = m_Camera->GetPosition();
-        m_Camera->ProcessInput(m_Window->GetGLFWWindow(), deltaTime);
+        
+        // Only process camera input if NOT dragging a gizmo
+        bool isGizmoDragging = m_GizmoManager && m_GizmoManager->IsDragging();
+        if (!isGizmoDragging) {
+            m_Camera->ProcessInput(m_Window->GetGLFWWindow(), deltaTime);
+        }
+        
         Vec3 newPos = m_Camera->GetPosition();
 
         // Create player AABB (size 0.5)
@@ -274,6 +299,11 @@ void Application::Render() {
     {
         PROFILE_GPU("Renderer::Render");
         m_Renderer->Render();
+        
+        // Render Gizmos on top of scene
+        if (m_Renderer && m_Camera) {
+             m_Renderer->RenderGizmos(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+        }
     }
 
     // Render UI (HUD)
@@ -316,6 +346,11 @@ void Application::RenderEditorUI() {
             std::string label = children[i]->GetName() + " ##" + std::to_string(i);
             if (ImGui::Selectable(label.c_str(), m_SelectedObjectIndex == static_cast<int>(i))) {
                 m_SelectedObjectIndex = static_cast<int>(i);
+                
+                // Update Gizmo Selection
+                if (m_GizmoManager) {
+                    m_GizmoManager->SetSelectedObject(children[i]);
+                }
             }
         }
         

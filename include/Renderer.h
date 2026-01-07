@@ -104,6 +104,11 @@ public:
     void SetBatchedRenderingEnabled(bool enabled) { m_BatchedRenderingEnabled = enabled; }
     bool GetBatchedRenderingEnabled() const { return m_BatchedRenderingEnabled; }
     
+    // Gizmos
+    void SetGizmoManager(std::shared_ptr<class GizmoManager> gizmoManager) { m_GizmoManager = gizmoManager; }
+    std::shared_ptr<class GizmoManager> GetGizmoManager() const { return m_GizmoManager; }
+    void RenderGizmos(const Mat4& view, const Mat4& projection);
+
     // Planar Reflections
     PlanarReflection* GetPlanarReflection() { return m_PlanarReflection.get(); }
     void SetPlanarReflectionEnabled(bool enabled) { m_PlanarReflectionEnabled = enabled; }
@@ -227,6 +232,8 @@ private:
     void RenderSceneForward(Shader* shader);
     void RenderWater(const Mat4& view, const Mat4& projection);
 
+    std::shared_ptr<class GizmoManager> m_GizmoManager;
+    
     // Debug
     bool m_ShowCascades;
     

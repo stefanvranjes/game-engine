@@ -252,6 +252,12 @@ add_executable(GameEngine
     # Asset Browser
     src/AssetBrowser.cpp
     src/AssetThumbnailGenerator.cpp
+    # Gizmos
+    src/Gizmo.cpp
+    src/TranslationGizmo.cpp
+    src/RotationGizmo.cpp
+    src/ScaleGizmo.cpp
+    src/GizmoManager.cpp
     # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
     # src/AssetHash.cpp
     # src/AssetDatabase.cpp

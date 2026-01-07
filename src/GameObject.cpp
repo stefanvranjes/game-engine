@@ -327,6 +327,7 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
              float cz = -(view.m[2][0]*tx + view.m[2][1]*ty + view.m[2][2]*tz);
              
              shaderToUse->SetVec3("u_CameraPos", cx, cy, cz);
+        }
 
         if (model) {
             // Model drawing doesn't support alpha override easily yet without traversing materials.

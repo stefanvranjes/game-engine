@@ -117,3 +117,4 @@ private:
     std::shared_ptr<class Shader> m_NormalMapShader;
     
     bool m_FFTInitialized = false;
+};
