@@ -2937,3 +2937,112 @@ void Renderer::UpdateWaterSprayEmitters(float deltaTime) {
         }
     }
 }
+
+void Renderer::RenderTerrain(const Mat4& view, const Mat4& projection) {
+    if (!m_Root || !m_TerrainShader || !m_Camera) return;
+
+    SCOPED_PROFILE("RenderTerrain");
+    SCOPED_GPU_PROFILE("TerrainPass", glm::vec4(0.5f, 0.3f, 0.1f, 1.0f));
+
+    // Find all terrain objects
+    std::vector<GameObject*> terrainObjects;
+    std::vector<GameObject*> queue = { m_Root.get() };
+    
+    while (!queue.empty()) {
+        auto obj = queue.back();
+        queue.pop_back();
+        
+        if (obj->GetTerrain()) {
+            terrainObjects.push_back(obj);
+        }
+        
+        for (auto& child : obj->GetChildren()) {
+            queue.push_back(child.get());
+        }
+    }
+
+    if (terrainObjects.empty()) return;
+
+    // Bind G-Buffer for terrain rendering
+    m_GBuffer->Bind();
+
+    m_TerrainShader->Use();
+    
+    // Set camera uniforms
+    m_TerrainShader->SetMat4("u_View", view.m);
+    m_TerrainShader->SetMat4("u_Projection", projection.m);
+    m_TerrainShader->SetVec3("u_ViewPos", m_Camera->GetPosition().x, m_Camera->GetPosition().y, m_Camera->GetPosition().z);
+
+    // Render each terrain
+    for (auto* obj : terrainObjects) {
+        auto terrain = obj->GetTerrain();
+        if (!terrain) continue;
+        
+        // Update terrain position from game object
+        Vec3 objPos = obj->GetWorldMatrix().GetTranslation();
+        terrain->SetPosition(objPos);
+        
+        // Update LOD based on camera distance
+        terrain->UpdateLOD(m_Camera->GetPosition());
+        
+        // Render terrain
+        terrain->Render(m_TerrainShader.get(), view, projection);
+    }
+
+    m_GBuffer->Unbind();
+}
+
+void Renderer::RenderVegetation(const Mat4& view, const Mat4& projection, float time) {
+    if (!m_Root || !m_GrassShader || !m_Camera) return;
+
+    SCOPED_PROFILE("RenderVegetation");
+    SCOPED_GPU_PROFILE("VegetationPass", glm::vec4(0.2f, 0.6f, 0.2f, 1.0f));
+
+    // Collect vegetation from terrain objects
+    std::vector<Vegetation*> vegetationList;
+    std::vector<GameObject*> queue = { m_Root.get() };
+    
+    while (!queue.empty()) {
+        auto obj = queue.back();
+        queue.pop_back();
+        
+        if (obj->GetTerrain() && obj->GetTerrain()->GetVegetation()) {
+            vegetationList.push_back(obj->GetTerrain()->GetVegetation().get());
+        }
+        
+        for (auto& child : obj->GetChildren()) {
+            queue.push_back(child.get());
+        }
+    }
+
+    if (vegetationList.empty()) return;
+
+    // Setup shader uniforms
+    m_GrassShader->Use();
+    
+    // Set light direction from first directional light
+    Vec3 lightDir(0.0f, -1.0f, 0.0f);
+    Vec3 lightColor(1.0f, 1.0f, 1.0f);
+    for (const auto& light : m_Lights) {
+        if (light.type == LightType::Directional) {
+            lightDir = light.direction;
+            lightColor = light.color;
+            break;
+        }
+    }
+    m_GrassShader->SetVec3("u_LightDir", lightDir.x, lightDir.y, lightDir.z);
+    m_GrassShader->SetVec3("u_LightColor", lightColor.x, lightColor.y, lightColor.z);
+    m_GrassShader->SetFloat("u_AmbientStrength", 0.3f);
+    m_GrassShader->SetVec3("u_ViewPos", m_Camera->GetPosition().x, m_Camera->GetPosition().y, m_Camera->GetPosition().z);
+
+    // Render each vegetation system
+    for (auto* veg : vegetationList) {
+        if (!veg) continue;
+        
+        // Update visible instances based on camera
+        veg->UpdateInstances(m_Camera->GetPosition());
+        
+        // Render
+        veg->Render(m_GrassShader.get(), view, projection, time);
+    }
+}

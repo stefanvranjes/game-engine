@@ -217,6 +217,9 @@ add_executable(GameEngine
     src/Water.cpp
     src/PlanarReflection.cpp
     src/WaterSprayEmitter.cpp
+    src/Terrain.cpp
+    src/Vegetation.cpp
+    src/TerrainBrush.cpp
     src/Sprite.cpp
     src/SSBO.cpp
     src/AudioSystem.cpp
@@ -243,9 +246,12 @@ add_executable(GameEngine
     # src/PhysicsSystem.cpp
     # src/RigidBody.cpp
     # src/KinematicController.cpp
-    # Scene serialization and prefabs - DISABLED
-    # src/SceneSerializer.cpp
-    # src/Prefab.cpp
+    # Scene serialization and prefabs
+    src/SceneSerializer.cpp
+    src/Prefab.cpp
+    # Asset Browser
+    src/AssetBrowser.cpp
+    src/AssetThumbnailGenerator.cpp
     # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
     # src/AssetHash.cpp
     # src/AssetDatabase.cpp

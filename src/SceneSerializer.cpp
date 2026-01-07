@@ -1,5 +1,5 @@
 #include "SceneSerializer.h"
-#include "Material.h"
+#include "MaterialNew.h"
 #include "Animator.h"
 #include "RigidBody.h"
 #include "KinematicController.h"
@@ -376,8 +376,8 @@ json SceneSerializer::SerializeLight(const Light& light)
     lightJson["color"] = {light.color.x, light.color.y, light.color.z};
     lightJson["intensity"] = light.intensity;
     lightJson["range"] = light.range;
-    lightJson["cutoff"] = light.cutoff;
-    lightJson["outerCutoff"] = light.outerCutoff;
+    lightJson["cutOff"] = light.cutOff;
+    lightJson["outerCutOff"] = light.outerCutOff;
     return lightJson;
 }
 
@@ -390,8 +390,8 @@ Light SceneSerializer::DeserializeLight(const json& data)
     if (data.contains("color")) light.color = Vec3(data["color"][0], data["color"][1], data["color"][2]);
     if (data.contains("intensity")) light.intensity = data["intensity"];
     if (data.contains("range")) light.range = data["range"];
-    if (data.contains("cutoff")) light.cutoff = data["cutoff"];
-    if (data.contains("outerCutoff")) light.outerCutoff = data["outerCutoff"];
+    if (data.contains("cutOff")) light.cutOff = data["cutOff"];
+    if (data.contains("outerCutOff")) light.outerCutOff = data["outerCutOff"];
     return light;
 }
 
@@ -518,7 +518,7 @@ void SceneSerializer::WriteBinaryVec2(std::vector<uint8_t>& buffer, const Vec2& 
 
 Vec2 SceneSerializer::ReadBinaryVec2(const std::vector<uint8_t>& buffer, size_t& offset)
 {
-    if (offset + 8 > buffer.size()) return Vec2(0);
+    if (offset + 8 > buffer.size()) return Vec2(0, 0);
     Vec2 result;
     result.x = *reinterpret_cast<const float*>(buffer.data() + offset);
     offset += 4;

@@ -1,5 +1,5 @@
 #include "Prefab.h"
-#include "Material.h"
+#include "MaterialNew.h"
 #include <fstream>
 #include <sstream>
 #include <chrono>
@@ -7,6 +7,12 @@
 #include <iostream>
 #include <filesystem>
 #include <algorithm>
+
+// Helper function for C++17 compatibility (ends_with is C++20)
+static bool ends_with(const std::string& str, const std::string& suffix) {
+    if (suffix.length() > str.length()) return false;
+    return str.compare(str.length() - suffix.length(), suffix.length(), suffix) == 0;
+}
 
 // ============================================================================
 // Prefab Implementation
@@ -280,7 +286,7 @@ std::shared_ptr<Prefab> PrefabManager::LoadPrefab(const std::string& filename)
         json fullData;
         
         // Determine format and load
-        if (filename.ends_with(".json")) {
+        if (ends_with(filename, ".json")) {
             std::ifstream file(filename);
             if (!file.is_open()) {
                 SetError("Failed to open prefab file: " + filename);
@@ -289,7 +295,7 @@ std::shared_ptr<Prefab> PrefabManager::LoadPrefab(const std::string& filename)
             file >> fullData;
             file.close();
         }
-        else if (filename.ends_with(".bin")) {
+        else if (ends_with(filename, ".bin")) {
             std::ifstream file(filename, std::ios::binary);
             if (!file.is_open()) {
                 SetError("Failed to open prefab file: " + filename);
@@ -432,7 +438,7 @@ int PrefabManager::LoadAllPrefabs()
         for (const auto& entry : std::filesystem::directory_iterator(m_PrefabDirectory)) {
             if (entry.is_regular_file()) {
                 std::string filename = entry.path().filename().string();
-                if (filename.ends_with(".json") || filename.ends_with(".bin")) {
+                if (ends_with(filename, ".json") || ends_with(filename, ".bin")) {
                     auto prefab = LoadPrefab(entry.path().string());
                     if (prefab) {
                         std::string prefabName = filename.substr(0, filename.find_last_of('.'));
@@ -491,7 +497,7 @@ void PrefabManager::SetError(const std::string& error)
 std::string PrefabManager::BuildPrefabPath(const std::string& filename, const std::string& ext)
 {
     std::string path = m_PrefabDirectory + "/" + filename;
-    if (!filename.ends_with(ext)) {
+    if (!ends_with(filename, ext)) {
         path += ext;
     }
     return path;
