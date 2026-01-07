@@ -18,6 +18,22 @@ public:
     // Apply all post-processing effects and render to screen
     void ApplyEffects();
     
+    // Underwater effect pass
+    struct UnderwaterParams {
+        bool isUnderwater = false;
+        float time = 0.0f;
+        float nearPlane = 0.1f;
+        float farPlane = 100.0f;
+        float tintR = 0.1f, tintG = 0.4f, tintB = 0.5f;
+        float fogDensity = 0.04f;
+        float fogStart = 0.0f;
+        float fogEnd = 50.0f;
+        float distortion = 0.008f;
+        float distortionSpeed = 2.0f;
+        float vignette = 0.3f;
+    };
+    void ApplyUnderwaterEffect(const UnderwaterParams& params, GLuint depthTexture);
+    
     // Getters for parameters
     bool IsBloomEnabled() const { return m_BloomEnabled; }
     float GetBloomIntensity() const { return m_BloomIntensity; }
@@ -69,6 +85,7 @@ private:
     std::unique_ptr<Shader> m_BlurShader;
     std::unique_ptr<Shader> m_BloomBlendShader;
     std::unique_ptr<Shader> m_ToneMappingShader;
+    std::unique_ptr<Shader> m_UnderwaterShader;
     
     // Parameters
     bool m_BloomEnabled;

@@ -19,7 +19,9 @@
 #include "VolumetricFog.h"
 #include "SceneSerializer.h"
 #include "Prefab.h"
+#include "PlanarReflection.h"
 #include "Water.h"
+#include "WaterSprayEmitter.h"
 #include <memory>
 #include <vector>
 #include <string>
@@ -99,6 +101,11 @@ public:
     // Batched Rendering
     void SetBatchedRenderingEnabled(bool enabled) { m_BatchedRenderingEnabled = enabled; }
     bool GetBatchedRenderingEnabled() const { return m_BatchedRenderingEnabled; }
+    
+    // Planar Reflections
+    PlanarReflection* GetPlanarReflection() { return m_PlanarReflection.get(); }
+    void SetPlanarReflectionEnabled(bool enabled) { m_PlanarReflectionEnabled = enabled; }
+    bool GetPlanarReflectionEnabled() const { return m_PlanarReflectionEnabled; }
     
     void AddCube(const Transform& transform);
     void AddPyramid(const Transform& transform);
@@ -187,6 +194,15 @@ private:
     bool m_VolumetricFogEnabled;
     std::unique_ptr<ParticleSystem> m_ParticleSystem;
     bool m_BatchedRenderingEnabled;
+    
+    // Planar Reflections
+    std::unique_ptr<PlanarReflection> m_PlanarReflection;
+    bool m_PlanarReflectionEnabled = true;
+    void RenderReflectionPass();
+    
+    // Water Spray Particles
+    std::unordered_map<GameObject*, std::unique_ptr<class WaterSprayEmitter>> m_WaterSprayEmitters;
+    void UpdateWaterSprayEmitters(float deltaTime);
     
     unsigned int m_QuadVAO, m_QuadVBO;
     unsigned int m_InstanceVBO; // VBO for instance data (model matrices)

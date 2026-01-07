@@ -5,6 +5,7 @@
 #include "GLTFLoader.h"
 #include "Profiler.h"
 #include "Decal.h"
+#include "PlanarReflection.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -686,6 +687,13 @@ bool Renderer::Init() {
         return false;
     }
 
+    // Initialize Planar Reflections
+    m_PlanarReflection = std::make_unique<PlanarReflection>();
+    if (!m_PlanarReflection->Init(width / 2, height / 2)) { // Half resolution for performance
+        std::cerr << "Failed to initialize Planar Reflections" << std::endl;
+        return false;
+    }
+
     // Initialize IBL
     InitIBL();
 
@@ -1344,6 +1352,11 @@ void Renderer::Render() {
     }
     }
 
+    // ===== PASS 3.5: Planar Reflection Pass =====
+    if (m_PlanarReflectionEnabled && m_PlanarReflection && m_PlanarReflection->m_Enabled) {
+        RenderReflectionPass();
+    }
+
     // ===== PASS 4: Geometry Pass - Render to G-Buffer =====
     {
         SCOPED_PROFILE("GeometryPass");
@@ -1545,6 +1558,57 @@ void Renderer::Render() {
     // But modifying shader to take tint might be cleaner.
     // For now, if texture is black, it adds nothing.
     m_LightingShader->SetInt("volumetricFogEnabled", m_VolumetricFogEnabled ? 1 : 0);
+    
+    // Bind Caustics
+    bool causticsEnabled = false;
+    float waterLevel = 0.0f;
+    float causticsIntensity = 0.5f;
+    float causticsScale = 0.1f;
+    float causticsSpeed = 0.5f;
+    float causticsDepth = 20.0f;
+    
+    // Find water object for caustics parameters
+    if (m_Root) {
+        std::vector<GameObject*> searchQueue = { m_Root.get() };
+        while (!searchQueue.empty() && !causticsEnabled) {
+            auto obj = searchQueue.back();
+            searchQueue.pop_back();
+            if (obj->GetWater() && obj->GetWater()->m_UseCaustics) {
+                auto water = obj->GetWater();
+                causticsEnabled = true;
+                Vec3 waterPos = obj->GetWorldMatrix().GetTranslation();
+                waterLevel = waterPos.y + water->m_PlaneY;
+                causticsIntensity = water->m_CausticsIntensity;
+                causticsScale = water->m_CausticsScale;
+                causticsSpeed = water->m_CausticsSpeed;
+                causticsDepth = water->m_CausticsDepth;
+                break;
+            }
+            for (auto& child : obj->GetChildren()) {
+                searchQueue.push_back(child.get());
+            }
+        }
+    }
+    
+    glActiveTexture(GL_TEXTURE0 + 24);
+    if (causticsEnabled && m_TextureManager) {
+        auto causticsTex = m_TextureManager->LoadTexture("assets/caustics.png");
+        if (causticsTex) {
+            glBindTexture(GL_TEXTURE_2D, causticsTex->GetID());
+        } else {
+            glBindTexture(GL_TEXTURE_2D, 0);
+        }
+    } else {
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+    m_LightingShader->SetInt("u_CausticsTexture", 24);
+    m_LightingShader->SetInt("u_CausticsEnabled", causticsEnabled ? 1 : 0);
+    m_LightingShader->SetFloat("u_CausticsIntensity", causticsIntensity);
+    m_LightingShader->SetFloat("u_CausticsScale", causticsScale);
+    m_LightingShader->SetFloat("u_CausticsSpeed", causticsSpeed);
+    m_LightingShader->SetFloat("u_CausticsDepth", causticsDepth);
+    m_LightingShader->SetFloat("u_WaterLevel", waterLevel);
+    m_LightingShader->SetFloat("u_Time", (float)glfwGetTime());
 
     // Bind Light Probe (Test with first probe)
     if (!m_LightProbes.empty()) {
@@ -2541,6 +2605,117 @@ void Renderer::RenderUnitCube() {
     glBindVertexArray(0);
 }
 
+void Renderer::RenderReflectionPass() {
+    if (!m_PlanarReflection || !m_Camera || !m_Root) return;
+    
+    SCOPED_PROFILE("PlanarReflection");
+    SCOPED_GPU_PROFILE("PlanarReflectionPass", glm::vec4(0.2f, 0.6f, 1.0f, 1.0f));
+    
+    // Find water objects to determine reflection plane
+    std::vector<GameObject*> waterObjects;
+    std::vector<GameObject*> queue = { m_Root.get() };
+    
+    while (!queue.empty()) {
+        auto obj = queue.back();
+        queue.pop_back();
+        
+        if (obj->GetWater() && obj->GetWater()->m_UsePlanarReflection) {
+            waterObjects.push_back(obj);
+        }
+        
+        for (auto& child : obj->GetChildren()) {
+            queue.push_back(child.get());
+        }
+    }
+    
+    if (waterObjects.empty()) return;
+    
+    // Use first water object to determine reflection plane
+    // In a full implementation, you might render multiple reflection passes
+    auto water = waterObjects[0]->GetWater();
+    Vec3 waterPos = waterObjects[0]->GetWorldMatrix().GetTranslation();
+    
+    // Set up reflection plane at water surface height
+    Vec3 planePoint(0.0f, waterPos.y + water->m_PlaneY, 0.0f);
+    Vec3 planeNormal(0.0f, 1.0f, 0.0f);
+    m_PlanarReflection->SetPlane(planePoint, planeNormal);
+    
+    // Store original viewport
+    GLint originalViewport[4];
+    glGetIntegerv(GL_VIEWPORT, originalViewport);
+    
+    // Get reflected view matrix
+    Mat4 reflectedView = m_PlanarReflection->GetReflectedView(m_Camera);
+    Mat4 projection = m_Camera->GetProjectionMatrix();
+    
+    // Bind reflection framebuffer
+    m_PlanarReflection->BindForWriting();
+    
+    // Enable clip plane to avoid rendering objects below water
+    glEnable(GL_CLIP_DISTANCE0);
+    
+    // Flip face culling since we're rendering a reflection
+    glFrontFace(GL_CW);
+    
+    // Render skybox first (with reflected view)
+    if (m_Skybox) {
+        // Create view matrix without translation for skybox
+        Mat4 skyboxView = reflectedView;
+        // Zero out translation
+        skyboxView.m[12] = 0.0f;
+        skyboxView.m[13] = 0.0f;
+        skyboxView.m[14] = 0.0f;
+        m_Skybox->Draw(skyboxView, projection);
+    }
+    
+    // Render scene geometry
+    if (m_GeometryShader) {
+        m_GeometryShader->Use();
+        
+        // Set clip plane uniform
+        Vec4 clipPlane = m_PlanarReflection->GetClipPlane(reflectedView);
+        m_GeometryShader->SetVec4("u_ClipPlane", clipPlane.x, clipPlane.y, clipPlane.z, clipPlane.w);
+        m_GeometryShader->SetInt("u_UseClipPlane", 1);
+        
+        // Set view position
+        Vec3 reflectedPos = m_Camera->GetPosition();
+        float d = (reflectedPos - planePoint).Dot(planeNormal);
+        reflectedPos = reflectedPos - planeNormal * (2.0f * d);
+        m_GeometryShader->SetVec3("u_ViewPos", reflectedPos.x, reflectedPos.y, reflectedPos.z);
+        
+        // Upload bone matrices if root has an animator
+        if (m_Root->GetAnimator()) {
+            auto animator = m_Root->GetAnimator();
+            const auto& boneMatrices = animator->GetBoneMatrices();
+            for (size_t i = 0; i < boneMatrices.size() && i < 100; ++i) {
+                std::string uniformName = "u_BoneMatrices[" + std::to_string(i) + "]";
+                m_GeometryShader->SetMat4(uniformName, boneMatrices[i].m);
+            }
+            m_GeometryShader->SetInt("u_Skinned", 1);
+        } else {
+            m_GeometryShader->SetInt("u_Skinned", 0);
+        }
+        
+        // Render scene (skip water objects)
+        for (auto& child : m_Root->GetChildren()) {
+            if (!child->GetWater()) {
+                child->Draw(m_GeometryShader.get(), reflectedView, projection);
+            }
+        }
+        
+        // Reset clip plane
+        m_GeometryShader->SetInt("u_UseClipPlane", 0);
+    }
+    
+    // Restore state
+    glFrontFace(GL_CCW);
+    glDisable(GL_CLIP_DISTANCE0);
+    m_PlanarReflection->Unbind();
+    
+    // Restore original viewport
+    glViewport(originalViewport[0], originalViewport[1], originalViewport[2], originalViewport[3]);
+}
+
 void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
     if (!m_WaterShader) return;
     if (!m_Root) return;
@@ -2590,22 +2765,48 @@ void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
     }
     if (!foundDir && !m_Lights.empty()) dirLight = m_Lights[0];
     
-    m_WaterShader->SetVec3("u_DirectionalLight.direction", dirLight.direction.x, dirLight.direction.y, dirLight.direction.z);
-    m_WaterShader->SetVec3("u_DirectionalLight.color", dirLight.color.x, dirLight.color.y, dirLight.color.z);
+    // Pass light direction (normalized) and color
+    Vec3 lightDir = dirLight.direction.Normalized();
+    m_WaterShader->SetVec3("u_LightDir", lightDir.x, lightDir.y, lightDir.z);
+    m_WaterShader->SetVec3("u_LightColor", dirLight.color.x, dirLight.color.y, dirLight.color.z);
     
-    // Bind Environment
+    // Bind Environment (Skybox)
     glActiveTexture(GL_TEXTURE1);
     if (m_EnvCubemap) {
         glBindTexture(GL_TEXTURE_CUBE_MAP, m_EnvCubemap);
     } else {
         glBindTexture(GL_TEXTURE_CUBE_MAP, 0); 
     }
-    m_WaterShader->SetInt("u_Skybox", 1);
+    m_WaterShader->SetInt("skybox", 1);
     
     // Bind Refraction Texture
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, m_RefractionTexture);
     m_WaterShader->SetInt("u_RefractionMap", 2); 
+    
+    // Bind Planar Reflection Texture
+    if (m_PlanarReflectionEnabled && m_PlanarReflection && m_PlanarReflection->m_Enabled) {
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, m_PlanarReflection->GetReflectionTexture());
+        m_WaterShader->SetInt("u_PlanarReflection", 3);
+    }
+    
+    // Bind Depth Texture (for shoreline foam)
+    glActiveTexture(GL_TEXTURE4);
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->GetDepthTexture());
+    m_WaterShader->SetInt("u_DepthTexture", 4);
+    
+    // Bind Foam Texture (placeholder - use normal map for now if no foam texture)
+    glActiveTexture(GL_TEXTURE7);
+    if (m_TextureManager) {
+        auto foamTex = m_TextureManager->LoadTexture("assets/foam.png");
+        if (foamTex) {
+            glBindTexture(GL_TEXTURE_2D, foamTex->GetID());
+        } else {
+            glBindTexture(GL_TEXTURE_2D, m_Texture ? m_Texture->GetID() : 0);
+        }
+    }
+    m_WaterShader->SetInt("u_FoamTexture", 7); 
     
     // Render Objects
     for (auto obj : waterObjects) {
@@ -2615,10 +2816,40 @@ void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
         m_WaterShader->SetVec3("u_DeepColor", water->m_DeepColor.x, water->m_DeepColor.y, water->m_DeepColor.z);
         m_WaterShader->SetVec3("u_ShallowColor", water->m_ShallowColor.x, water->m_ShallowColor.y, water->m_ShallowColor.z);
         m_WaterShader->SetFloat("u_L", water->m_OceanSize);
-        m_WaterShader->SetFloat("u_WaveSpeed", water->m_WaveSpeed);
-        m_WaterShader->SetFloat("u_WaveStrength", water->m_WaveStrength);
-        m_WaterShader->SetFloat("u_WaveFoamThreshold", water->m_WaveFoamThreshold);
         m_WaterShader->SetFloat("u_Clarity", water->m_Clarity);
+        
+        // Planar Reflection Settings
+        bool usePlanar = m_PlanarReflectionEnabled && m_PlanarReflection && 
+                         m_PlanarReflection->m_Enabled && water->m_UsePlanarReflection;
+        m_WaterShader->SetInt("u_UsePlanarReflection", usePlanar ? 1 : 0);
+        m_WaterShader->SetFloat("u_ReflectionDistortion", water->m_ReflectionDistortion);
+        
+        // Absorption & Subsurface Scattering
+        m_WaterShader->SetVec3("u_AbsorptionColor", water->m_AbsorptionColor.x, water->m_AbsorptionColor.y, water->m_AbsorptionColor.z);
+        m_WaterShader->SetFloat("u_AbsorptionScale", water->m_AbsorptionScale);
+        m_WaterShader->SetVec3("u_ScatterColor", water->m_ScatterColor.x, water->m_ScatterColor.y, water->m_ScatterColor.z);
+        m_WaterShader->SetFloat("u_ScatterStrength", water->m_ScatterStrength);
+        
+        // Foam
+        m_WaterShader->SetFloat("u_FoamIntensity", water->m_FoamIntensity);
+        m_WaterShader->SetFloat("u_FoamThreshold", water->m_FoamThreshold);
+        m_WaterShader->SetFloat("u_FoamFalloff", water->m_FoamFalloff);
+        m_WaterShader->SetVec3("u_FoamColor", water->m_FoamColor.x, water->m_FoamColor.y, water->m_FoamColor.z);
+        m_WaterShader->SetFloat("u_ShorelineFoamWidth", water->m_ShorelineFoamWidth);
+        
+        // Specular / PBR
+        m_WaterShader->SetFloat("u_Roughness", water->m_Roughness);
+        m_WaterShader->SetFloat("u_SpecularIntensity", water->m_SpecularIntensity);
+        
+        // Gerstner Waves
+        m_WaterShader->SetInt("u_UseGerstner", water->m_UseGerstnerWaves ? 1 : 0);
+        m_WaterShader->SetFloat("u_GerstnerAmplitude", water->m_GerstnerAmplitude);
+        m_WaterShader->SetFloat("u_GerstnerFrequency", water->m_GerstnerFrequency);
+        m_WaterShader->SetFloat("u_GerstnerSteepness", water->m_GerstnerSteepness);
+        
+        // Camera near/far for depth linearization
+        m_WaterShader->SetFloat("u_NearPlane", m_Camera->GetNearPlane());
+        m_WaterShader->SetFloat("u_FarPlane", m_Camera->GetFarPlane());
         
         // Bind Textures
         glActiveTexture(GL_TEXTURE0);
@@ -2642,5 +2873,67 @@ void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
         m_WaterShader->SetMat4("u_Model", model.m);
         
         obj->Draw(m_WaterShader.get(), view, projection);
+    }
+}
+
+void Renderer::UpdateWaterSprayEmitters(float deltaTime) {
+    if (!m_Root || !m_Camera) return;
+
+    SCOPED_PROFILE("UpdateWaterSpray");
+
+    // Find all water objects
+    std::vector<GameObject*> waterObjects;
+    std::vector<GameObject*> queue = { m_Root.get() };
+    
+    while (!queue.empty()) {
+        auto obj = queue.back();
+        queue.pop_back();
+        
+        if (obj->GetWater() && obj->GetWater()->m_UseSprayParticles) {
+            waterObjects.push_back(obj);
+        }
+        
+        for (auto& child : obj->GetChildren()) {
+            queue.push_back(child.get());
+        }
+    }
+
+    // Create or update emitters for each water object
+    for (auto* waterObj : waterObjects) {
+        auto it = m_WaterSprayEmitters.find(waterObj);
+        
+        if (it == m_WaterSprayEmitters.end()) {
+            // Create new emitter
+            auto emitter = std::make_unique<WaterSprayEmitter>();
+            if (emitter->Init(waterObj, 500)) {
+                // Set spray texture
+                if (m_TextureManager) {
+                    auto sprayTex = m_TextureManager->LoadTexture("assets/spray.png");
+                    if (sprayTex) {
+                        emitter->SetTexture(sprayTex);
+                    }
+                }
+                m_WaterSprayEmitters[waterObj] = std::move(emitter);
+            }
+        } else {
+            // Update existing emitter
+            it->second->Update(deltaTime, m_Camera->GetPosition());
+        }
+    }
+
+    // Clean up emitters for removed water objects
+    for (auto it = m_WaterSprayEmitters.begin(); it != m_WaterSprayEmitters.end(); ) {
+        bool found = false;
+        for (auto* waterObj : waterObjects) {
+            if (it->first == waterObj) {
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            it = m_WaterSprayEmitters.erase(it);
+        } else {
+            ++it;
+        }
     }
 }

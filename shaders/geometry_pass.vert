@@ -27,6 +27,10 @@ const int MAX_BONES = 100;
 uniform bool u_Skinned;
 uniform mat4 u_BoneMatrices[MAX_BONES];
 
+// Clip plane for planar reflections
+uniform vec4 u_ClipPlane;
+uniform int u_UseClipPlane;
+
 void main()
 {
     vec4 localPos = vec4(aPos, 1.0);
@@ -56,6 +60,13 @@ void main()
     Normal = mat3(transpose(inverse(modelMatrix))) * localNormal;
     TexCoord = aTexCoord;
     ViewPos = u_ViewPos;
+    
+    // Clip plane for planar reflections
+    if (u_UseClipPlane == 1) {
+        gl_ClipDistance[0] = dot(worldPos, u_ClipPlane);
+    } else {
+        gl_ClipDistance[0] = 1.0; // Always pass when not using clip plane
+    }
     
     // Calculate current and previous clip-space positions for motion vectors
     // Note: For instanced, we need to calculate MVP manually or pass View/Proj

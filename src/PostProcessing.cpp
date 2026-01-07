@@ -59,6 +59,12 @@ bool PostProcessing::Init(int width, int height) {
         return false;
     }
     
+    m_UnderwaterShader = std::make_unique<Shader>();
+    if (!m_UnderwaterShader->LoadFromFiles("shaders/underwater.vert", "shaders/underwater.frag")) {
+        std::cerr << "Failed to load underwater shader" << std::endl;
+        // Non-fatal, underwater effects will just be disabled
+    }
+    
     // Create framebuffers
     CreateFramebuffers();
     
@@ -262,4 +268,52 @@ void PostProcessing::RenderQuad() {
     glBindVertexArray(m_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
     glBindVertexArray(0);
+}
+
+void PostProcessing::ApplyUnderwaterEffect(const UnderwaterParams& params, GLuint depthTexture) {
+    if (!params.isUnderwater || !m_UnderwaterShader) {
+        return;
+    }
+    
+    glDisable(GL_DEPTH_TEST);
+    
+    // We apply underwater effect to the HDR buffer in-place
+    // by rendering to a ping-pong buffer then copying back
+    glBindFramebuffer(GL_FRAMEBUFFER, m_PingPongFBO[0]);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    m_UnderwaterShader->Use();
+    
+    // Bind scene texture
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, m_HDRColorBuffer);
+    m_UnderwaterShader->SetInt("u_SceneTexture", 0);
+    
+    // Bind depth texture
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, depthTexture);
+    m_UnderwaterShader->SetInt("u_DepthTexture", 1);
+    
+    // Set uniforms
+    m_UnderwaterShader->SetInt("u_IsUnderwater", 1);
+    m_UnderwaterShader->SetFloat("u_Time", params.time);
+    m_UnderwaterShader->SetFloat("u_NearPlane", params.nearPlane);
+    m_UnderwaterShader->SetFloat("u_FarPlane", params.farPlane);
+    m_UnderwaterShader->SetVec3("u_UnderwaterTint", params.tintR, params.tintG, params.tintB);
+    m_UnderwaterShader->SetFloat("u_FogDensity", params.fogDensity);
+    m_UnderwaterShader->SetFloat("u_FogStart", params.fogStart);
+    m_UnderwaterShader->SetFloat("u_FogEnd", params.fogEnd);
+    m_UnderwaterShader->SetFloat("u_Distortion", params.distortion);
+    m_UnderwaterShader->SetFloat("u_DistortionSpeed", params.distortionSpeed);
+    m_UnderwaterShader->SetFloat("u_Vignette", params.vignette);
+    
+    RenderQuad();
+    
+    // Copy result back to HDR buffer
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, m_PingPongFBO[0]);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_HDRFBO);
+    glBlitFramebuffer(0, 0, m_Width, m_Height, 0, 0, m_Width, m_Height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glEnable(GL_DEPTH_TEST);
 }

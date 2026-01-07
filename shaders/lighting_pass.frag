@@ -74,6 +74,16 @@ uniform samplerCube u_ReflectionProbeCubemaps[4];
 uniform sampler2D volumetricFogTexture;
 uniform int volumetricFogEnabled;
 
+// Caustics
+uniform sampler2D u_CausticsTexture;
+uniform int u_CausticsEnabled;
+uniform float u_CausticsIntensity;
+uniform float u_CausticsScale;
+uniform float u_CausticsSpeed;
+uniform float u_CausticsDepth;
+uniform float u_WaterLevel;
+uniform float u_Time;
+
 // Global Illumination
 uniform int u_GIEnabled;
 uniform int u_GITechnique;  // 0=None, 1=VCT, 2=LPV, 3=SSGI, 4=Hybrid, 5=Probes, 6=ProbesVCT
@@ -379,6 +389,45 @@ vec3 FresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// Caustics sampling function
+vec3 SampleCaustics(vec3 worldPos, vec3 lightDir) {
+    if (u_CausticsEnabled == 0) return vec3(0.0);
+    
+    // Only apply to surfaces below water level
+    float waterDepth = u_WaterLevel - worldPos.y;
+    if (waterDepth <= 0.0) return vec3(0.0);
+    
+    // Depth attenuation - caustics fade with depth
+    float depthFactor = 1.0 - clamp(waterDepth / u_CausticsDepth, 0.0, 1.0);
+    depthFactor = depthFactor * depthFactor; // Quadratic falloff
+    
+    // Project caustics from light direction onto surface
+    // Use XZ world position for horizontal projection
+    vec2 causticUV1 = worldPos.xz * u_CausticsScale;
+    vec2 causticUV2 = worldPos.xz * u_CausticsScale * 0.8 + vec2(0.5);
+    
+    // Animate over time with flowing effect
+    float time = u_Time * u_CausticsSpeed;
+    causticUV1 += vec2(time * 0.05, time * 0.03);
+    causticUV2 -= vec2(time * 0.04, time * 0.06);
+    
+    // Sample caustics with two layers for more complexity
+    float caustic1 = texture(u_CausticsTexture, causticUV1).r;
+    float caustic2 = texture(u_CausticsTexture, causticUV2).r;
+    
+    // Combine layers with min operation for sharper caustics
+    float causticPattern = min(caustic1 + 0.5, caustic2 + 0.5);
+    causticPattern = pow(causticPattern, 2.0); // Enhance contrast
+    
+    // Light direction influence - caustics are stronger when light hits surface
+    float lightInfluence = max(dot(vec3(0.0, 1.0, 0.0), -lightDir), 0.0);
+    
+    // Final caustics color
+    vec3 causticColor = vec3(0.8, 0.9, 1.0) * causticPattern * depthFactor * lightInfluence * u_CausticsIntensity;
+    
+    return causticColor;
+}
+
 // Sample LPV for indirect lighting
 vec3 SampleLPV(vec3 worldPos, vec3 normal)
 {
@@ -601,7 +650,13 @@ void main()
         vec3 kD = vec3(1.0) - kS;
         kD *= 1.0 - Metallic;
         
-        Lo += (kD * Albedo / 3.14159265359 + specular) * radiance * NdotL * (1.0 - shadow);
+        // Calculate caustics contribution for this light
+        vec3 caustics = vec3(0.0);
+        if (u_Lights[i].type == 0) { // Only directional lights cast caustics
+            caustics = SampleCaustics(FragPos, u_Lights[i].direction) * radiance;
+        }
+        
+        Lo += (kD * Albedo / 3.14159265359 + specular) * radiance * NdotL * (1.0 - shadow) + caustics;
     }
     
     

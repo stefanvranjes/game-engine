@@ -214,6 +214,9 @@ add_executable(GameEngine
     src/ParticleEmitter.cpp
     src/ParticleSystem.cpp
     src/VolumetricFog.cpp
+    src/Water.cpp
+    src/PlanarReflection.cpp
+    src/WaterSprayEmitter.cpp
     src/Sprite.cpp
     src/SSBO.cpp
     src/AudioSystem.cpp
