@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <functional>
+#include "ECS/System.h"
 
 // Forward declarations
 class btDynamicsWorld;
@@ -15,6 +16,7 @@ class btDefaultCollisionConfiguration;
 class btRigidBody;
 class RigidBody;
 class KinematicController;
+// class EntityManager; // Already in System.h
 
 /**
  * @brief Physics simulation system using Bullet3D
@@ -30,7 +32,7 @@ class KinematicController;
  *   // Call Update(deltaTime) each frame
  *   physics.Update(deltaTime);
  */
-class PhysicsSystem {
+class PhysicsSystem : public System {
 public:
     PhysicsSystem();
     ~PhysicsSystem();
@@ -56,6 +58,11 @@ public:
      * @param subSteps Number of sub-steps for fixed timestep (default: 1)
      */
     void Update(float deltaTime, int subSteps = 1);
+
+    // ECS System implementation
+    void Update(EntityManager& manager, float deltaTime) override {
+        Update(deltaTime);
+    }
 
     /**
      * @brief Get the underlying Bullet3D dynamics world

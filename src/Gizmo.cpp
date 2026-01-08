@@ -22,7 +22,7 @@ Gizmo::Gizmo() {
     }
 }
 
-void Gizmo::Draw(Shader* shader, const Camera& camera) {
+void Gizmo::Draw(Shader* /*shader*/, const Camera& /*camera*/) {
     if (!m_Enabled || !m_Transform) return;
     // Base implementation doesn't draw anything, derived classes should
 }

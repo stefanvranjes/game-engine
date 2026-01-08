@@ -12,6 +12,7 @@
 #include <fstream>
 #include <cstring>
 #include <algorithm>
+#include "GameObject.h"
 
 /**
  * @brief Helper to detect file format from path
@@ -197,8 +198,8 @@ ModelLoader::LoadResult ModelLoader::LoadOBJ(const std::string& path,
         const auto& meshes = model.GetMeshes();
         const auto& materials = model.GetMaterials();
         
-        result.meshCount = meshes.size();
-        result.materialCount = materials.size();
+        result.meshCount = static_cast<int>(meshes.size());
+        result.materialCount = static_cast<int>(materials.size());
         result.success = true;
         result.root = root;
 
@@ -245,8 +246,8 @@ ModelLoader::LoadResult ModelLoader::LoadGLTF(const std::string& path,
         std::function<void(const std::shared_ptr<GameObject>&)> countAssets =
             [&](const std::shared_ptr<GameObject>& obj) {
                 if (obj->GetModel()) {
-                    result.meshCount += obj->GetModel()->GetMeshes().size();
-                    result.materialCount += obj->GetModel()->GetMaterials().size();
+                    result.meshCount += static_cast<int>(obj->GetModel()->GetMeshes().size());
+                    result.materialCount += static_cast<int>(obj->GetModel()->GetMaterials().size());
                 }
                 for (const auto& child : obj->GetChildren()) {
                     countAssets(child);
@@ -384,8 +385,8 @@ ModelLoader::LoadResult ModelLoader::LoadWithAssimp(const std::string& path,
                         indices.reserve(mesh->mNumFaces * 3);
                         for (unsigned int f = 0; f < mesh->mNumFaces; ++f) {
                             const aiFace& face = mesh->mFaces[f];
-                            for (unsigned int i = 0; i < face.mNumIndices; ++i) {
-                                indices.push_back(face.mIndices[i]);
+                            for (unsigned int idx = 0; idx < face.mNumIndices; ++idx) {
+                                indices.push_back(face.mIndices[idx]);
                             }
                         }
 
@@ -513,7 +514,7 @@ ModelLoader::LoadResult ModelLoader::LoadFromMemory(const uint8_t* data,
             std::string err, warn;
             
             if (!loader.LoadBinaryFromMemory(&model, &err, &warn,
-                                            data, size, "")) {
+                                            data, static_cast<unsigned int>(size), "")) {
                 result.success = false;
                 result.errorMessage = std::string("glTF binary load failed: ") + err;
                 return result;

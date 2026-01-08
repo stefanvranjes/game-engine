@@ -27,19 +27,19 @@ static Vec3 QuaternionToEuler(const std::vector<double>& q) {
     // Roll (x-axis rotation)
     double sinr_cosp = 2 * (w * x + y * z);
     double cosr_cosp = 1 - 2 * (x * x + y * y);
-    euler.x = std::atan2(sinr_cosp, cosr_cosp);
+    euler.x = static_cast<float>(std::atan2(sinr_cosp, cosr_cosp));
 
     // Pitch (y-axis rotation)
     double sinp = 2 * (w * y - z * x);
     if (std::abs(sinp) >= 1)
-        euler.y = std::copysign(3.14159 / 2, sinp); // use 90 degrees if out of range
+        euler.y = static_cast<float>(std::copysign(3.14159 / 2, sinp)); // use 90 degrees if out of range
     else
-        euler.y = std::asin(sinp);
+        euler.y = static_cast<float>(std::asin(sinp));
 
     // Yaw (z-axis rotation)
     double siny_cosp = 2 * (w * z + x * y);
     double cosy_cosp = 1 - 2 * (y * y + z * z);
-    euler.z = std::atan2(siny_cosp, cosy_cosp);
+    euler.z = static_cast<float>(std::atan2(siny_cosp, cosy_cosp));
 
     // Convert to degrees
     return Vec3(euler.x * 180.0f / 3.14159f, euler.y * 180.0f / 3.14159f, euler.z * 180.0f / 3.14159f);
@@ -168,7 +168,7 @@ private:
             auto& pbr = mat.pbrMetallicRoughness;
             
             // Base Color
-            material->SetDiffuse(Vec3(pbr.baseColorFactor[0], pbr.baseColorFactor[1], pbr.baseColorFactor[2]));
+            material->SetDiffuse(Vec3(static_cast<float>(pbr.baseColorFactor[0]), static_cast<float>(pbr.baseColorFactor[1]), static_cast<float>(pbr.baseColorFactor[2])));
             if (pbr.baseColorTexture.index >= 0) {
                 material->SetTexture(m_Textures[pbr.baseColorTexture.index]);
             }
@@ -201,7 +201,7 @@ private:
             }
 
             // Emissive
-            material->SetEmissiveColor(Vec3(mat.emissiveFactor[0], mat.emissiveFactor[1], mat.emissiveFactor[2]));
+            material->SetEmissiveColor(Vec3(static_cast<float>(mat.emissiveFactor[0]), static_cast<float>(mat.emissiveFactor[1]), static_cast<float>(mat.emissiveFactor[2])));
             if (mat.emissiveTexture.index >= 0) {
                 material->SetEmissiveMap(m_Textures[mat.emissiveTexture.index]);
                 // If emissive texture is present but factor is 0 (default in some exporters if not set),
@@ -273,22 +273,25 @@ private:
                 }
                 
                 // Set local transform from node TRS
-                Mat4 translation = Mat4::Identity();
+                Mat4 nodeTranslation = Mat4::Identity();
                 Mat4 rotation = Mat4::Identity();
                 Mat4 scale = Mat4::Identity();
                 
                 if (node.translation.size() == 3) {
-                    translation = Mat4::Translate(Vec3(node.translation[0], node.translation[1], node.translation[2]));
+                    float tx = static_cast<float>(node.translation[0]);
+                    float ty = static_cast<float>(node.translation[1]);
+                    float tz = static_cast<float>(node.translation[2]);
+                    nodeTranslation = Mat4::Translate(Vec3(tx, ty, tz));
                 }
                 if (node.rotation.size() == 4) {
-                    Quaternion q(node.rotation[0], node.rotation[1], node.rotation[2], node.rotation[3]);
+                    Quaternion q(static_cast<float>(node.rotation[0]), static_cast<float>(node.rotation[1]), static_cast<float>(node.rotation[2]), static_cast<float>(node.rotation[3]));
                     rotation = q.ToMatrix();
                 }
                 if (node.scale.size() == 3) {
-                    scale = Mat4::Scale(Vec3(node.scale[0], node.scale[1], node.scale[2]));
+                    scale = Mat4::Scale(Vec3(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]), static_cast<float>(node.scale[2])));
                 }
                 
-                bone.localTransform = translation * rotation * scale;
+                bone.localTransform = nodeTranslation * rotation * scale;
                 
                 skeleton->AddBone(bone);
                 m_NodeToJointIndex[nodeIdx] = static_cast<int>(jointIdx);
@@ -402,13 +405,13 @@ private:
             // Most exporters export TRS.
         } else {
             if (node.translation.size() == 3) {
-                gameObject->GetTransform().position = Vec3(node.translation[0], node.translation[1], node.translation[2]);
+                gameObject->GetTransform().position = Vec3(static_cast<float>(node.translation[0]), static_cast<float>(node.translation[1]), static_cast<float>(node.translation[2]));
             }
             if (node.rotation.size() == 4) {
                 gameObject->GetTransform().rotation = QuaternionToEuler(node.rotation);
             }
             if (node.scale.size() == 3) {
-                gameObject->GetTransform().scale = Vec3(node.scale[0], node.scale[1], node.scale[2]);
+                gameObject->GetTransform().scale = Vec3(static_cast<float>(node.scale[0]), static_cast<float>(node.scale[1]), static_cast<float>(node.scale[2]));
             }
         }
 

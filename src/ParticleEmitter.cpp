@@ -286,7 +286,8 @@ void ParticleEmitter::UpdateCPU(float deltaTime) {
         
         // Attraction Points
         if (m_PhysicsContext.attractors) {
-            for (const auto& att : *m_PhysicsContext.attractors) {
+            const auto& attractors = *m_PhysicsContext.attractors;
+            for (const auto& att : attractors) {
                 Vec3 dir = att.pos - p.position;
                 float distSq = dir.x*dir.x + dir.y*dir.y + dir.z*dir.z;
                 if (distSq > 0.0001f) {
@@ -758,7 +759,7 @@ void ParticleEmitter::DispatchGPUCollision(float deltaTime) {
         m_SphDensityShader->SetFloat("u_SmoothingRadius", m_SmoothingRadius);
         // Poly6 Coefficient: 315 / (64 * PI * h^9)
         float h = m_SmoothingRadius;
-        float h9 = pow(h, 9);
+        float h9 = static_cast<float>(std::pow(h, 9));
         float poly6 = 315.0f / (64.0f * 3.14159f * h9);
         m_SphDensityShader->SetFloat("u_Poly6Coef", poly6);
         
@@ -777,7 +778,7 @@ void ParticleEmitter::DispatchGPUCollision(float deltaTime) {
         m_SphForceShader->SetFloat("u_SmoothingRadius", m_SmoothingRadius);
         
         // Spiky Gradient Coefficient: -45 / (PI * h^6)
-        float h6 = pow(h, 6);
+        float h6 = static_cast<float>(std::pow(h, 6));
         float spiky = -45.0f / (3.14159f * h6);
         m_SphForceShader->SetFloat("u_SpikyCoef", spiky);
         m_SphForceShader->SetFloat("u_ViscosityCoef", -spiky); // Viscosity kernel often uses 45, spiky uses -45.

@@ -163,7 +163,7 @@ bool BulletBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, u
             rayCallback.m_hitNormalWorld.z()
         );
         hit.distance = (from - hit.point).Length();
-        hit.userData = rayCallback.m_collisionObject;
+        hit.userData = const_cast<btCollisionObject*>(rayCallback.m_collisionObject);
         return true;
     }
 

@@ -29,6 +29,15 @@ PhysXCloth::PhysXCloth(PhysXBackend* backend)
     , m_TearCallback(nullptr)
     , m_CurrentLOD(0)
     , m_IsFrozen(false)
+    , m_EnableSceneCollision(true)
+    , m_EnableSelfCollision(false)
+    , m_SelfCollisionDistance(0.01f)
+    , m_SelfCollisionStiffness(1.0f)
+    , m_EnableTwoWayCoupling(false)
+    , m_CollisionMassScale(1.0f)
+    , m_CurrentLODLevel(0)
+    , m_UpdateCounter(0)
+    , m_UpdateFrequency(1)
 {
 }
 
@@ -70,8 +79,16 @@ void PhysXCloth::Initialize(const ClothDesc& desc) {
         m_TriangleIndices[i] = desc.triangleIndices[i];
     }
 
-    // Create cloth fabric
-    CreateClothFabric(desc);
+    // Store collision settings
+    m_EnableSceneCollision = desc.enableSceneCollision;
+    m_EnableSelfCollision = desc.enableSelfCollision;
+    m_SelfCollisionDistance = desc.selfCollisionDistance;
+    m_SelfCollisionStiffness = desc.selfCollisionStiffness;
+    m_EnableTwoWayCoupling = desc.enableTwoWayCoupling;
+    m_CollisionMassScale = desc.collisionMassScale;
+
+    // Create PhysX cloth
+    CreateClothActor(desc);
 
     if (!m_Fabric) {
         std::cerr << "PhysXCloth: Failed to create cloth fabric!" << std::endl;
@@ -183,11 +200,41 @@ void PhysXCloth::SetupConstraints() {
     SetBendStiffness(m_BendStiffness);
     SetShearStiffness(m_ShearStiffness);
     SetDamping(m_Damping);
+
+    // Apply collision settings
+    if (m_EnableSceneCollision) {
+        m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+    }
+
+    if (m_EnableSelfCollision) {
+        m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+        m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+    }
+    
+    // Two-way coupling logic
+    // In PhysX 3.4/4/5, two-way coupling is generally implicit if scene collision is on
+    // and the cloth has mass.
+    // However, we can control the impulse scale.
+    // Note: setCollisionMassScale is used to set the mass of the particles for collision purposes.
+    if (m_EnableTwoWayCoupling) {
+        m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+    } else {
+        m_Cloth->setCollisionMassScale(0.0f); // 0 means cloth reacts but dynamic bodies don't (one-way)
+    }
+
+    // Set solver frequency
+    m_Cloth->setSolverFrequency(m_SolverFrequency);
 }
 
 void PhysXCloth::Update(float deltaTime) {
     // Skip update if frozen (LOD optimization)
     if (m_IsFrozen) {
+        return;
+    }
+    
+    // Frame skipping for LOD
+    m_UpdateCounter++;
+    if (m_UpdateCounter % m_UpdateFrequency != 0) {
         return;
     }
     
@@ -496,6 +543,71 @@ void* PhysXCloth::GetNativeCloth() {
     return m_Cloth;
 }
 
+void PhysXCloth::SetSceneCollision(bool enabled) {
+    m_EnableSceneCollision = enabled;
+    if (m_Cloth) {
+        m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, enabled);
+    }
+}
+
+void PhysXCloth::SetSelfCollision(bool enabled) {
+    m_EnableSelfCollision = enabled;
+    if (m_Cloth && enabled) {
+        // Ensure parameters are set when enabling
+        m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+        m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+    }
+    // Note: PhysX 5 doesn't have a flag for self collision, it's enabled by setting distance > 0
+    // But we might need to check if we can disable it by setting distance to 0, or if there is a config
+    // Actually typically one sets the rest position checks.
+    // However, looking at PxClothFlag, there isn't a generic eSELF_COLLISION flag in recent versions,
+    // it interacts via virtual particles or rest positions. 
+    // Wait, let's verify if we need to set PxClothFlag::eSWEPT_CONTACT?
+    // Start with simple param setting.
+    if (m_Cloth && !enabled) {
+        m_Cloth->setSelfCollisionDistance(0.0f);
+    }
+}
+
+void PhysXCloth::SetSelfCollisionDistance(float distance) {
+    m_SelfCollisionDistance = distance;
+    if (m_Cloth && m_EnableSelfCollision) {
+        m_Cloth->setSelfCollisionDistance(distance);
+    }
+}
+
+void PhysXCloth::SetSelfCollisionStiffness(float stiffness) {
+    m_SelfCollisionStiffness = stiffness;
+    if (m_Cloth && m_EnableSelfCollision) {
+        m_Cloth->setSelfCollisionStiffness(stiffness);
+    }
+}
+
+void PhysXCloth::SetTwoWayCoupling(bool enabled) {
+    m_EnableTwoWayCoupling = enabled;
+    if (m_Cloth) {
+        if (enabled) {
+            m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+        } else {
+            m_Cloth->setCollisionMassScale(0.0f);
+        }
+    }
+}
+
+void PhysXCloth::SetCollisionMassScale(float scale) {
+    m_CollisionMassScale = scale;
+    if (m_Cloth && m_EnableTwoWayCoupling) {
+        m_Cloth->setCollisionMassScale(scale);
+    }
+}
+
+void PhysXCloth::SetSolverFrequency(float frequency) {
+    m_SolverFrequency = frequency;
+    if (m_Cloth) {
+        m_Cloth->setSolverFrequency(frequency);
+    }
+}
+
 // Tearing helper methods
 
 void PhysXCloth::DetectTears(float deltaTime) {
@@ -668,6 +780,28 @@ bool PhysXCloth::SplitAtParticle(
     outPiece1->SetWindVelocity(m_WindVelocity);
     outPiece1->SetTearable(m_Tearable);
     outPiece1->SetMaxStretchRatio(m_MaxStretchRatio);
+    // Copy LOD state
+    outPiece1->m_UpdateFrequency = m_UpdateFrequency;
+    // Copy collision settings
+    outPiece1->m_EnableSceneCollision = m_EnableSceneCollision;
+    outPiece1->m_EnableSelfCollision = m_EnableSelfCollision;
+    outPiece1->m_SelfCollisionDistance = m_SelfCollisionDistance;
+    outPiece1->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+    outPiece1->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+    outPiece1->m_CollisionMassScale = m_CollisionMassScale;
+    // Apply collision settings to new piece
+    if (outPiece1->m_Cloth) {
+        if (m_EnableSceneCollision) outPiece1->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+        if (m_EnableSelfCollision) {
+            outPiece1->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+            outPiece1->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+        }
+        if (m_EnableTwoWayCoupling) {
+             outPiece1->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+        } else {
+             outPiece1->m_Cloth->setCollisionMassScale(0.0f);
+        }
+    }
     
     outPiece2->SetStretchStiffness(m_StretchStiffness);
     outPiece2->SetBendStiffness(m_BendStiffness);
@@ -676,6 +810,28 @@ bool PhysXCloth::SplitAtParticle(
     outPiece2->SetWindVelocity(m_WindVelocity);
     outPiece2->SetTearable(m_Tearable);
     outPiece2->SetMaxStretchRatio(m_MaxStretchRatio);
+    // Copy LOD state
+    outPiece2->m_UpdateFrequency = m_UpdateFrequency;
+    // Copy collision settings
+    outPiece2->m_EnableSceneCollision = m_EnableSceneCollision;
+    outPiece2->m_EnableSelfCollision = m_EnableSelfCollision;
+    outPiece2->m_SelfCollisionDistance = m_SelfCollisionDistance;
+    outPiece2->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+    outPiece2->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+    outPiece2->m_CollisionMassScale = m_CollisionMassScale;
+    // Apply collision settings to new piece
+    if (outPiece2->m_Cloth) {
+        if (m_EnableSceneCollision) outPiece2->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+        if (m_EnableSelfCollision) {
+            outPiece2->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+            outPiece2->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+        }
+        if (m_EnableTwoWayCoupling) {
+             outPiece2->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+        } else {
+             outPiece2->m_Cloth->setCollisionMassScale(0.0f);
+        }
+    }
     
     std::cout << "Successfully split cloth into 2 pieces" << std::endl;
     
@@ -730,6 +886,28 @@ bool PhysXCloth::SplitAlongLine(
     outPiece1->SetWindVelocity(m_WindVelocity);
     outPiece1->SetTearable(m_Tearable);
     outPiece1->SetMaxStretchRatio(m_MaxStretchRatio);
+    // Copy LOD state
+    outPiece1->m_UpdateFrequency = m_UpdateFrequency;
+    // Copy collision settings
+    outPiece1->m_EnableSceneCollision = m_EnableSceneCollision;
+    outPiece1->m_EnableSelfCollision = m_EnableSelfCollision;
+    outPiece1->m_SelfCollisionDistance = m_SelfCollisionDistance;
+    outPiece1->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+    outPiece1->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+    outPiece1->m_CollisionMassScale = m_CollisionMassScale;
+    // Apply collision settings to new piece
+    if (outPiece1->m_Cloth) {
+        if (m_EnableSceneCollision) outPiece1->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+        if (m_EnableSelfCollision) {
+            outPiece1->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+            outPiece1->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+        }
+        if (m_EnableTwoWayCoupling) {
+             outPiece1->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+        } else {
+             outPiece1->m_Cloth->setCollisionMassScale(0.0f);
+        }
+    }
     
     outPiece2->SetStretchStiffness(m_StretchStiffness);
     outPiece2->SetBendStiffness(m_BendStiffness);
@@ -738,6 +916,28 @@ bool PhysXCloth::SplitAlongLine(
     outPiece2->SetWindVelocity(m_WindVelocity);
     outPiece2->SetTearable(m_Tearable);
     outPiece2->SetMaxStretchRatio(m_MaxStretchRatio);
+    // Copy LOD state
+    outPiece2->m_UpdateFrequency = m_UpdateFrequency;
+    // Copy collision settings
+    outPiece2->m_EnableSceneCollision = m_EnableSceneCollision;
+    outPiece2->m_EnableSelfCollision = m_EnableSelfCollision;
+    outPiece2->m_SelfCollisionDistance = m_SelfCollisionDistance;
+    outPiece2->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+    outPiece2->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+    outPiece2->m_CollisionMassScale = m_CollisionMassScale;
+    // Apply collision settings to new piece
+    if (outPiece2->m_Cloth) {
+        if (m_EnableSceneCollision) outPiece2->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+        if (m_EnableSelfCollision) {
+            outPiece2->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+            outPiece2->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+        }
+        if (m_EnableTwoWayCoupling) {
+             outPiece2->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+        } else {
+             outPiece2->m_Cloth->setCollisionMassScale(0.0f);
+        }
+    }
     
     std::cout << "Successfully split cloth along line" << std::endl;
     
@@ -828,6 +1028,19 @@ void PhysXCloth::SetLOD(int lodLevel) {
         }
         m_CurrentLOD = lodLevel;
     }
+    
+    // Apply LOD level settings
+    m_SolverFrequency = (float)level->substeps * 60.0f; // Approximate
+    if (m_Cloth) {
+        m_Cloth->setSolverFrequency(m_SolverFrequency);
+    }
+    
+    // Set update frequency
+    m_UpdateFrequency = level->updateFrequency;
+    if (m_UpdateFrequency < 1) m_UpdateFrequency = 1;
+    
+    // Check if frozen
+    m_IsFrozen = level->isFrozen;
 }
 
 void PhysXCloth::Freeze() {

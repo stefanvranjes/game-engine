@@ -39,7 +39,7 @@ public:
     Gizmo();
     virtual ~Gizmo() = default;
 
-    virtual void Update(float deltaTime) {}
+    virtual void Update(float /*deltaTime*/) {}
     virtual void Draw(Shader* shader, const Camera& camera);
     
     // Returns true if the gizmo is currently being interacted with (dragged)

@@ -42,6 +42,16 @@ struct GradientStop {
     Vec4 color;
 };
 
+struct Attractor {
+    Vec3 pos;
+    float strength;
+};
+
+struct ParticlePhysicsContext {
+    Vec3 wind;
+    std::vector<Attractor>* attractors = nullptr;
+};
+
 // POD struct for GPU alignment (std430)
 struct GPUParticle {
     Vec4 position;   // xyz, w=size
@@ -164,6 +174,8 @@ public:
     void SetGasConstant(float k) { m_GasConstant = k; }
     void SetViscosity(float mu) { m_Viscosity = mu; }
     void SetSmoothingRadius(float h) { m_SmoothingRadius = h; }
+
+    void SetPhysicsContext(const ParticlePhysicsContext& ctx) { m_PhysicsContext = ctx; }
     
     // Trail configuration
     void SetEnableTrails(bool enable) { m_EnableTrails = enable; }
@@ -285,6 +297,8 @@ private:
         m_EnableTurbulence = enable;
         m_TurbulenceStrength = strength;
     }
+
+    ParticlePhysicsContext m_PhysicsContext;
     
     // Visuals
     // void AddGradientStop... (moved public)

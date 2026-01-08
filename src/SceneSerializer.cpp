@@ -60,7 +60,7 @@ bool SceneSerializer::SerializeScene(
 
             // Write lights
             if (options.includeLights) {
-                uint32_t lightCount = lights.size();
+                uint32_t lightCount = static_cast<uint32_t>(lights.size());
                 buffer.insert(buffer.end(), (uint8_t*)&lightCount, (uint8_t*)&lightCount + 4);
                 for (const auto& light : lights) {
                     json lightJson = SerializeLight(light);

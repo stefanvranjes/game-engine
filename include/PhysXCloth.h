@@ -56,8 +56,15 @@ public:
     int GetTearCount() const override;
     void ResetTears() override;
     void* GetNativeCloth() override;
+    void SetSceneCollision(bool enabled) override;
+    void SetSelfCollision(bool enabled) override;
+    void SetSelfCollisionDistance(float distance) override;
+    void SetSelfCollisionStiffness(float stiffness) override;
+    void SetTwoWayCoupling(bool enabled) override;
+    void SetCollisionMassScale(float scale) override;
 
-    // Rendering support
+    // PhysX specific
+    physx::PxCloth* GetPxCloth() const { return m_Cloth; }
     /**
      * @brief Update mesh data from cloth simulation
      * @param mesh Mesh to update with current particle positions/normals
@@ -201,6 +208,14 @@ private:
     float m_ShearStiffness;
     float m_Damping;
 
+    // Collision settings
+    bool m_EnableSceneCollision;
+    bool m_EnableSelfCollision;
+    float m_SelfCollisionDistance;
+    float m_SelfCollisionStiffness;
+    bool m_EnableTwoWayCoupling;
+    float m_CollisionMassScale;
+
     // Tearing state
     struct TearInfo {
         int particleIndex;
@@ -217,9 +232,13 @@ private:
     // Tear callback
     TearCallback m_TearCallback;
 
-    // LOD system
+    std::shared_ptr<ClothLOD> m_LODLayer;
     ClothLODConfig m_LODConfig;
-    int m_CurrentLOD;
+    int m_CurrentLODLevel;
+    int m_UpdateCounter;
+    int m_UpdateFrequency;
+
+    // Frozen state
     bool m_IsFrozen;
     std::vector<Vec3> m_FrozenPositions;  // Saved state when frozen
     std::vector<Vec3> m_FrozenNormals;

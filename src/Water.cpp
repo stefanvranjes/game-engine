@@ -1,5 +1,11 @@
 #include "Water.h"
 #include "Texture.h"
+#include "Shader.h"
+#include "GLExtensions.h"
+#include <vector>
+#include <cmath>
+#include <iostream>
+#include <random>
 
 Water::Water() 
     : m_DeepColor(0.0f, 0.1f, 0.4f)     // Dark Blue
@@ -20,13 +26,6 @@ Water::~Water() {
     if (m_Normal) glDeleteTextures(1, &m_Normal);
     if (m_PingPong) glDeleteTextures(1, &m_PingPong);
 }
-
-#include "Shader.h"
-#include "GLExtensions.h" // Assuming this handles GL includes
-#include <vector>
-#include <cmath>
-#include <iostream>
-#include <random>
 
 const float PI = 3.14159265359f;
 

@@ -44,6 +44,7 @@ public:
     
     // Clear all trail points
     void Clear();
+    void Reset() { Clear(); }
     
     // Get all trail points
     const std::vector<TrailPoint>& GetPoints() const { return m_Points; }

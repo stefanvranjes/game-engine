@@ -14,6 +14,16 @@ struct ClothDesc {
     float particleMass;         // Mass per particle
     Vec3 gravity;              // Gravity vector
     
+    // Collision Settings
+    bool enableSceneCollision;      // Collide with scene rigid bodies
+    bool enableSelfCollision;       // Collide with self
+    float selfCollisionDistance;    // Thickness for self collision
+    float selfCollisionStiffness;   // Stiffness of self collision contacts
+    
+    // Two-Way Coupling
+    bool enableTwoWayCoupling;      // Enable forces on rigid bodies
+    float collisionMassScale;       // Scale mass for collision impulses (default 1.0)
+
     ClothDesc()
         : particlePositions(nullptr)
         , particleCount(0)
@@ -21,6 +31,12 @@ struct ClothDesc {
         , triangleCount(0)
         , particleMass(1.0f)
         , gravity(0, -9.81f, 0)
+        , enableSceneCollision(true)
+        , enableSelfCollision(false)
+        , selfCollisionDistance(0.01f)
+        , selfCollisionStiffness(1.0f)
+        , enableTwoWayCoupling(false)
+        , collisionMassScale(1.0f)
     {}
 };
 
@@ -190,4 +206,37 @@ public:
      * @return Opaque pointer to native cloth object
      */
     virtual void* GetNativeCloth() = 0;
+
+    /**
+     * @brief Enable/Disable collision with scene rigid bodies
+     */
+    virtual void SetSceneCollision(bool enabled) = 0;
+
+    /**
+     * @brief Enable/Disable self-collision
+     */
+    virtual void SetSelfCollision(bool enabled) = 0;
+
+    /**
+     * @brief Set self-collision distance (thickness)
+     * @param distance Distance below which self-collision is detected
+     */
+    virtual void SetSelfCollisionDistance(float distance) = 0;
+
+    /**
+     * @brief Set self-collision stiffness
+     * @param stiffness Stiffness of self-collision response (0.0 to 1.0)
+     */
+    virtual void SetSelfCollisionStiffness(float stiffness) = 0;
+
+    /**
+     * @brief Enable/Disable two-way coupling (forces on rigid bodies)
+     */
+    virtual void SetTwoWayCoupling(bool enabled) = 0;
+
+    /**
+     * @brief Set collision mass scale
+     * @param scale Scale factor for collision impulses
+     */
+    virtual void SetCollisionMassScale(float scale) = 0;
 };

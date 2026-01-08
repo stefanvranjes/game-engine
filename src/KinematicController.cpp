@@ -1,6 +1,7 @@
 #include "KinematicController.h"
 #include "PhysicsSystem.h"
 #include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
 #include <BulletDynamics/Character/btKinematicCharacterController.h>
 
 KinematicController::KinematicController()
@@ -56,7 +57,7 @@ void KinematicController::Update(float deltaTime, const Vec3& gravity) {
     }
 
     // Set gravity on controller
-    m_Controller->setGravity(gravity);
+    m_Controller->setGravity(btVector3(gravity.x, gravity.y, gravity.z));
 
     // Apply walk direction
     if (m_WalkDirection.Length() > 0.001f) {

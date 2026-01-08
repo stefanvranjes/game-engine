@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
-#include "Math/Matrix4.h"
-#include "Math/Vector3.h"
-#include "Math/Quaternion.h"
+#include "Math/Mat4.h"
+#include "Math/Vec3.h"
+#include "Math/Quat.h"
 
 class MathTest : public ::testing::Test {
 protected:

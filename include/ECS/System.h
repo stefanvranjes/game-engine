@@ -3,6 +3,7 @@
 #include "Entity.h"
 #include <vector>
 #include <memory>
+#include <typeindex>
 
 class EntityManager;
 

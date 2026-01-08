@@ -359,13 +359,18 @@ void GameObject::Draw(Shader* shader, const Mat4& view, const Mat4& projection, 
              // C.y = -(m[1][0]*m[3][0] + m[1][1]*m[3][1] + m[1][2]*m[3][2])
              // C.z = -(m[2][0]*m[3][0] + m[2][1]*m[3][1] + m[2][2]*m[3][2])
             
-             float tx = view.m[3][0];
-             float ty = view.m[3][1];
-             float tz = view.m[3][2];
+             float tx = view.m[12];
+             float ty = view.m[13];
+             float tz = view.m[14];
              
-             float cx = -(view.m[0][0]*tx + view.m[0][1]*ty + view.m[0][2]*tz);
-             float cy = -(view.m[1][0]*tx + view.m[1][1]*ty + view.m[1][2]*tz);
-             float cz = -(view.m[2][0]*tx + view.m[2][1]*ty + view.m[2][2]*tz);
+             // C = -Rot^T * Tv
+             // Rot^T row 0 is (m[0], m[1], m[2])
+             // Rot^T row 1 is (m[4], m[5], m[6])
+             // Rot^T row 2 is (m[8], m[9], m[10])
+             
+             float cx = -(view.m[0]*tx + view.m[1]*ty + view.m[2]*tz);
+             float cy = -(view.m[4]*tx + view.m[5]*ty + view.m[6]*tz);
+             float cz = -(view.m[8]*tx + view.m[9]*ty + view.m[10]*tz);
              
              shaderToUse->SetVec3("u_CameraPos", cx, cy, cz);
         }
@@ -662,56 +667,4 @@ AABB GameObject::GetWorldAABB() const {
     return AABB(pos, pos);
 }
 
-void GameObject::InitQuery() {
-    if (m_QueryID == 0) {
-        glGenQueries(1, &m_QueryID);
-    }
-}
 
-void GameObject::RenderBoundingBox(Shader* shader, const Mat4& view, const Mat4& projection) {
-    if (!shader) return;
-    
-    // Simple wireframe cube or bounding box
-    // For now, just setting up the call to ensure linker satisfaction
-    // and basic functionality.
-    
-    AABB aabb = GetWorldAABB();
-    Vec3 center = aabb.GetCenter();
-    Vec3 size = aabb.GetSize();
-    
-    Mat4 model = Mat4::Translate(center) * Mat4::Scale(size);
-    
-    shader->Use();
-    shader->SetMat4("u_Model", model.m);
-    shader->SetMat4("u_View", view.m);
-    shader->SetMat4("u_Projection", projection.m);
-    shader->SetVec3("u_Color", 1.0f, 1.0f, 0.0f);
-    
-    // Reuse unit cube if s_UnitCube exists, or skipping draw for now 
-    // to strictly fix the build error first.
-    // If s_UnitCube is null, we can't draw.
-    if (s_UnitCube) {
-       s_UnitCube->Draw();
-    }
-}
-
-bool GameObject::ShouldIssueQuery() const {
-    if (m_FramesSinceLastQuery >= m_QueryFrameInterval) {
-        return true;
-    }
-    return false;
-}
-
-void GameObject::UpdateQueryInterval() {
-    // Basic adaptive logic
-    if (m_Visible == m_PreviousVisible) {
-        m_VisibilityStableFrames++;
-    } else {
-        m_VisibilityStableFrames = 0;
-    }
-    m_PreviousVisible = m_Visible;
-    
-    m_QueryFrameInterval = 1 + std::min(m_VisibilityStableFrames / 10, 10);
-    // Clamp
-    if (m_QueryFrameInterval > MAX_QUERY_INTERVAL) m_QueryFrameInterval = MAX_QUERY_INTERVAL;
-}
