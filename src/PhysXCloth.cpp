@@ -27,6 +27,8 @@ PhysXCloth::PhysXCloth(PhysXBackend* backend)
     , m_ShearStiffness(0.6f)
     , m_Damping(0.2f)
     , m_TearCallback(nullptr)
+    , m_CurrentLOD(0)
+    , m_IsFrozen(false)
 {
 }
 
@@ -770,6 +772,71 @@ std::shared_ptr<PhysXCloth> PhysXCloth::CreateFromSplit(
     std::cout << "Created cloth piece with " << desc.particleCount << " particles" << std::endl;
     
     return newCloth;
+}
+
+void PhysXCloth::SetLOD(int lodLevel) {
+    if (lodLevel == m_CurrentLOD) {
+        return;  // Already at this LOD
+    }
+    
+    const ClothLODLevel* level = m_LODConfig.GetLODLevel(lodLevel);
+    if (!level) {
+        std::cerr << "PhysXCloth: Invalid LOD level " << lodLevel << std::endl;
+        return;
+    }
+    
+    std::cout << "PhysXCloth: Transitioning from LOD " << m_CurrentLOD 
+              << " to LOD " << lodLevel << std::endl;
+    
+    m_CurrentLOD = lodLevel;
+    
+    // Update solver iterations if cloth is active
+    if (m_Cloth && !level->isFrozen) {
+        m_Cloth->setSolverFrequency(static_cast<float>(level->solverIterations));
+    }
+    
+    // Note: Full mesh simplification and recreation would happen here
+    // For now, we just adjust simulation quality
+}
+
+void PhysXCloth::Freeze() {
+    if (m_IsFrozen) {
+        return;  // Already frozen
+    }
+    
+    std::cout << "PhysXCloth: Freezing cloth simulation" << std::endl;
+    
+    // Save current state
+    m_FrozenPositions = m_ParticlePositions;
+    m_FrozenNormals = m_ParticleNormals;
+    
+    m_IsFrozen = true;
+}
+
+void PhysXCloth::Unfreeze() {
+    if (!m_IsFrozen) {
+        return;  // Already active
+    }
+    
+    std::cout << "PhysXCloth: Unfreezing cloth simulation" << std::endl;
+    
+    // Restore state if we have frozen data
+    if (!m_FrozenPositions.empty() && m_Cloth) {
+        // Restore particle positions
+        PxClothParticleData* data = m_Cloth->lockParticleData();
+        if (data) {
+            for (int i = 0; i < m_ParticleCount && i < static_cast<int>(m_FrozenPositions.size()); ++i) {
+                data->particles[i].pos = PxVec3(
+                    m_FrozenPositions[i].x,
+                    m_FrozenPositions[i].y,
+                    m_FrozenPositions[i].z
+                );
+            }
+            data->unlock();
+        }
+    }
+    
+    m_IsFrozen = false;
 }
 
 #endif // USE_PHYSX

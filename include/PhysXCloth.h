@@ -2,6 +2,7 @@
 
 #include "IPhysicsCloth.h"
 #include "Math/Vec3.h"
+#include "ClothLOD.h"
 #include <memory>
 #include <vector>
 #include <functional>
@@ -126,6 +127,42 @@ public:
      */
     bool IsReady() const { return m_Cloth != nullptr; }
 
+    // LOD System
+    /**
+     * @brief Set LOD configuration
+     */
+    void SetLODConfig(const ClothLODConfig& config) { m_LODConfig = config; }
+
+    /**
+     * @brief Get LOD configuration
+     */
+    const ClothLODConfig& GetLODConfig() const { return m_LODConfig; }
+
+    /**
+     * @brief Set current LOD level
+     */
+    void SetLOD(int lodLevel);
+
+    /**
+     * @brief Get current LOD level
+     */
+    int GetCurrentLOD() const { return m_CurrentLOD; }
+
+    /**
+     * @brief Freeze cloth simulation (for distant cloth)
+     */
+    void Freeze();
+
+    /**
+     * @brief Unfreeze cloth simulation
+     */
+    void Unfreeze();
+
+    /**
+     * @brief Check if cloth is frozen
+     */
+    bool IsFrozen() const { return m_IsFrozen; }
+
     /**
      * @brief Split cloth along a line
      * @param start Line start position
@@ -179,6 +216,13 @@ private:
 
     // Tear callback
     TearCallback m_TearCallback;
+
+    // LOD system
+    ClothLODConfig m_LODConfig;
+    int m_CurrentLOD;
+    bool m_IsFrozen;
+    std::vector<Vec3> m_FrozenPositions;  // Saved state when frozen
+    std::vector<Vec3> m_FrozenNormals;
 
     // Helper methods
     void CreateClothFabric(const ClothDesc& desc);
