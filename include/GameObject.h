@@ -17,6 +17,7 @@ class Decal;
 class Water;
 class Terrain;
 class ScriptComponent;
+class IPhysicsCloth;
 
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
@@ -84,6 +85,10 @@ public:
     // Terrain
     void SetTerrain(std::shared_ptr<class Terrain> terrain) { m_Terrain = terrain; }
     std::shared_ptr<class Terrain> GetTerrain() const { return m_Terrain; }
+
+    // Cloth
+    void SetCloth(std::shared_ptr<IPhysicsCloth> cloth) { m_Cloth = cloth; }
+    std::shared_ptr<IPhysicsCloth> GetCloth() const { return m_Cloth; }
 
     // Scripting
     void SetScriptComponent(std::shared_ptr<class ScriptComponent> script) { m_ScriptComponent = script; }
@@ -188,6 +193,9 @@ private:
     
     // Terrain
     std::shared_ptr<class Terrain> m_Terrain;
+
+    // Cloth
+    std::shared_ptr<IPhysicsCloth> m_Cloth;
 
     // Scripting
     std::shared_ptr<class ScriptComponent> m_ScriptComponent;
