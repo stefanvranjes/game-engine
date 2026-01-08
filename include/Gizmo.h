@@ -54,6 +54,11 @@ public:
     bool IsDragging() const { return m_IsDragging; }
     GizmoAxis GetHoverAxis() const { return m_HoverAxis; }
 
+    void SetSnapping(bool enabled, float value) {
+        m_SnappingEnabled = enabled;
+        m_SnapValue = value;
+    }
+
 protected:
     // Helper to calculate screen scale to keep gizmo size constant
     float GetScreenScale(const Vec3& position, const Camera& camera);

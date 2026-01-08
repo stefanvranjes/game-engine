@@ -21,6 +21,16 @@ public:
         , scale(scl)
     {}
 
+    // Getters
+    Vec3 GetPosition() const { return position; }
+    Vec3 GetRotation() const { return rotation; }
+    Vec3 GetScale() const { return scale; }
+
+    // Setters
+    void SetPosition(const Vec3& pos) { position = pos; }
+    void SetRotation(const Vec3& rot) { rotation = rot; }
+    void SetScale(const Vec3& scl) { scale = scl; }
+
     Mat4 GetModelMatrix() const {
         Mat4 translation = Mat4::Translate(position);
         Mat4 rotationX = Mat4::RotateX(rotation.x * 3.14159f / 180.0f);

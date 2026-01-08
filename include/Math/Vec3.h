@@ -78,6 +78,10 @@ public:
         return std::sqrt(x * x + y * y + z * z);
     }
 
+    float LengthSquared() const {
+        return x * x + y * y + z * z;
+    }
+
     // Normalize
     Vec3 Normalized() const {
         float len = Length();

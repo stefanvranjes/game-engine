@@ -1,5 +1,6 @@
 #include "GizmoManager.h"
 #include "GameObject.h"
+#include "Camera.h"
 #include <GLFW/glfw3.h>
 
 GizmoManager::GizmoManager() {

@@ -21,8 +21,8 @@ void VirtualMachine::Reset() {
     m_Running = false;
 }
 
-void VirtualMachine::Push(Value val) {
-    m_Stack.push_back(val);
+void VirtualMachine::Push(const Value& v) {
+    m_Stack.push_back(v);
 }
 
 Value VirtualMachine::Pop() {
@@ -40,9 +40,9 @@ Value VirtualMachine::Peek(int offset) {
     return m_Stack[m_Stack.size() - 1 - offset];
 }
 
-void VirtualMachine::SetGlobal(int index, Value val) {
+void VirtualMachine::SetGlobal(int index, const Value& v) {
     if (index >= 0 && index < m_Globals.size()) {
-        m_Globals[index] = val;
+        m_Globals[index] = v;
     }
 }
 

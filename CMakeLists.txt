@@ -156,22 +156,56 @@ if(NOT assimp_populated)
     add_subdirectory(${assimp_SOURCE_DIR} assimp_build EXCLUDE_FROM_ALL)
 endif()
 
-# Fetch Bullet3D Physics Engine
-FetchContent_Declare(
-    bullet3
-    GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
-    GIT_TAG master
-)
-FetchContent_GetProperties(bullet3)
-if(NOT bullet3_populated)
-    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-    set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
-    set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
-    set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
-    set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
-    set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
-    set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(bullet3)
+# Physics Backend Selection
+option(PHYSICS_BACKEND "Physics backend to use: BULLET or PHYSX" "BULLET")
+
+if(PHYSICS_BACKEND STREQUAL "PHYSX")
+    message(STATUS "Using PhysX physics backend")
+    add_compile_definitions(USE_PHYSX)
+    
+    # Fetch PhysX SDK
+    FetchContent_Declare(
+        physx
+        GIT_REPOSITORY https://github.com/NVIDIA-Omniverse/PhysX.git
+        GIT_TAG 5.4.1
+    )
+    FetchContent_GetProperties(physx)
+    if(NOT physx_populated)
+        FetchContent_Populate(physx)
+        
+        # PhysX build configuration
+        set(PHYSX_ROOT_DIR ${physx_SOURCE_DIR}/physx)
+        set(PXSHARED_ROOT_DIR ${physx_SOURCE_DIR}/pxshared)
+        set(TARGET_BUILD_PLATFORM "windows")
+        set(PX_BUILDSNIPPETS OFF CACHE BOOL "" FORCE)
+        set(PX_BUILDSAMPLES OFF CACHE BOOL "" FORCE)
+        set(PX_GENERATE_STATIC_LIBRARIES ON CACHE BOOL "" FORCE)
+        set(PX_GENERATE_GPU_PROJECTS OFF CACHE BOOL "" FORCE)
+        
+        # Add PhysX subdirectory
+        add_subdirectory(${PHYSX_ROOT_DIR}/compiler/public ${CMAKE_BINARY_DIR}/physx_build)
+    endif()
+else()
+    message(STATUS "Using Bullet3D physics backend (default)")
+    add_compile_definitions(USE_BULLET)
+    
+    # Fetch Bullet3D Physics Engine
+    FetchContent_Declare(
+        bullet3
+        GIT_REPOSITORY https://github.com/bulletphysics/bullet3.git
+        GIT_TAG master
+    )
+    FetchContent_GetProperties(bullet3)
+    if(NOT bullet3_populated)
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+        set(BUILD_EXTRAS OFF CACHE BOOL "" FORCE)
+        set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
+        set(BUILD_OPENGL3_DEMOS OFF CACHE BOOL "" FORCE)
+        set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
+        set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(bullet3)
+    endif()
 endif()
 
 # Fetch Lua
@@ -300,10 +334,10 @@ add_executable(GameEngine
     # Profiling and telemetry - DISABLED due to missing dependencies
     # src/Profiler.cpp
     # src/TelemetryServer.cpp
-    # Physics system - DISABLED
-    # src/PhysicsSystem.cpp
-    # src/RigidBody.cpp
-    # src/KinematicController.cpp
+    # Physics system
+    src/PhysicsSystem.cpp
+    src/RigidBody.cpp
+    src/KinematicController.cpp
     # Scene serialization and prefabs
     src/SceneSerializer.cpp
     src/Prefab.cpp
@@ -342,9 +376,82 @@ add_executable(GameEngine
     ${IMGUI_SOURCES}
 )
 
-target_include_directories(GameEngine PUBLIC include include/imgui game-engine-multiplayer/include ${miniaudio_SOURCE_DIR} ${bullet3_SOURCE_DIR}/src ${assimp_SOURCE_DIR}/include ${MONO_INCLUDE_DIRS})
+# Add PhysX backend sources if using PhysX
+if(PHYSICS_BACKEND STREQUAL "PHYSX")
+    target_sources(GameEngine PRIVATE
+        src/PhysXBackend.cpp
+        src/PhysXRigidBody.cpp
+        src/PhysXShape.cpp
+        src/PhysXCharacterController.cpp
+    )
+else()
+    # Add Bullet backend wrapper
+    target_sources(GameEngine PRIVATE
+        src/BulletBackend.cpp
+    )
+endif()
 
-target_link_libraries(GameEngine PRIVATE glfw opengl32 nlohmann_json tinygltf assimp ws2_32 winmm BulletDynamics BulletCollision LinearMath lua pybind11::embed glm::glm)
+
+# Configure include directories based on physics backend
+if(PHYSICS_BACKEND STREQUAL "PHYSX")
+    target_include_directories(GameEngine PUBLIC 
+        include 
+        include/imgui 
+        game-engine-multiplayer/include 
+        ${miniaudio_SOURCE_DIR} 
+        ${assimp_SOURCE_DIR}/include 
+        ${MONO_INCLUDE_DIRS}
+        ${PHYSX_ROOT_DIR}/include
+        ${PXSHARED_ROOT_DIR}/include
+    )
+else()
+    target_include_directories(GameEngine PUBLIC 
+        include 
+        include/imgui 
+        game-engine-multiplayer/include 
+        ${miniaudio_SOURCE_DIR} 
+        ${bullet3_SOURCE_DIR}/src 
+        ${assimp_SOURCE_DIR}/include 
+        ${MONO_INCLUDE_DIRS}
+    )
+endif()
+
+# Configure link libraries based on physics backend
+if(PHYSICS_BACKEND STREQUAL "PHYSX")
+    target_link_libraries(GameEngine PRIVATE 
+        glfw 
+        opengl32 
+        nlohmann_json 
+        tinygltf 
+        assimp 
+        ws2_32 
+        winmm 
+        lua 
+        pybind11::embed 
+        glm::glm
+        PhysX
+        PhysXCommon
+        PhysXFoundation
+        PhysXExtensions
+        PhysXCharacterKinematic
+    )
+else()
+    target_link_libraries(GameEngine PRIVATE 
+        glfw 
+        opengl32 
+        nlohmann_json 
+        tinygltf 
+        assimp 
+        ws2_32 
+        winmm 
+        BulletDynamics 
+        BulletCollision 
+        LinearMath 
+        lua 
+        pybind11::embed 
+        glm::glm
+    )
+endif()
 
 # Copy assets to build directory
 add_custom_command(TARGET GameEngine POST_BUILD

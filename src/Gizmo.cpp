@@ -211,8 +211,8 @@ void Gizmo::InitGizmoResources() {
 
 void Gizmo::DrawCube(Shader* shader, const Vec3& center, const Vec3& size, const Vec3& color) {
     Mat4 model = Mat4::Translate(center) * Mat4::Scale(size);
-    shader->SetMat4("model", model);
-    shader->SetVec3("color", color);
+    shader->SetMat4("model", model.m);
+    shader->SetVec3("color", color.x, color.y, color.z);
     
     glBindVertexArray(s_CubeVAO);
     glDrawArrays(GL_TRIANGLES, 0, 36);
@@ -229,10 +229,10 @@ void Gizmo::DrawQuad(Shader* shader, const Vec3& center, const Vec3& right, cons
     // col1, col2, col3, col4
     Mat4 transform = Mat4::Identity();
     // Set columns manually
-    transform.rows[0] = Vec4(right.x, up.x, 0, center.x);
-    transform.rows[1] = Vec4(right.y, up.y, 0, center.y);
-    transform.rows[2] = Vec4(right.z, up.z, 0, center.z);
-    transform.rows[3] = Vec4(0, 0, 0, 1);
+    transform.m[0] = right.x; transform.m[4] = up.x; transform.m[8] = 0; transform.m[12] = center.x;
+    transform.m[1] = right.y; transform.m[5] = up.y; transform.m[9] = 0; transform.m[13] = center.y;
+    transform.m[2] = right.z; transform.m[6] = up.z; transform.m[10] = 0; transform.m[14] = center.z;
+    transform.m[3] = 0;       transform.m[7] = 0;    transform.m[11] = 0; transform.m[15] = 1;
     
     // Note: The Mat4 class in this engine might be row-major or implement Set differently.
     // Let's assume Mat4::Identity() returns diagonal 1s.
@@ -252,13 +252,13 @@ void Gizmo::DrawQuad(Shader* shader, const Vec3& center, const Vec3& right, cons
     
     // Let's construct the matrix directly.
     Mat4 model;
-    model.elements[0] = right.x; model.elements[4] = up.x; model.elements[8] = 0; model.elements[12] = center.x;
-    model.elements[1] = right.y; model.elements[5] = up.y; model.elements[9] = 0; model.elements[13] = center.y;
-    model.elements[2] = right.z; model.elements[6] = up.z; model.elements[10]= 0; model.elements[14] = center.z;
-    model.elements[3] = 0;       model.elements[7] = 0;    model.elements[11]= 1; model.elements[15] = 1;
+    model.m[0] = right.x; model.m[4] = up.x; model.m[8] = 0; model.m[12] = center.x;
+    model.m[1] = right.y; model.m[5] = up.y; model.m[9] = 0; model.m[13] = center.y;
+    model.m[2] = right.z; model.m[6] = up.z; model.m[10]= 0; model.m[14] = center.z;
+    model.m[3] = 0;       model.m[7] = 0;    model.m[11]= 1; model.m[15] = 1;
     
-    shader->SetMat4("model", model);
-    shader->SetVec3("color", color);
+    shader->SetMat4("model", model.m);
+    shader->SetVec3("color", color.x, color.y, color.z);
     
     glBindVertexArray(s_QuadVAO);
     glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -294,8 +294,8 @@ void Gizmo::DrawArrow(Shader* shader, const Vec3& start, const Vec3& end, const 
     
     Mat4 model = translation * rotation * scaling; // Scale Y by length
     
-    shader->SetMat4("model", model);
-    shader->SetVec3("color", color);
+    shader->SetMat4("model", model.m);
+    shader->SetVec3("color", color.x, color.y, color.z);
 
     glBindVertexArray(s_ArrowVAO);
     glDrawArrays(GL_LINES, 0, 2);
@@ -331,8 +331,8 @@ void Gizmo::DrawCircle(Shader* shader, const Vec3& center, const Vec3& normal, f
     
     Mat4 model = translation * rotation * scaling;
     
-    shader->SetMat4("model", model);
-    shader->SetVec3("color", color);
+    shader->SetMat4("model", model.m);
+    shader->SetVec3("color", color.x, color.y, color.z);
     
     glBindVertexArray(s_CircleVAO);
     glDrawArrays(GL_LINE_LOOP, 0, 64); // 64 segments

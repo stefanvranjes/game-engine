@@ -21,10 +21,10 @@ TEST_F(GameObjectTest, CreateGameObject) {
 
 TEST_F(GameObjectTest, SetGetPosition) {
     auto obj = std::make_shared<GameObject>("TestObject");
-    glm::vec3 pos(5.0f, 10.0f, 15.0f);
+    Vec3 pos(5.0f, 10.0f, 15.0f);
     obj->GetTransform().SetPosition(pos);
     
-    glm::vec3 retrievedPos = obj->GetTransform().GetPosition();
+    Vec3 retrievedPos = obj->GetTransform().GetPosition();
     EXPECT_EQ(retrievedPos.x, 5.0f);
     EXPECT_EQ(retrievedPos.y, 10.0f);
     EXPECT_EQ(retrievedPos.z, 15.0f);
@@ -32,10 +32,10 @@ TEST_F(GameObjectTest, SetGetPosition) {
 
 TEST_F(GameObjectTest, SetGetScale) {
     auto obj = std::make_shared<GameObject>("TestObject");
-    glm::vec3 scale(2.0f, 3.0f, 4.0f);
+    Vec3 scale(2.0f, 3.0f, 4.0f);
     obj->GetTransform().SetScale(scale);
     
-    glm::vec3 retrievedScale = obj->GetTransform().GetScale();
+    Vec3 retrievedScale = obj->GetTransform().GetScale();
     EXPECT_EQ(retrievedScale.x, 2.0f);
     EXPECT_EQ(retrievedScale.y, 3.0f);
     EXPECT_EQ(retrievedScale.z, 4.0f);
@@ -75,30 +75,31 @@ TEST_F(GameObjectTest, PositionPersistence) {
     auto obj = std::make_shared<GameObject>("TestObject");
     
     // Set position multiple times
-    obj->GetTransform().SetPosition(glm::vec3(1.0f, 2.0f, 3.0f));
+    obj->GetTransform().SetPosition(Vec3(1.0f, 2.0f, 3.0f));
     EXPECT_EQ(obj->GetTransform().GetPosition().x, 1.0f);
     
-    obj->GetTransform().SetPosition(glm::vec3(4.0f, 5.0f, 6.0f));
+    obj->GetTransform().SetPosition(Vec3(4.0f, 5.0f, 6.0f));
     EXPECT_EQ(obj->GetTransform().GetPosition().x, 4.0f);
 }
 
 TEST_F(GameObjectTest, RotationHandling) {
     auto obj = std::make_shared<GameObject>("TestObject");
-    glm::quat rotation = glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    Vec3 rotation(0.0f, 90.0f, 0.0f);
     obj->GetTransform().SetRotation(rotation);
     
-    glm::quat retrievedRotation = obj->GetTransform().GetRotation();
-    EXPECT_NEAR(glm::length(retrievedRotation), 1.0f, 1e-6f);
+    Vec3 retrievedRotation = obj->GetTransform().GetRotation();
+    // Simple check as we are using Euler angles
+    EXPECT_EQ(retrievedRotation.y, 90.0f);
 }
 
 TEST_F(GameObjectTest, ScalePersistence) {
     auto obj = std::make_shared<GameObject>("TestObject");
     
-    obj->GetTransform().SetScale(glm::vec3(2.0f, 2.0f, 2.0f));
-    glm::vec3 scale1 = obj->GetTransform().GetScale();
+    obj->GetTransform().SetScale(Vec3(2.0f, 2.0f, 2.0f));
+    Vec3 scale1 = obj->GetTransform().GetScale();
     EXPECT_EQ(scale1.x, 2.0f);
     
-    obj->GetTransform().SetScale(glm::vec3(3.0f, 3.0f, 3.0f));
-    glm::vec3 scale2 = obj->GetTransform().GetScale();
+    obj->GetTransform().SetScale(Vec3(3.0f, 3.0f, 3.0f));
+    Vec3 scale2 = obj->GetTransform().GetScale();
     EXPECT_EQ(scale2.x, 3.0f);
 }

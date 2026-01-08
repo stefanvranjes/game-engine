@@ -20,12 +20,12 @@ public:
     void Run();
 
     // Stack Operations
-    void Push(Value val);
+    void Push(const Value& v);
     Value Pop();
     Value Peek(int offset = 0);
 
     // Globals/Variables Access
-    void SetGlobal(int index, Value val);
+    void SetGlobal(int index, const Value& v);
     Value GetGlobal(int index);
 
     // Callbacks

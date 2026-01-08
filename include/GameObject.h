@@ -25,6 +25,9 @@ public:
 
     std::shared_ptr<GameObject> Clone();
 
+    void SetActive(bool active) { m_IsActive = active; }
+    bool IsActive() const { return m_IsActive; }
+
     virtual void Update(const Mat4& parentMatrix, float deltaTime);
     void UpdateAnimator(float deltaTime);  // Update animation state
     void Draw(Shader* shader, const Mat4& view, const Mat4& projection, class Frustum* frustum = nullptr, bool forceRender = false);
@@ -128,6 +131,7 @@ public:
 private:
 
     std::string m_Name;
+    bool m_IsActive = true;
     Transform m_Transform;
     Mat4 m_WorldMatrix;
     

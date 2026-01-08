@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include "MaterialNew.h"
 #include "Texture.h"
-#include "Math/Vector3.h"
+#include "Math/Vec3.h"
 
 class MaterialTest : public ::testing::Test {
 protected:

@@ -297,6 +297,7 @@ extern PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData;
 
 // Integer textures
 #define GL_R32I 0x8235
+#define GL_R32F 0x822E
 #define GL_RED_INTEGER 0x8D94
 #define GL_R32UI 0x8236
 #define GL_RGBA32F 0x8814
