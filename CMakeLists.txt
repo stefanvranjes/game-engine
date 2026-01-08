@@ -388,6 +388,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/ClothMeshSplitter.cpp
         src/ClothPiece.cpp
         src/ClothPieceManager.cpp
+        src/AsyncClothFactory.cpp
     )
 else()
     # Add Bullet backend wrapper

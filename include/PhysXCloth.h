@@ -16,6 +16,7 @@ namespace physx {
 
 class PhysXBackend;
 class Mesh;
+class AsyncClothFactory;
 
 /**
  * @brief PhysX implementation of cloth simulation
@@ -100,6 +101,32 @@ public:
     void SetTearCallback(TearCallback callback) { m_TearCallback = callback; }
 
     /**
+     * @brief Async initialization callback types
+     */
+    using AsyncCallback = std::function<void(std::shared_ptr<PhysXCloth>)>;
+    using ErrorCallback = std::function<void(const std::string&)>;
+
+    /**
+     * @brief Initialize cloth asynchronously
+     * @param backend PhysX backend
+     * @param desc Cloth descriptor
+     * @param onComplete Callback when cloth is ready (main thread)
+     * @param onError Callback on error (main thread)
+     * @return Job ID for tracking
+     */
+    static int InitializeAsync(
+        PhysXBackend* backend,
+        const ClothDesc& desc,
+        AsyncCallback onComplete,
+        ErrorCallback onError = nullptr
+    );
+
+    /**
+     * @brief Check if cloth is ready (has valid PhysX cloth actor)
+     */
+    bool IsReady() const { return m_Cloth != nullptr; }
+
+    /**
      * @brief Split cloth along a line
      * @param start Line start position
      * @param end Line end position
@@ -115,6 +142,8 @@ public:
     );
 
 private:
+    // Allow AsyncClothFactory to access internals for finalization
+    friend class AsyncClothFactory;
     PhysXBackend* m_Backend;
     physx::PxCloth* m_Cloth;
     physx::PxClothFabric* m_Fabric;

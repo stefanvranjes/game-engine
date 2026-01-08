@@ -5,6 +5,7 @@
 #include "PhysXBackend.h"
 #include "ClothMeshSplitter.h"
 #include "Mesh.h"
+#include "AsyncClothFactory.h"
 #include <PxPhysicsAPI.h>
 #include <extensions/PxClothFabricCooker.h>
 #include <iostream>
@@ -113,6 +114,20 @@ void PhysXCloth::Initialize(const ClothDesc& desc) {
     RecalculateNormals();
 
     std::cout << "PhysXCloth initialized with " << m_ParticleCount << " particles" << std::endl;
+}
+
+int PhysXCloth::InitializeAsync(
+    PhysXBackend* backend,
+    const ClothDesc& desc,
+    AsyncCallback onComplete,
+    ErrorCallback onError)
+{
+    return AsyncClothFactory::GetInstance().CreateClothAsync(
+        backend,
+        desc,
+        onComplete,
+        onError
+    );
 }
 
 void PhysXCloth::CreateClothFabric(const ClothDesc& desc) {
