@@ -12,6 +12,8 @@ ClothPieceManager::ClothPieceManager()
     , m_AutoCleanupThreshold(0.05f)  // 5% of original size
     , m_DefaultLifetime(30.0f)        // 30 seconds
     , m_DefaultFadeDuration(2.0f)     // 2 seconds
+    , m_CameraPosition(0, 0, 0)
+    , m_LODEnabled(true)
 {
     std::cout << "ClothPieceManager initialized" << std::endl;
 }
@@ -158,6 +160,41 @@ void ClothPieceManager::CleanupSmallPieces() {
     if (fadedCount > 0) {
         std::cout << "Started fade-out for " << fadedCount 
                   << " small pieces (threshold: " << thresholdSize << ")" << std::endl;
+    }
+}
+
+void ClothPieceManager::UpdatePieceLODs() {
+    if (!m_LODEnabled) {
+        return;
+    }
+    
+    // Update LOD for each piece based on distance from camera
+    for (auto& piece : m_Pieces) {
+        auto cloth = piece->GetCloth();
+        if (!cloth) {
+            continue;
+        }
+        
+        // Get cloth position (approximate from first particle)
+        const auto& positions = cloth->GetParticlePositions();
+        if (positions.empty()) {
+            continue;
+        }
+        
+        Vec3 clothPos = positions[0];  // Use first particle as reference
+        
+        // Calculate distance to camera
+        Vec3 delta = clothPos - m_CameraPosition;
+        float distance = std::sqrt(delta.x * delta.x + delta.y * delta.y + delta.z * delta.z);
+        
+        // Get appropriate LOD for distance
+        const ClothLODConfig& config = cloth->GetLODConfig();
+        int targetLOD = config.GetLODForDistance(distance, cloth->GetCurrentLOD());
+        
+        // Apply LOD if changed
+        if (targetLOD != cloth->GetCurrentLOD()) {
+            cloth->SetLOD(targetLOD);
+        }
     }
 }
 

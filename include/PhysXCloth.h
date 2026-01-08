@@ -236,6 +236,24 @@ private:
     bool CanTear() const;
     int FindNearestParticle(const Vec3& position) const;
     
+    // LOD mesh recreation helpers
+    /**
+     * @brief Recreate cloth with simplified mesh from LOD level
+     * @param level LOD level with mesh data
+     * @return True if successful
+     */
+    bool RecreateClothWithLOD(const ClothLODLevel* level);
+    
+    /**
+     * @brief Transfer particle state from current mesh to LOD mesh
+     * @param level Target LOD level
+     * @param outParticles Output particle data for new cloth
+     */
+    void TransferParticleState(
+        const ClothLODLevel* level,
+        std::vector<physx::PxClothParticle>& outParticles
+    );
+    
     // Mesh splitting helper
     std::shared_ptr<PhysXCloth> CreateFromSplit(
         const std::vector<Vec3>& positions,

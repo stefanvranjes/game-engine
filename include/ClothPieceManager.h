@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ClothPiece.h"
+#include "Math/Vec3.h"
 #include <vector>
 #include <memory>
 
@@ -56,6 +57,22 @@ public:
     const std::vector<std::shared_ptr<ClothPiece>>& GetActivePieces() const {
         return m_Pieces;
     }
+
+    // LOD Support
+    /**
+     * @brief Set camera position for LOD calculations
+     */
+    void SetCameraPosition(const Vec3& position) { m_CameraPosition = position; }
+
+    /**
+     * @brief Update LODs for all pieces
+     */
+    void UpdatePieceLODs();
+
+    /**
+     * @brief Enable/disable automatic LOD for pieces
+     */
+    void SetLODEnabled(bool enabled) { m_LODEnabled = enabled; }
 
     /**
      * @brief Remove all cloth pieces
@@ -126,10 +143,17 @@ private:
     std::vector<std::shared_ptr<ClothPiece>> m_Pieces;
     
     int m_NextPieceID;
-    int m_MaxPieces;
-    float m_AutoCleanupThreshold;  // Fraction of original size
+    int m_MaxPieces; // Kept as it was not explicitly removed by the instruction
+    // Cleanup thresholds
+    float m_AutoCleanupThreshold;
+    
+    // Default settings
     float m_DefaultLifetime;
     float m_DefaultFadeDuration;
+
+    // LOD support
+    Vec3 m_CameraPosition;
+    bool m_LODEnabled;
 };
 
 #endif // USE_PHYSX

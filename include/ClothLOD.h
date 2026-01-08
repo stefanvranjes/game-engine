@@ -26,6 +26,7 @@ struct ClothLODLevel {
     
     // State
     bool isFrozen;                   // If true, disable simulation entirely
+    bool hasMeshData;                // If true, mesh data is populated
     
     ClothLODLevel()
         : lodIndex(0)
@@ -36,6 +37,7 @@ struct ClothLODLevel {
         , substeps(1)
         , updateFrequency(1)
         , isFrozen(false)
+        , hasMeshData(false)
     {}
 };
 
@@ -84,6 +86,16 @@ public:
      * @brief Clear all LOD levels
      */
     void Clear() { m_Levels.clear(); }
+    
+    /**
+     * @brief Generate LOD meshes from base mesh using mesh simplification
+     * @param basePositions Base mesh vertex positions
+     * @param baseIndices Base mesh triangle indices
+     */
+    void GenerateLODMeshes(
+        const std::vector<Vec3>& basePositions,
+        const std::vector<int>& baseIndices
+    );
     
     /**
      * @brief Create default LOD configuration

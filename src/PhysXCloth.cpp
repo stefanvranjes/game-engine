@@ -114,8 +114,18 @@ void PhysXCloth::Initialize(const ClothDesc& desc) {
 
     // Calculate initial normals
     RecalculateNormals();
+    
+    // Generate LOD meshes if LOD config is set
+    if (m_LODConfig.GetLODCount() == 0) {
+        // Create default LOD config
+        m_LODConfig = ClothLODConfig::CreateDefault(m_ParticleCount, m_TriangleCount);
+    }
+    
+    // Generate simplified meshes for all LOD levels
+    m_LODConfig.GenerateLODMeshes(m_ParticlePositions, m_TriangleIndices);
 
-    std::cout << "PhysXCloth initialized with " << m_ParticleCount << " particles" << std::endl;
+    std::cout << "PhysXCloth initialized with " << m_ParticleCount << " particles and "
+              << m_LODConfig.GetLODCount() << " LOD levels" << std::endl;
 }
 
 int PhysXCloth::InitializeAsync(
@@ -176,6 +186,11 @@ void PhysXCloth::SetupConstraints() {
 }
 
 void PhysXCloth::Update(float deltaTime) {
+    // Skip update if frozen (LOD optimization)
+    if (m_IsFrozen) {
+        return;
+    }
+    
     if (!m_Cloth || !m_Enabled) {
         return;
     }
@@ -788,15 +803,31 @@ void PhysXCloth::SetLOD(int lodLevel) {
     std::cout << "PhysXCloth: Transitioning from LOD " << m_CurrentLOD 
               << " to LOD " << lodLevel << std::endl;
     
-    m_CurrentLOD = lodLevel;
-    
-    // Update solver iterations if cloth is active
-    if (m_Cloth && !level->isFrozen) {
-        m_Cloth->setSolverFrequency(static_cast<float>(level->solverIterations));
+    // Handle frozen state
+    if (level->isFrozen) {
+        Freeze();
+        m_CurrentLOD = lodLevel;
+        return;
+    } else if (m_IsFrozen) {
+        Unfreeze();
     }
     
-    // Note: Full mesh simplification and recreation would happen here
-    // For now, we just adjust simulation quality
+    // If LOD level has mesh data, recreate cloth with simplified mesh
+    if (level->hasMeshData && level->particleCount > 0) {
+        if (RecreateClothWithLOD(level)) {
+            m_CurrentLOD = lodLevel;
+            std::cout << "PhysXCloth: Successfully transitioned to LOD " << lodLevel 
+                      << " (" << m_ParticleCount << " particles)" << std::endl;
+        } else {
+            std::cerr << "PhysXCloth: Failed to recreate cloth for LOD " << lodLevel << std::endl;
+        }
+    } else {
+        // Fallback: just update solver iterations
+        if (m_Cloth) {
+            m_Cloth->setSolverFrequency(static_cast<float>(level->solverIterations));
+        }
+        m_CurrentLOD = lodLevel;
+    }
 }
 
 void PhysXCloth::Freeze() {
@@ -837,6 +868,156 @@ void PhysXCloth::Unfreeze() {
     }
     
     m_IsFrozen = false;
+}
+
+// LOD mesh recreation methods
+
+bool PhysXCloth::RecreateClothWithLOD(const ClothLODLevel* level) {
+    if (!level || !m_Cloth || !m_Backend) {
+        return false;
+    }
+    
+    std::cout << "PhysXCloth: Recreating cloth with LOD " << level->lodIndex 
+              << " mesh (" << level->particleCount << " particles)..." << std::endl;
+    
+    // Prepare new particle data with state transfer
+    std::vector<PxClothParticle> newParticles;
+    TransferParticleState(level, newParticles);
+    
+    // Remove old cloth from scene
+    m_Backend->GetScene()->removeActor(*m_Cloth);
+    m_Cloth->release();
+    m_Cloth = nullptr;
+    
+    if (m_Fabric) {
+        m_Fabric->release();
+        m_Fabric = nullptr;
+    }
+    
+    // Create new cloth descriptor
+    ClothDesc desc;
+    desc.particleCount = level->particleCount;
+    desc.triangleCount = level->triangleCount;
+    desc.particlePositions = const_cast<Vec3*>(level->particlePositions.data());
+    desc.triangleIndices = const_cast<int*>(level->triangleIndices.data());
+    desc.particleMass = 0.1f;
+    desc.gravity = Vec3(0, -9.81f, 0);
+    
+    // Create new fabric
+    CreateClothFabric(desc);
+    if (!m_Fabric) {
+        std::cerr << "PhysXCloth: Failed to create fabric for LOD" << std::endl;
+        return false;
+    }
+    
+    // Create new cloth
+    PxTransform transform(PxVec3(0, 0, 0));
+    m_Cloth = m_Backend->GetPhysics()->createCloth(
+        transform,
+        *m_Fabric,
+        newParticles.data(),
+        PxClothFlags()
+    );
+    
+    if (!m_Cloth) {
+        std::cerr << "PhysXCloth: Failed to create cloth for LOD" << std::endl;
+        return false;
+    }
+    
+    // Add to scene
+    m_Backend->GetScene()->addActor(*m_Cloth);
+    
+    // Update internal state
+    m_ParticleCount = level->particleCount;
+    m_TriangleCount = level->triangleCount;
+    m_ParticlePositions = level->particlePositions;
+    m_TriangleIndices = level->triangleIndices;
+    m_ParticleNormals.resize(m_ParticleCount);
+    
+    // Restore constraints
+    SetupConstraints();
+    
+    std::cout << "PhysXCloth: Successfully recreated cloth with " << m_ParticleCount 
+              << " particles" << std::endl;
+    
+    return true;
+}
+
+void PhysXCloth::TransferParticleState(
+    const ClothLODLevel* level,
+    std::vector<PxClothParticle>& outParticles)
+{
+    outParticles.resize(level->particleCount);
+    
+    // Get current particle data
+    PxClothReadData* readData = m_Cloth->lockClothReadData();
+    if (!readData) {
+        // Fallback: use rest positions
+        for (int i = 0; i < level->particleCount; ++i) {
+            outParticles[i].pos = PxVec3(
+                level->particlePositions[i].x,
+                level->particlePositions[i].y,
+                level->particlePositions[i].z
+            );
+            outParticles[i].invWeight = 10.0f;  // Default mass
+        }
+        return;
+    }
+    
+    const PxClothParticle* currentParticles = readData->particles;
+    
+    // Transfer state using vertex mapping
+    // For each LOD vertex, find the closest original vertex it maps to
+    for (int i = 0; i < level->particleCount; ++i) {
+        // Find which original vertex(es) map to this LOD vertex
+        // The mapping is: original vertex index -> LOD vertex index
+        // We need to find original vertices that map to LOD vertex i
+        
+        int closestOriginal = -1;
+        float closestDist = std::numeric_limits<float>::max();
+        
+        // Search through mapping to find original vertices that map to this LOD vertex
+        for (size_t j = 0; j < level->particleMapping.size() && j < static_cast<size_t>(m_ParticleCount); ++j) {
+            if (level->particleMapping[j] == i) {
+                // Original vertex j maps to LOD vertex i
+                // Use this as the source
+                closestOriginal = static_cast<int>(j);
+                break;
+            }
+        }
+        
+        if (closestOriginal >= 0 && closestOriginal < m_ParticleCount) {
+            // Copy state from original particle
+            outParticles[i] = currentParticles[closestOriginal];
+        } else {
+            // Fallback: find closest particle by position
+            Vec3 lodPos = level->particlePositions[i];
+            
+            for (int j = 0; j < m_ParticleCount; ++j) {
+                Vec3 diff = m_ParticlePositions[j] - lodPos;
+                float dist = diff.Length();
+                
+                if (dist < closestDist) {
+                    closestDist = dist;
+                    closestOriginal = j;
+                }
+            }
+            
+            if (closestOriginal >= 0) {
+                outParticles[i] = currentParticles[closestOriginal];
+            } else {
+                // Ultimate fallback: use rest position
+                outParticles[i].pos = PxVec3(
+                    level->particlePositions[i].x,
+                    level->particlePositions[i].y,
+                    level->particlePositions[i].z
+                );
+                outParticles[i].invWeight = 10.0f;
+            }
+        }
+    }
+    
+    readData->unlock();
 }
 
 #endif // USE_PHYSX
