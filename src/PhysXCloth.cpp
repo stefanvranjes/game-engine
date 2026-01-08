@@ -6,9 +6,13 @@
 #include "ClothMeshSplitter.h"
 #include "Mesh.h"
 #include "AsyncClothFactory.h"
+#include "Profiler.h"
+#include "ClothTearPattern.h"
+#include "ClothTearPatternLibrary.h"
 #include <PxPhysicsAPI.h>
 #include <extensions/PxClothFabricCooker.h>
 #include <iostream>
+#include <cstring>
 
 using namespace physx;
 
@@ -39,6 +43,7 @@ PhysXCloth::PhysXCloth(PhysXBackend* backend)
     , m_UpdateCounter(0)
     , m_UpdateFrequency(1)
 {
+    m_SpatialGrid = std::make_unique<SpatialGrid<int>>(2.0f); // 2 meter grid cells
 }
 
 PhysXCloth::~PhysXCloth() {
@@ -227,6 +232,7 @@ void PhysXCloth::SetupConstraints() {
 }
 
 void PhysXCloth::Update(float deltaTime) {
+    SCOPED_PROFILE("PhysXCloth::Update");
     // Skip update if frozen (LOD optimization)
     if (m_IsFrozen) {
         return;
@@ -250,23 +256,140 @@ void PhysXCloth::Update(float deltaTime) {
         m_Cloth->setLiftCoefficient(0.3f); // Lift force
     }
 
+    // Update collision shapes (culling)
+    UpdateCollisionShapes();
+
     // Update particle data from simulation
     UpdateParticleData();
+    
+    // Update progressive tears
+    UpdateProgressiveTears(deltaTime);
+}
+
+void PhysXCloth::GetWorldBounds(Vec3& outMin, Vec3& outMax) const {
+    if (m_ParticleCount == 0) {
+        outMin = Vec3(0, 0, 0);
+        outMax = Vec3(0, 0, 0);
+        return;
+    }
+
+    outMin = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+    outMax = Vec3(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
+
+    // Iterate particles (using local cache or PhysX read data? Local cache is updated every frame in UpdateParticleData, 
+    // but GetWorldBounds is called BEFORE UpdateParticleData in this flow? 
+    // Actually, UpdateCollisionShapes is called before UpdateParticleData, so m_ParticlePositions depends on LAST frame.
+    // That is fine for broadphase culling.
+    for (int i = 0; i < m_ParticleCount; ++i) {
+        const Vec3& p = m_ParticlePositions[i];
+        if (p.x < outMin.x) outMin.x = p.x;
+        if (p.y < outMin.y) outMin.y = p.y;
+        if (p.z < outMin.z) outMin.z = p.z;
+        
+        if (p.x > outMax.x) outMax.x = p.x;
+        if (p.y > outMax.y) outMax.y = p.y;
+        if (p.z > outMax.z) outMax.z = p.z;
+    }
+}
+
+void PhysXCloth::UpdateCollisionShapes() {
+    SCOPED_PROFILE("PhysXCloth::UpdateCollisionShapes");
+    if (!m_Cloth || m_CollisionShapesList.empty()) return;
+
+    // Calculate cloth bounds
+    Vec3 minBounds, maxBounds;
+    GetWorldBounds(minBounds, maxBounds);
+    
+    // Add margin (e.g. 1 meter)
+    minBounds = minBounds - Vec3(1.0f, 1.0f, 1.0f);
+    maxBounds = maxBounds + Vec3(1.0f, 1.0f, 1.0f);
+    
+    SpatialGrid<int>::AABB queryBounds;
+    queryBounds.min = minBounds;
+    queryBounds.max = maxBounds;
+
+    std::vector<int> nearbyShapeIndices;
+    m_SpatialGrid->Query(queryBounds, nearbyShapeIndices);
+    
+    // PhysX Limit is 32 spheres
+    if (nearbyShapeIndices.size() > 32) {
+        // Simple priority: just take first 32, or sort by distance to bounds center?
+        // Let's sort by distance to cloth center
+        Vec3 center = (minBounds + maxBounds) * 0.5f;
+        std::sort(nearbyShapeIndices.begin(), nearbyShapeIndices.end(), 
+            [&](int a, int b) {
+                const auto& sa = m_CollisionShapesList[a];
+                const auto& sb = m_CollisionShapesList[b];
+                float da = (sa.pos0 - center).LengthSquared(); // rough dist
+                float db = (sb.pos0 - center).LengthSquared();
+                return da < db;
+            });
+        nearbyShapeIndices.resize(32);
+    }
+
+    // Convert to PhysX spheres/capsules
+    // PhysX manages spheres and capsules together. Capsules reference indices in the sphere array.
+    // We need to rebuild the frame-local spheres list.
+    
+    m_Cloth->clearCollisionSpheres(); // Not exposed in standard API, usually we just setCollisionSpheres
+    // API: setCollisionSpheres(const PxClothCollisionSphere* spheres, PxU32 sphereCount)
+    //      setCollisionCapsules(const PxU32* capsules, PxU32 capsuleCount)
+    
+    // We need to flatten our selected shapes into spheres and indices
+    std::vector<PxClothCollisionSphere> pxSpheres;
+    std::vector<PxU32> pxCapsules; // pairs of indices
+
+    for (int idx : nearbyShapeIndices) {
+        const auto& shape = m_CollisionShapesList[idx];
+        
+        if (shape.type == 0) { // Sphere
+            PxClothCollisionSphere s;
+            s.pos = PxVec3(shape.pos0.x, shape.pos0.y, shape.pos0.z);
+            s.radius = shape.radius;
+            pxSpheres.push_back(s);
+        } else if (shape.type == 1) { // Capsule
+            // Capsule needs two spheres
+            PxClothCollisionSphere s0, s1;
+            s0.pos = PxVec3(shape.pos0.x, shape.pos0.y, shape.pos0.z);
+            s0.radius = shape.radius;
+            s1.pos = PxVec3(shape.pos1.x, shape.pos1.y, shape.pos1.z);
+            s1.radius = shape.radius;
+            
+            // Check if we have space (Max 32 spheres)
+            if (pxSpheres.size() + 2 > 32) break;
+
+            uint32_t idx0 = static_cast<uint32_t>(pxSpheres.size());
+            pxSpheres.push_back(s0);
+            uint32_t idx1 = static_cast<uint32_t>(pxSpheres.size());
+            pxSpheres.push_back(s1);
+            
+            pxCapsules.push_back(idx0);
+            pxCapsules.push_back(idx1);
+        }
+    }
+    
+    m_Cloth->setCollisionSpheres(pxSpheres.data(), static_cast<PxU32>(pxSpheres.size()));
+    if (!pxCapsules.empty()) {
+        m_Cloth->setCollisionCapsules(pxCapsules.data(), static_cast<PxU32>(pxCapsules.size() / 2));
+    }
 }
 
 void PhysXCloth::UpdateParticleData() {
+    SCOPED_PROFILE("PhysXCloth::UpdateParticleData");
     if (!m_Cloth) return;
 
     // Get particle positions from PhysX
     PxClothReadData* readData = m_Cloth->lockClothReadData();
     if (readData) {
         const PxClothParticle* particles = readData->particles;
+        // Optimization: Unroll or rely on compiler vectorization
+        // PxClothParticle is 16 bytes (pos + invWeight), Vec3 is 12 bytes
+        // Compilers usually handle this loop well, but we can hint
         for (int i = 0; i < m_ParticleCount; ++i) {
-            m_ParticlePositions[i] = Vec3(
-                particles[i].pos.x,
-                particles[i].pos.y,
-                particles[i].pos.z
-            );
+            const auto& p = particles[i];
+            m_ParticlePositions[i].x = p.pos.x;
+            m_ParticlePositions[i].y = p.pos.y;
+            m_ParticlePositions[i].z = p.pos.z;
         }
         readData->unlock();
     }
@@ -275,36 +398,59 @@ void PhysXCloth::UpdateParticleData() {
     RecalculateNormals();
 }
 
+// Helper to avoid allocations
 void PhysXCloth::RecalculateNormals() {
-    // Reset normals
-    for (int i = 0; i < m_ParticleCount; ++i) {
-        m_ParticleNormals[i] = Vec3(0, 0, 0);
-    }
+    SCOPED_PROFILE("PhysXCloth::RecalculateNormals");
+    
+    // Reset normals efficiently
+    std::memset(m_ParticleNormals.data(), 0, m_ParticleCount * sizeof(Vec3));
 
     // Calculate face normals and accumulate
+    // Access raw pointers for speed
+    Vec3* normals = m_ParticleNormals.data();
+    const Vec3* positions = m_ParticlePositions.data();
+    const int* indices = m_TriangleIndices.data();
+    
     for (int i = 0; i < m_TriangleCount; ++i) {
-        int i0 = m_TriangleIndices[i * 3 + 0];
-        int i1 = m_TriangleIndices[i * 3 + 1];
-        int i2 = m_TriangleIndices[i * 3 + 2];
+        int i0 = indices[i * 3 + 0];
+        int i1 = indices[i * 3 + 1];
+        int i2 = indices[i * 3 + 2];
 
-        Vec3 v0 = m_ParticlePositions[i0];
-        Vec3 v1 = m_ParticlePositions[i1];
-        Vec3 v2 = m_ParticlePositions[i2];
+        const Vec3& v0 = positions[i0];
+        const Vec3& v1 = positions[i1];
+        const Vec3& v2 = positions[i2];
 
-        Vec3 edge1 = v1 - v0;
-        Vec3 edge2 = v2 - v0;
-        Vec3 normal = edge1.Cross(edge2);
+        // Inline cross product for better optimization chane
+        float ax = v1.x - v0.x;
+        float ay = v1.y - v0.y;
+        float az = v1.z - v0.z;
+        
+        float bx = v2.x - v0.x;
+        float by = v2.y - v0.y;
+        float bz = v2.z - v0.z;
+        
+        float nx = ay * bz - az * by;
+        float ny = az * bx - ax * bz;
+        float nz = ax * by - ay * bx;
 
-        m_ParticleNormals[i0] = m_ParticleNormals[i0] + normal;
-        m_ParticleNormals[i1] = m_ParticleNormals[i1] + normal;
-        m_ParticleNormals[i2] = m_ParticleNormals[i2] + normal;
+        normals[i0].x += nx; normals[i0].y += ny; normals[i0].z += nz;
+        normals[i1].x += nx; normals[i1].y += ny; normals[i1].z += nz;
+        normals[i2].x += nx; normals[i2].y += ny; normals[i2].z += nz;
     }
 
     // Normalize
+    const float minLengthSq = 0.000001f;
     for (int i = 0; i < m_ParticleCount; ++i) {
-        float length = m_ParticleNormals[i].Length();
-        if (length > 0.001f) {
-            m_ParticleNormals[i] = m_ParticleNormals[i] * (1.0f / length);
+        float x = normals[i].x;
+        float y = normals[i].y;
+        float z = normals[i].z;
+        float lenSq = x*x + y*y + z*z;
+        
+        if (lenSq > minLengthSq) {
+            float invLen = 1.0f / std::sqrt(lenSq);
+            normals[i].x *= invLen;
+            normals[i].y *= invLen;
+            normals[i].z *= invLen;
         }
     }
 }
@@ -436,24 +582,39 @@ void PhysXCloth::FreeParticle(int particleIndex) {
 
 void PhysXCloth::AddCollisionSphere(const Vec3& center, float radius) {
     if (m_Cloth) {
-        PxClothCollisionSphere sphere;
-        sphere.pos = PxVec3(center.x, center.y, center.z);
-        sphere.radius = radius;
-        m_Cloth->addCollisionSphere(sphere);
+        InternalCollisionShape shape;
+        shape.type = 0;
+        shape.pos0 = center;
+        shape.radius = radius;
+        shape.id = static_cast<int>(m_CollisionShapesList.size());
+        
+        m_CollisionShapesList.push_back(shape);
+        m_SpatialGrid->Insert(shape.id, center, radius);
+        
+        // We defer PxCloth update to Update() loop
     }
 }
 
 void PhysXCloth::AddCollisionCapsule(const Vec3& p0, const Vec3& p1, float radius) {
     if (m_Cloth) {
-        PxClothCollisionSphere sphere0, sphere1;
-        sphere0.pos = PxVec3(p0.x, p0.y, p0.z);
-        sphere0.radius = radius;
-        sphere1.pos = PxVec3(p1.x, p1.y, p1.z);
-        sphere1.radius = radius;
+        InternalCollisionShape shape;
+        shape.type = 1;
+        shape.pos0 = p0;
+        shape.pos1 = p1;
+        shape.radius = radius;
+        shape.id = static_cast<int>(m_CollisionShapesList.size());
         
-        m_Cloth->addCollisionSphere(sphere0);
-        m_Cloth->addCollisionSphere(sphere1);
-        m_Cloth->addCollisionCapsule(0, 1); // Connect last two spheres
+        m_CollisionShapesList.push_back(shape);
+        
+        // Calculate capsule bounds for grid
+        Vec3 minPos = Vec3(std::min(p0.x, p1.x) - radius, std::min(p0.y, p1.y) - radius, std::min(p0.z, p1.z) - radius);
+        Vec3 maxPos = Vec3(std::max(p0.x, p1.x) + radius, std::max(p0.y, p1.y) + radius, std::max(p0.z, p1.z) + radius);
+        
+        SpatialGrid<int>::AABB bounds;
+        bounds.min = minPos;
+        bounds.max = maxPos;
+        
+        m_SpatialGrid->Insert(shape.id, bounds);
     }
 }
 
@@ -611,6 +772,7 @@ void PhysXCloth::SetSolverFrequency(float frequency) {
 // Tearing helper methods
 
 void PhysXCloth::DetectTears(float deltaTime) {
+    SCOPED_PROFILE("PhysXCloth::DetectTears");
     if (!m_Cloth || !m_Tearable || !CanTear()) {
         return;
     }
@@ -711,6 +873,7 @@ int PhysXCloth::FindNearestParticle(const Vec3& position) const {
 // Rendering support
 
 void PhysXCloth::UpdateMeshData(Mesh* mesh) {
+    SCOPED_PROFILE("PhysXCloth::UpdateMeshData");
     if (!mesh || !m_Cloth) {
         return;
     }
@@ -718,10 +881,21 @@ void PhysXCloth::UpdateMeshData(Mesh* mesh) {
     // Update particle data from simulation
     UpdateParticleData();
 
+    // Handle Proxy Mesh (LODs)
+    if (m_CurrentLODLevel > 0) {
+        // Find current level data
+        const ClothLODLevel* level = m_LODConfig.GetLODLevel(m_CurrentLODLevel);
+        if (level && !level->particleMapping.empty()) {
+            UpdateProxyMesh(mesh, level->particleMapping);
+            return;
+        }
+    }
+
+    // High fidelity mode (LOD 0) - Original logic
     // Get mesh vertices and normals
     auto& vertices = mesh->GetVertices();
     
-    // Resize if needed
+    // Resize if needed (only for LOD 0 where 1:1 mapping is expected)
     if (static_cast<int>(vertices.size()) != m_ParticleCount) {
         vertices.resize(m_ParticleCount);
     }
@@ -737,6 +911,38 @@ void PhysXCloth::UpdateMeshData(Mesh* mesh) {
     mesh->UpdateVertices();
 }
 
+void PhysXCloth::UpdateProxyMesh(Mesh* mesh, const std::vector<int>& mapping) {
+    SCOPED_PROFILE("PhysXCloth::UpdateProxyMesh");
+    if (!mesh) return;
+
+    auto& vertices = mesh->GetVertices();
+    int vertexCount = static_cast<int>(vertices.size());
+    
+    // Safety check - make sure mapping is sufficient for the mesh
+    // Note: The render mesh is likely higher res than the physics mesh, so mapping.size() 
+    // should match vertexCount (each render vertex maps to a physics particle)
+    if (static_cast<int>(mapping.size()) < vertexCount) {
+        // Fallback or warning? For now just handle what we can
+        vertexCount = static_cast<int>(mapping.size());
+    }
+
+    // Update render vertices based on mapped physics particles
+    for (int i = 0; i < vertexCount; ++i) {
+        int physicsIndex = mapping[i];
+        
+        // Safety check for physics index
+        if (physicsIndex >= 0 && physicsIndex < m_ParticleCount) {
+            vertices[i].Position = m_ParticlePositions[physicsIndex];
+            vertices[i].Normal = m_ParticleNormals[physicsIndex];
+        }
+    }
+    
+    // Ideally we would recalculate smooth normals here for better appearance
+    // mesh->RecalculateNormals(); // Expensive, maybe optional?
+    
+    mesh->UpdateVertices();
+}
+
 // Mesh splitting methods
 
 bool PhysXCloth::SplitAtParticle(
@@ -744,6 +950,7 @@ bool PhysXCloth::SplitAtParticle(
     std::shared_ptr<PhysXCloth>& outPiece1,
     std::shared_ptr<PhysXCloth>& outPiece2)
 {
+    SCOPED_PROFILE("PhysXCloth::SplitAtParticle");
     if (!m_Cloth || tearParticle < 0 || tearParticle >= m_ParticleCount) {
         std::cerr << "Invalid tear particle for splitting" << std::endl;
         return false;
@@ -849,6 +1056,7 @@ bool PhysXCloth::SplitAlongLine(
     std::shared_ptr<PhysXCloth>& outPiece1,
     std::shared_ptr<PhysXCloth>& outPiece2)
 {
+    SCOPED_PROFILE("PhysXCloth::SplitAlongLine");
     if (!m_Cloth) {
         std::cerr << "Invalid cloth for splitting" << std::endl;
         return false;
@@ -1230,7 +1438,153 @@ void PhysXCloth::TransferParticleState(
         }
     }
     
-    readData->unlock();
+    readData-^>unlock();
+}
+
+// ============================================================================
+// Pattern-Based Tearing System
+// ============================================================================
+
+ClothTearPatternLibrary& PhysXCloth::GetPatternLibrary() {
+    return ClothTearPatternLibrary::GetInstance();
+}
+
+bool PhysXCloth::ApplyTearPattern(
+    const std::string& patternName,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) {
+    auto pattern = GetPatternLibrary().GetPattern(patternName);
+    if (!pattern) {
+        std::cerr << "PhysXCloth: Pattern '" << patternName << "' not found in library" << std::endl;
+        return false;
+    }
+    
+    return ApplyTearPattern(pattern, position, direction, scale);
+}
+
+bool PhysXCloth::ApplyTearPattern(
+    std::shared_ptr<ClothTearPattern> pattern,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) {
+    if (!pattern || !m_Tearable || !CanTear()) {
+        return false;
+    }
+    
+    // Get affected particles from pattern
+    auto affectedParticles = pattern->GetAffectedParticles(
+        m_ParticlePositions,
+        position,
+        direction,
+        scale
+    );
+    
+    if (affectedParticles.empty()) {
+        std::cout << "PhysXCloth: Pattern '" << pattern->GetName() 
+                  << "' did not affect any particles" << std::endl;
+        return false;
+    }
+    
+    // Apply tears to affected particles
+    int tearsApplied = 0;
+    for (int particleIndex : affectedParticles) {
+        if (TearAtParticle(particleIndex)) {
+            tearsApplied++;
+        }
+    }
+    
+    std::cout << "PhysXCloth: Applied pattern '" << pattern->GetName() 
+              << "' affecting " << affectedParticles.size() << " particles, "
+              << tearsApplied << " tears created" << std::endl;
+    
+    return tearsApplied > 0;
+}
+
+void PhysXCloth::StartProgressiveTear(
+    std::shared_ptr<ClothTearPattern> pattern,
+    const Vec3& position,
+    const Vec3& direction,
+    float duration,
+    float scale
+) {
+    if (!pattern || !m_Tearable) {
+        return;
+    }
+    
+    ProgressiveTear tear;
+    tear.pattern = pattern;
+    tear.position = position;
+    tear.direction = direction;
+    tear.scale = scale;
+    tear.progress = 0.0f;
+    tear.duration = duration;
+    tear.elapsed = 0.0f;
+    
+    m_ProgressiveTears.push_back(tear);
+    
+    std::cout << "PhysXCloth: Started progressive tear with pattern '" 
+              << pattern->GetName() << "' over " << duration << " seconds" << std::endl;
+}
+
+void PhysXCloth::StartProgressiveTear(
+    const std::string& patternName,
+    const Vec3& position,
+    const Vec3& direction,
+    float duration,
+    float scale
+) {
+    auto pattern = GetPatternLibrary().GetPattern(patternName);
+    if (!pattern) {
+        std::cerr << "PhysXCloth: Pattern '" << patternName << "' not found in library" << std::endl;
+        return;
+    }
+    
+    StartProgressiveTear(pattern, position, direction, duration, scale);
+}
+
+void PhysXCloth::UpdateProgressiveTears(float deltaTime) {
+    if (m_ProgressiveTears.empty()) {
+        return;
+    }
+    
+    SCOPED_PROFILE("PhysXCloth::UpdateProgressiveTears");
+    
+    // Update each progressive tear
+    for (auto it = m_ProgressiveTears.begin(); it != m_ProgressiveTears.end(); ) {
+        ProgressiveTear& tear = *it;
+        
+        tear.elapsed += deltaTime;
+        tear.progress = std::min(1.0f, tear.elapsed / tear.duration);
+        
+        // Get affected particles at current progress
+        auto affectedParticles = tear.pattern->GetAffectedParticles(
+            m_ParticlePositions,
+            tear.position,
+            tear.direction,
+            tear.scale * tear.progress  // Scale pattern by progress
+        );
+        
+        // Apply tears to newly affected particles
+        for (int particleIndex : affectedParticles) {
+            // Check if particle hasn't been torn yet
+            if (std::find(m_TornParticles.begin(), m_TornParticles.end(), particleIndex) 
+                == m_TornParticles.end()) {
+                TearAtParticle(particleIndex);
+            }
+        }
+        
+        // Remove completed tears
+        if (tear.progress >= 1.0f) {
+            std::cout << "PhysXCloth: Completed progressive tear with pattern '" 
+                      << tear.pattern->GetName() << "'" << std::endl;
+            it = m_ProgressiveTears.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 #endif // USE_PHYSX

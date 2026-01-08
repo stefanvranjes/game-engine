@@ -1,4 +1,5 @@
 #include "ClothMeshSimplifier.h"
+#include "Profiler.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -103,6 +104,7 @@ ClothMeshSimplifier::SimplificationResult ClothMeshSimplifier::SimplifyByRatio(
     const std::vector<int>& indices,
     float reductionRatio)
 {
+    SCOPED_PROFILE("ClothMeshSimplifier::SimplifyByRatio");
     if (reductionRatio <= 0.0f || reductionRatio > 1.0f) {
         std::cerr << "ClothMeshSimplifier: Invalid reduction ratio " << reductionRatio << std::endl;
         return SimplificationResult();
@@ -119,6 +121,7 @@ ClothMeshSimplifier::SimplificationResult ClothMeshSimplifier::Simplify(
     const std::vector<int>& indices,
     int targetVertexCount)
 {
+    SCOPED_PROFILE("ClothMeshSimplifier::Simplify");
     SimplificationResult result;
     result.originalVertexCount = static_cast<int>(positions.size());
     result.originalTriangleCount = static_cast<int>(indices.size()) / 3;
@@ -239,6 +242,7 @@ void ClothMeshSimplifier::InitializeState(
 }
 
 void ClothMeshSimplifier::ComputeQuadrics(SimplificationState& state) {
+    SCOPED_PROFILE("ClothMeshSimplifier::ComputeQuadrics");
     // Compute quadric for each vertex as sum of adjacent face quadrics
     for (size_t i = 0; i < state.vertices.size(); ++i) {
         Vertex& vertex = state.vertices[i];
@@ -278,6 +282,7 @@ void ClothMeshSimplifier::ComputeQuadrics(SimplificationState& state) {
 }
 
 void ClothMeshSimplifier::BuildEdgeQueue(SimplificationState& state) {
+    SCOPED_PROFILE("ClothMeshSimplifier::BuildEdgeQueue");
     // Build set of unique edges
     std::unordered_set<uint64_t> uniqueEdges;
     

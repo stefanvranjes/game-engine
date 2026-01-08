@@ -3,6 +3,7 @@
 #include "IPhysicsCloth.h"
 #include "Math/Vec3.h"
 #include "ClothLOD.h"
+#include "SpatialGrid.h"
 #include <memory>
 #include <vector>
 #include <functional>
@@ -18,6 +19,8 @@ namespace physx {
 class PhysXBackend;
 class Mesh;
 class AsyncClothFactory;
+class ClothTearPattern;
+class ClothTearPatternLibrary;
 
 /**
  * @brief PhysX implementation of cloth simulation
@@ -185,6 +188,84 @@ public:
         std::shared_ptr<PhysXCloth>& outPiece2
     );
 
+    // ========================================================================
+    // Pattern-Based Tearing System
+    // ========================================================================
+
+    /**
+     * @brief Apply a tear pattern by name from the pattern library
+     * @param patternName Name of pattern in library
+     * @param position Pattern application position (world space)
+     * @param direction Pattern orientation direction (normalized)
+     * @param scale Pattern scale multiplier
+     * @return True if pattern was applied successfully
+     */
+    bool ApplyTearPattern(
+        const std::string& patternName,
+        const Vec3& position,
+        const Vec3& direction = Vec3(0, 0, 1),
+        float scale = 1.0f
+    );
+
+    /**
+     * @brief Apply a tear pattern directly
+     * @param pattern Pattern to apply
+     * @param position Pattern application position (world space)
+     * @param direction Pattern orientation direction (normalized)
+     * @param scale Pattern scale multiplier
+     * @return True if pattern was applied successfully
+     */
+    bool ApplyTearPattern(
+        std::shared_ptr<ClothTearPattern> pattern,
+        const Vec3& position,
+        const Vec3& direction = Vec3(0, 0, 1),
+        float scale = 1.0f
+    );
+
+    /**
+     * @brief Start a progressive tear that propagates over time
+     * @param pattern Pattern to apply progressively
+     * @param position Pattern application position
+     * @param direction Pattern orientation
+     * @param duration Time in seconds for tear to complete
+     * @param scale Pattern scale multiplier
+     */
+    void StartProgressiveTear(
+        std::shared_ptr<ClothTearPattern> pattern,
+        const Vec3& position,
+        const Vec3& direction,
+        float duration,
+        float scale = 1.0f
+    );
+
+    /**
+     * @brief Start a progressive tear by pattern name
+     * @param patternName Name of pattern in library
+     * @param position Pattern application position
+     * @param direction Pattern orientation
+     * @param duration Time in seconds for tear to complete
+     * @param scale Pattern scale multiplier
+     */
+    void StartProgressiveTear(
+        const std::string& patternName,
+        const Vec3& position,
+        const Vec3& direction,
+        float duration,
+        float scale = 1.0f
+    );
+
+    /**
+     * @brief Update progressive tears (called automatically in Update)
+     * @param deltaTime Time step
+     */
+    void UpdateProgressiveTears(float deltaTime);
+
+    /**
+     * @brief Get pattern library instance
+     * @return Reference to global pattern library
+     */
+    static ClothTearPatternLibrary& GetPatternLibrary();
+
 private:
     // Allow AsyncClothFactory to access internals for finalization
     friend class AsyncClothFactory;
@@ -224,10 +305,15 @@ private:
     };
     
     std::vector<TearInfo> m_TearCandidates;
-    std::vector<int> m_TornParticles;  // Indices of particles that have been torn
-    int m_MaxParticles;
+    std::vector<int> m_TornParticles;    // Tearing state
+    bool m_Tearable;
+    float m_MaxStretchRatio;
+    int m_MaxParticles; // Capacity for tearing
     int m_TearCount;
     float m_LastTearTime;
+    
+    // Spatial Grid
+    std::unique_ptr<SpatialGrid<int>> m_SpatialGrid;
 
     // Tear callback
     TearCallback m_TearCallback;
@@ -243,11 +329,53 @@ private:
     std::vector<Vec3> m_FrozenPositions;  // Saved state when frozen
     std::vector<Vec3> m_FrozenNormals;
 
+    // Progressive tear state
+    struct ProgressiveTear {
+        std::shared_ptr<ClothTearPattern> pattern;
+        Vec3 position;
+        Vec3 direction;
+        float scale;
+        float progress;  // 0.0 to 1.0
+        float duration;
+        float elapsed;
+    };
+    std::vector<ProgressiveTear> m_ProgressiveTears;
+
     // Helper methods
     void CreateClothFabric(const ClothDesc& desc);
+    void CreateClothActor(const ClothDesc& desc);
     void SetupConstraints();
     void UpdateParticleData();
     void RecalculateNormals();
+    
+    /**
+     * @brief Update collision shapes sent to PhysX based on cloth bounds
+     */
+    void UpdateCollisionShapes();
+    
+    /**
+     * @brief Get world bounds of the cloth
+     */
+    void GetWorldBounds(Vec3& outMin, Vec3& outMax) const;
+
+    /**
+     * @brief Update mesh from simplified physics data
+     * @param mesh Render mesh to update
+     * @param mapping Mapping from mesh vertices to physics particles
+     */
+    void UpdateProxyMesh(Mesh* mesh, const std::vector<int>& mapping);
+
+    // Spatial Partitioning for efficient collision
+    struct InternalCollisionShape {
+        int id;
+        int type; // 0 = sphere, 1 = capsule
+        Vec3 pos0;
+        Vec3 pos1; // Only for capsule
+        float radius;
+    };
+    
+    // We store indices to the shapes vector in the grid
+    std::vector<InternalCollisionShape> m_CollisionShapesList;
     
     // Tearing methods
     void DetectTears(float deltaTime);

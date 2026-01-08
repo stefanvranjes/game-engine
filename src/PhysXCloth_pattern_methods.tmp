@@ -1,0 +1,148 @@
+
+// ============================================================================
+// Pattern-Based Tearing System
+// ============================================================================
+
+ClothTearPatternLibrary& PhysXCloth::GetPatternLibrary() {
+    return ClothTearPatternLibrary::GetInstance();
+}
+
+bool PhysXCloth::ApplyTearPattern(
+    const std::string& patternName,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) {
+    auto pattern = GetPatternLibrary().GetPattern(patternName);
+    if (!pattern) {
+        std::cerr << "PhysXCloth: Pattern '" << patternName << "' not found in library" << std::endl;
+        return false;
+    }
+    
+    return ApplyTearPattern(pattern, position, direction, scale);
+}
+
+bool PhysXCloth::ApplyTearPattern(
+    std::shared_ptr<ClothTearPattern> pattern,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) {
+    if (!pattern || !m_Tearable || !CanTear()) {
+        return false;
+    }
+    
+    // Get affected particles from pattern
+    auto affectedParticles = pattern->GetAffectedParticles(
+        m_ParticlePositions,
+        position,
+        direction,
+        scale
+    );
+    
+    if (affectedParticles.empty()) {
+        std::cout << "PhysXCloth: Pattern '" << pattern->GetName() 
+                  << "' did not affect any particles" << std::endl;
+        return false;
+    }
+    
+    // Apply tears to affected particles
+    int tearsApplied = 0;
+    for (int particleIndex : affectedParticles) {
+        if (TearAtParticle(particleIndex)) {
+            tearsApplied++;
+        }
+    }
+    
+    std::cout << "PhysXCloth: Applied pattern '" << pattern->GetName() 
+              << "' affecting " << affectedParticles.size() << " particles, "
+              << tearsApplied << " tears created" << std::endl;
+    
+    return tearsApplied > 0;
+}
+
+void PhysXCloth::StartProgressiveTear(
+    std::shared_ptr<ClothTearPattern> pattern,
+    const Vec3& position,
+    const Vec3& direction,
+    float duration,
+    float scale
+) {
+    if (!pattern || !m_Tearable) {
+        return;
+    }
+    
+    ProgressiveTear tear;
+    tear.pattern = pattern;
+    tear.position = position;
+    tear.direction = direction;
+    tear.scale = scale;
+    tear.progress = 0.0f;
+    tear.duration = duration;
+    tear.elapsed = 0.0f;
+    
+    m_ProgressiveTears.push_back(tear);
+    
+    std::cout << "PhysXCloth: Started progressive tear with pattern '" 
+              << pattern->GetName() << "' over " << duration << " seconds" << std::endl;
+}
+
+void PhysXCloth::StartProgressiveTear(
+    const std::string& patternName,
+    const Vec3& position,
+    const Vec3& direction,
+    float duration,
+    float scale
+) {
+    auto pattern = GetPatternLibrary().GetPattern(patternName);
+    if (!pattern) {
+        std::cerr << "PhysXCloth: Pattern '" << patternName << "' not found in library" << std::endl;
+        return;
+    }
+    
+    StartProgressiveTear(pattern, position, direction, duration, scale);
+}
+
+void PhysXCloth::UpdateProgressiveTears(float deltaTime) {
+    if (m_ProgressiveTears.empty()) {
+        return;
+    }
+    
+    SCOPED_PROFILE("PhysXCloth::UpdateProgressiveTears");
+    
+    // Update each progressive tear
+    for (auto it = m_ProgressiveTears.begin(); it != m_ProgressiveTears.end(); ) {
+        ProgressiveTear& tear = *it;
+        
+        tear.elapsed += deltaTime;
+        tear.progress = std::min(1.0f, tear.elapsed / tear.duration);
+        
+        // Get affected particles at current progress
+        auto affectedParticles = tear.pattern->GetAffectedParticles(
+            m_ParticlePositions,
+            tear.position,
+            tear.direction,
+            tear.scale * tear.progress  // Scale pattern by progress
+        );
+        
+        // Apply tears to newly affected particles
+        for (int particleIndex : affectedParticles) {
+            // Check if particle hasn't been torn yet
+            if (std::find(m_TornParticles.begin(), m_TornParticles.end(), particleIndex) 
+                == m_TornParticles.end()) {
+                TearAtParticle(particleIndex);
+            }
+        }
+        
+        // Remove completed tears
+        if (tear.progress >= 1.0f) {
+            std::cout << "PhysXCloth: Completed progressive tear with pattern '" 
+                      << tear.pattern->GetName() << "'" << std::endl;
+            it = m_ProgressiveTears.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+#endif // USE_PHYSX

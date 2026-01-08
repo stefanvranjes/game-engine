@@ -45,6 +45,7 @@ void Application::Shutdown() {
 
 bool Application::Init() {
     RemoteProfiler::Instance().Initialize(8080);
+    Profiler::Instance().SetEnabled(true);
     std::cout << "Remote Profiler initialized. View at: http://localhost:8080" << std::endl;
     
     // Initialize Script System (Choose one: Lua or Python or C# or Custom)
