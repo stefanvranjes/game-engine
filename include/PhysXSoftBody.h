@@ -78,6 +78,13 @@ public:
     void AddCollisionSphere(const Vec3& center, float radius) override;
     void AddCollisionCapsule(const Vec3& p0, const Vec3& p1, float radius) override;
 
+    // Debug Rendering
+    virtual void DebugRender(Shader* shader) override;
+
+    // Helpers
+    void CreateDebugResources();
+    void UpdateDebugBuffers();
+
     // Tearing/Fracture
     void SetTearable(bool tearable) override;
     bool TearAtVertex(int vertexIndex) override;
@@ -284,6 +291,24 @@ public:
      * @brief Get current surface area calculation mode
      */
     SurfaceAreaMode GetSurfaceAreaMode() const { return m_SurfaceAreaMode; }
+
+    enum class ConvexHullAlgorithm {
+        QuickHull,
+        GiftWrapping,
+        Incremental,
+        DivideAndConquer
+    };
+
+    /**
+     * @brief Set the algorithm used for convex hull calculation
+     * @param algo The algorithm efficiency/robustness trade-off
+     */
+    void SetConvexHullAlgorithm(ConvexHullAlgorithm algo);
+
+    /**
+     * @brief Get the current convex hull algorithm
+     */
+    ConvexHullAlgorithm GetConvexHullAlgorithm() const { return m_HullAlgorithm; }
     
     /**
      * @brief Set adaptive weights for sphere count calculation
@@ -366,6 +391,7 @@ private:
     mutable float m_CachedSurfaceArea;
     mutable bool m_SurfaceAreaNeedsUpdate;
     SurfaceAreaMode m_SurfaceAreaMode;
+    ConvexHullAlgorithm m_HullAlgorithm;
 
     // Helper methods
     void CreateTetrahedralMesh(const SoftBodyDesc& desc);

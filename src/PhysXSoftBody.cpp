@@ -12,6 +12,8 @@
 #include "StraightTearPattern.h"
 #include "CurvedTearPattern.h"
 #include "RadialTearPattern.h"
+#include "PhysXManager.h"
+#include "GLExtensions.h" 
 #include <PxPhysicsAPI.h>
 #include <iostream>
 #include <cstring>
@@ -55,6 +57,7 @@ PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     , m_CachedSurfaceArea(0.0f)
     , m_SurfaceAreaNeedsUpdate(true)
     , m_SurfaceAreaMode(SurfaceAreaMode::BoundingBox)
+    , m_HullAlgorithm(ConvexHullAlgorithm::QuickHull)
 {
     m_TearSystem = std::make_unique<SoftBodyTearSystem>();
 }
@@ -1389,6 +1392,14 @@ void PhysXSoftBody::GetAdaptiveWeights(float& vertexWeight, float& areaWeight, f
 
 // In PhysXSoftBody.cpp
 
+#include "GiftWrapping.h"
+#include "IncrementalHull.h"
+#include "DivideAndConquerHull.h"
+
+void PhysXSoftBody::SetConvexHullAlgorithm(ConvexHullAlgorithm algo) {
+    m_HullAlgorithm = algo;
+}
+
 float PhysXSoftBody::CalculateConvexHullArea() const {
     if (m_VertexCount < 4) {
         return 0.0f; 
@@ -1398,13 +1409,122 @@ float PhysXSoftBody::CalculateConvexHullArea() const {
     std::vector<Vec3> points(m_VertexCount);
     GetVertexPositions(points.data());
     
-    // Compute convex hull using QuickHull
-    QuickHull quickHull;
-    // Set epsilon slightly larger for robustness with soft bodies
-    quickHull.SetEpsilon(1e-5f);
-    ConvexHull hull = quickHull.ComputeHull(points.data(), m_VertexCount);
+    ConvexHull hull;
+    
+    if (m_HullAlgorithm == ConvexHullAlgorithm::GiftWrapping) {
+        // Use robust O(nh) Gift Wrapping
+        GiftWrapping giftWrapping;
+        giftWrapping.SetEpsilon(1e-5f);
+        hull = giftWrapping.ComputeHull(points.data(), m_VertexCount);
+    } else if (m_HullAlgorithm == ConvexHullAlgorithm::Incremental) {
+        // Use Randomized Incremental Construction
+        IncrementalHull incrementalHull;
+        incrementalHull.SetEpsilon(1e-5f);
+        hull = incrementalHull.ComputeHull(points.data(), m_VertexCount);
+    } else if (m_HullAlgorithm == ConvexHullAlgorithm::DivideAndConquer) {
+        // Use Divide and Conquer
+        DivideAndConquerHull dcHull;
+        dcHull.SetEpsilon(1e-5f);
+        hull = dcHull.ComputeHull(points.data(), m_VertexCount);
+    } else {
+        // Use efficient O(n log n) QuickHull (default)
+        QuickHull quickHull;
+        quickHull.SetEpsilon(1e-5f);
+        quickHull.SetParallel(true);
+        hull = quickHull.ComputeHull(points.data(), m_VertexCount);
+    }
     
     return hull.surfaceArea;
+}
+
+
+// -------------------------------------------------------------
+// Debug Rendering
+// -------------------------------------------------------------
+
+void PhysXSoftBody::CreateDebugResources() {
+    if (m_DebugResourcesInitialized) return;
+    
+    glGenVertexArrays(1, &m_DebugVAO);
+    glGenBuffers(1, &m_DebugVBO);
+    
+    m_DebugResourcesInitialized = true;
+}
+
+void PhysXSoftBody::UpdateDebugBuffers() {
+    if (m_VertexCount < 4) return;
+    
+    // Compute hull using selected algorithm
+    std::vector<Vec3> points(m_VertexCount);
+    GetVertexPositions(points.data());
+    
+    ConvexHull hull;
+    
+    if (m_HullAlgorithm == ConvexHullAlgorithm::GiftWrapping) {
+        GiftWrapping giftWrapping;
+        giftWrapping.SetEpsilon(1e-5f);
+        hull = giftWrapping.ComputeHull(points.data(), m_VertexCount);
+    } else if (m_HullAlgorithm == ConvexHullAlgorithm::Incremental) {
+        IncrementalHull incrementalHull;
+        incrementalHull.SetEpsilon(1e-5f);
+        hull = incrementalHull.ComputeHull(points.data(), m_VertexCount);
+    } else if (m_HullAlgorithm == ConvexHullAlgorithm::DivideAndConquer) {
+        DivideAndConquerHull dcHull;
+        dcHull.SetEpsilon(1e-5f);
+        hull = dcHull.ComputeHull(points.data(), m_VertexCount);
+    } else {
+        QuickHull quickHull;
+        quickHull.SetEpsilon(1e-5f);
+        hull = quickHull.ComputeHull(points.data(), m_VertexCount);
+    }
+    
+    // Generate lines from hull faces
+    std::vector<Vec3> lines;
+    lines.reserve(hull.indices.size() * 2); // Overestimate
+    
+    for (size_t i = 0; i < hull.indices.size(); i += 3) {
+        Vec3 v0 = hull.vertices[hull.indices[i]];
+        Vec3 v1 = hull.vertices[hull.indices[i+1]];
+        Vec3 v2 = hull.vertices[hull.indices[i+2]];
+        
+        lines.push_back(v0); lines.push_back(v1);
+        lines.push_back(v1); lines.push_back(v2);
+        lines.push_back(v2); lines.push_back(v0);
+    }
+    
+    m_DebugHullVertices = lines;
+    
+    // Upload to GPU
+    glBindVertexArray(m_DebugVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, m_DebugVBO);
+    glBufferData(GL_ARRAY_BUFFER, m_DebugHullVertices.size() * sizeof(Vec3), m_DebugHullVertices.data(), GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3), (void*)0);
+    glEnableVertexAttribArray(0);
+    glBindVertexArray(0);
+    
+    m_DebugHullDirty = false;
+}
+
+void PhysXSoftBody::DebugRender(Shader* shader) {
+    if (!m_DebugDrawHull) return;
+    
+    if (!m_DebugResourcesInitialized) {
+        CreateDebugResources();
+    }
+    
+    // Update every frame for soft body
+    UpdateDebugBuffers();
+    
+    if (m_DebugHullVertices.empty()) return;
+    
+    // Draw
+    Mat4 identity = Mat4::Identity();
+    shader->SetMat4("model", identity.m);
+    shader->SetVec3("color", 1.0f, 0.0f, 1.0f); // Magenta for hull
+    
+    glBindVertexArray(m_DebugVAO);
+    glDrawArrays(GL_LINES, 0, (int)m_DebugHullVertices.size());
+    glBindVertexArray(0);
 }
 
 #endif // USE_PHYSX

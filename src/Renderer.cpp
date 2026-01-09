@@ -20,6 +20,7 @@
 #include "GameObject.h"
 #include "GBuffer.h"
 #include "PhysXCloth.h"
+#include "IPhysicsSoftBody.h"
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
@@ -3071,6 +3072,28 @@ void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
         glClear(GL_DEPTH_BUFFER_BIT); 
         
         m_GizmoManager->Render(gizmoShader, *m_Camera);
+
+        // Debug Render Soft Bodies
+        if (m_Root) {
+            std::vector<GameObject*> queue = { m_Root.get() };
+            while (!queue.empty()) {
+                auto obj = queue.back();
+                queue.pop_back();
+
+                if (obj->GetSoftBody()) {
+                    // Temporarily set model matrix to identity because DebugRender assumes world space lines
+                    // Or if DebugRender draws in local space, we set the obj matrix.
+                    // PhysX soft bodies are usually simulated in world space.
+                    // My implementation in PhysXSoftBody::DebugRender sets model to identity.
+                    // So we just call it.
+                    obj->GetSoftBody()->DebugRender(gizmoShader);
+                }
+
+                for (auto& child : obj->GetChildren()) {
+                    queue.push_back(child.get());
+                }
+            }
+        }
     }
 }
 

@@ -351,6 +351,12 @@ public:
     virtual void SetActive(bool active) = 0;
 
     /**
+     * @brief Debug render the soft body (e.g. convex hull)
+     * @param shader Shader to use for rendering (expected to have "color" uniform)
+     */
+    virtual void DebugRender(class Shader* shader) = 0;
+
+    /**
      * @brief Get backend-specific soft body pointer
      * @return Opaque pointer to native soft body object
      */

@@ -520,6 +520,12 @@ if(BUILD_TESTS)
         tests/test_vm.cpp
         tests/test_quickhull.cpp
         src/QuickHull.cpp
+        tests/test_giftwrapping.cpp
+        src/GiftWrapping.cpp
+        tests/test_incremental.cpp
+        src/IncrementalHull.cpp
+        tests/test_divideandconquer.cpp
+        src/DivideAndConquerHull.cpp
     )
     
     target_include_directories(tests PRIVATE 
@@ -556,6 +562,9 @@ if(BUILD_TESTS)
     add_test(NAME network_tests COMMAND tests --gtest_filter=NetworkTest.*)
     add_test(NAME serialization_tests COMMAND tests --gtest_filter=SerializationTest.*)
     add_test(NAME quickhull_tests COMMAND tests --gtest_filter=QuickHullTest.*)
+    add_test(NAME giftwrapping_tests COMMAND tests --gtest_filter=GiftWrappingTest.*)
+    add_test(NAME incremental_tests COMMAND tests --gtest_filter=IncrementalHullTest.*)
+    add_test(NAME divideandconquer_tests COMMAND tests --gtest_filter=DivideAndConquerTest.*)
     
     # Run all tests
     add_test(NAME all_tests COMMAND tests)

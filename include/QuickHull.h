@@ -68,6 +68,12 @@ public:
      */
     void SetFaceMerging(bool enabled, float angleThreshold = 0.01f);
 
+    /**
+     * @brief Enable/disable parallel execution
+     * @param enabled Whether to use multi-threading for intensive steps
+     */
+    void SetParallel(bool enabled);
+
 private:
     // Internal face structure for hull construction
     struct Face {
@@ -106,6 +112,7 @@ private:
     float m_Epsilon;
     bool m_EnableFaceMerging;
     float m_FaceMergeAngleThreshold;
+    bool m_UseParallel;
     
     // Working data
     const Vec3* m_Points;

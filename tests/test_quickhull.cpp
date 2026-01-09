@@ -109,3 +109,38 @@ TEST_F(QuickHullTest, DegenerateCollinear) {
     EXPECT_EQ(hull.faceCount, 0);
     EXPECT_EQ(hull.surfaceArea, 0.0f);
 }
+
+TEST_F(QuickHullTest, ParallelExecution) {
+    // Determine sphere point count
+    int pointCount = 5000;
+    std::vector<Vec3> points;
+    points.reserve(pointCount);
+    
+    // Generate points on a sphere
+    for (int i = 0; i < pointCount; ++i) {
+        float u = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float v = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        float theta = 2.0f * 3.14159f * u;
+        float phi = std::acos(2.0f * v - 1.0f);
+        
+        float x = std::sin(phi) * std::cos(theta);
+        float y = std::sin(phi) * std::sin(theta);
+        float z = std::cos(phi);
+        
+        points.push_back(Vec3(x, y, z) * 5.0f);
+    }
+    
+    // Compute hull sequentially
+    QuickHull qhSeq;
+    qhSeq.SetParallel(false);
+    ConvexHull hullSeq = qhSeq.ComputeHull(points.data(), pointCount);
+    
+    // Compute hull in parallel
+    QuickHull qhPar;
+    qhPar.SetParallel(true);
+    ConvexHull hullPar = qhPar.ComputeHull(points.data(), pointCount);
+    
+    // Verify results match (surface area should be very close)
+    EXPECT_NEAR(hullSeq.surfaceArea, hullPar.surfaceArea, 0.001f);
+    EXPECT_EQ(hullSeq.faceCount, hullPar.faceCount);
+}

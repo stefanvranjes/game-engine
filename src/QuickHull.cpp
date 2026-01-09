@@ -8,6 +8,7 @@ QuickHull::QuickHull()
     : m_Epsilon(1e-6f)
     , m_EnableFaceMerging(false)
     , m_FaceMergeAngleThreshold(0.01f)
+    , m_UseParallel(false)
     , m_Points(nullptr)
     , m_PointCount(0)
 {
@@ -17,6 +18,7 @@ QuickHull::QuickHull(float epsilon)
     : m_Epsilon(epsilon)
     , m_EnableFaceMerging(false)
     , m_FaceMergeAngleThreshold(0.01f)
+    , m_UseParallel(false)
     , m_Points(nullptr)
     , m_PointCount(0)
 {
@@ -47,7 +49,7 @@ ConvexHull QuickHull::ComputeHull(const Vec3* points, int count) {
     if (!BuildInitialSimplex()) {
         return HandleDegenerateCase();
     }
-    
+
     // Assign remaining points to faces
     AssignPointsToFaces();
     
@@ -61,6 +63,10 @@ ConvexHull QuickHull::ComputeHull(const Vec3* points, int count) {
     
     // Build and return result
     return BuildResult();
+}
+
+void QuickHull::SetParallel(bool enabled) {
+    m_UseParallel = enabled;
 }
 
 bool QuickHull::BuildInitialSimplex() {
@@ -207,6 +213,10 @@ void QuickHull::ComputeFaceProperties(Face* face) {
     face->planeDistance = face->normal.Dot(v0);
 }
 
+// Include necessary headers for parallelism
+#include <future>
+#include <mutex>
+
 void QuickHull::AssignPointsToFaces() {
     // Clear existing assignments
     for (auto& face : m_Faces) {
@@ -215,18 +225,85 @@ void QuickHull::AssignPointsToFaces() {
         face->furthestDistance = 0.0f;
     }
     
-    // Assign each point to faces it's outside of
-    for (int i = 0; i < m_PointCount; ++i) {
-        for (auto& face : m_Faces) {
-            if (face->visible) continue;
+    // Use parallel execution if enabled and we have enough points to justify it
+    if (m_UseParallel && m_PointCount > 2000) {
+        std::mutex faceMutex;
+        
+        // Lambda to process a chunk of points
+        auto processChunk = [&](int start, int end) {
+            // Local storage to minimize locking
+            struct FaceUpdate {
+                std::vector<int> points;
+                int furthestPoint = -1;
+                float furthestDistance = 0.0f;
+            };
+            std::vector<FaceUpdate> updates(m_Faces.size());
             
-            float dist = PointToFaceDistance(i, face.get());
-            if (dist > m_Epsilon) {
-                face->outsidePoints.push_back(i);
+            for (int i = start; i < end; ++i) {
+                for (size_t f = 0; f < m_Faces.size(); ++f) {
+                    Face* face = m_Faces[f].get();
+                    if (face->visible) continue;
+                    
+                    float dist = PointToFaceDistance(i, face);
+                    if (dist > m_Epsilon) {
+                        updates[f].points.push_back(i);
+                        
+                        if (dist > updates[f].furthestDistance) {
+                            updates[f].furthestDistance = dist;
+                            updates[f].furthestPoint = i;
+                        }
+                    }
+                }
+            }
+            
+            // Merge results
+            std::lock_guard<std::mutex> lock(faceMutex);
+            for (size_t f = 0; f < m_Faces.size(); ++f) {
+                Face* face = m_Faces[f].get();
+                if (!updates[f].points.empty()) {
+                    face->outsidePoints.insert(face->outsidePoints.end(), 
+                                             updates[f].points.begin(), 
+                                             updates[f].points.end());
+                    
+                    if (updates[f].furthestDistance > face->furthestDistance) {
+                        face->furthestDistance = updates[f].furthestDistance;
+                        face->furthestPoint = updates[f].furthestPoint;
+                    }
+                }
+            }
+        };
+        
+        // Split work into chunks
+        unsigned int threadCount = std::thread::hardware_concurrency();
+        if (threadCount == 0) threadCount = 4;
+        
+        int chunkSize = m_PointCount / threadCount;
+        std::vector<std::future<void>> futures;
+        
+        for (unsigned int i = 0; i < threadCount; ++i) {
+            int start = i * chunkSize;
+            int end = (i == threadCount - 1) ? m_PointCount : (start + chunkSize);
+            futures.push_back(std::async(std::launch::async, processChunk, start, end));
+        }
+        
+        // Wait for completion
+        for (auto& f : futures) {
+            f.wait();
+        }
+    } else {
+        // Sequential implementation
+        for (int i = 0; i < m_PointCount; ++i) {
+            for (auto& face : m_Faces) {
+                if (face->visible) continue;
                 
-                if (dist > face->furthestDistance) {
-                    face->furthestDistance = dist;
-                    face->furthestPoint = i;
+                float dist = PointToFaceDistance(i, face.get());
+                if (dist > m_Epsilon) {
+                    face->outsidePoints.push_back(i);
+                    
+                    if (dist > face->furthestDistance) {
+                        face->furthestDistance = dist;
+                        face->furthestPoint = i;
+                    }
                 }
             }
         }
@@ -308,35 +385,109 @@ void QuickHull::FindHorizon(int pointIndex, std::vector<HalfEdge>& horizon) {
 }
 
 void QuickHull::CreateNewFaces(int pointIndex, const std::vector<HalfEdge>& horizon) {
-    // Create a new face for each horizon edge
+    // Collect all points that need to be reassigned
+    std::vector<int> pointsToReassign;
+    for (auto& oldFace : m_Faces) {
+        if (!oldFace->visible) continue;
+        
+        pointsToReassign.insert(pointsToReassign.end(), 
+                              oldFace->outsidePoints.begin(), 
+                              oldFace->outsidePoints.end());
+    }
+    
+    // Remove current point
+    auto it = std::remove(pointsToReassign.begin(), pointsToReassign.end(), pointIndex);
+    pointsToReassign.erase(it, pointsToReassign.end());
+    
+    // Create new faces
+    int firstNewFaceIdx = static_cast<int>(m_Faces.size());
     for (const auto& edge : horizon) {
         auto newFace = std::make_unique<Face>();
         newFace->v0 = edge.v0;
         newFace->v1 = edge.v1;
         newFace->v2 = pointIndex;
-        
         ComputeFaceProperties(newFace.get());
+        m_Faces.push_back(std::move(newFace));
+    }
+    
+    // Assign points to new faces
+    if (m_UseParallel && pointsToReassign.size() > 2000) {
+        std::mutex faceMutex;
+        int newFacesCount = static_cast<int>(m_Faces.size()) - firstNewFaceIdx;
         
-        // Assign points that were outside the visible faces
-        for (auto& oldFace : m_Faces) {
-            if (!oldFace->visible) continue;
+        auto processChunk = [&](int start, int end) {
+            struct FaceUpdate {
+                std::vector<int> points;
+                int furthestPoint = -1;
+                float furthestDistance = 0.0f;
+            };
+            std::vector<FaceUpdate> updates(newFacesCount);
             
-            for (int p : oldFace->outsidePoints) {
-                if (p == pointIndex) continue;
+            for (int i = start; i < end; ++i) {
+                int p = pointsToReassign[i];
                 
-                float dist = PointToFaceDistance(p, newFace.get());
-                if (dist > m_Epsilon) {
-                    newFace->outsidePoints.push_back(p);
+                for (int f = 0; f < newFacesCount; ++f) {
+                    Face* face = m_Faces[firstNewFaceIdx + f].get();
                     
-                    if (dist > newFace->furthestDistance) {
-                        newFace->furthestDistance = dist;
-                        newFace->furthestPoint = p;
+                    float dist = PointToFaceDistance(p, face);
+                    if (dist > m_Epsilon) {
+                        updates[f].points.push_back(p);
+                        if (dist > updates[f].furthestDistance) {
+                            updates[f].furthestDistance = dist;
+                            updates[f].furthestPoint = p;
+                        }
+                    }
+                }
+            }
+            
+            std::lock_guard<std::mutex> lock(faceMutex);
+            for (int f = 0; f < newFacesCount; ++f) {
+                Face* face = m_Faces[firstNewFaceIdx + f].get();
+                if (!updates[f].points.empty()) {
+                    face->outsidePoints.insert(face->outsidePoints.end(), 
+                                             updates[f].points.begin(), 
+                                             updates[f].points.end());
+                    
+                    if (updates[f].furthestDistance > face->furthestDistance) {
+                        face->furthestDistance = updates[f].furthestDistance;
+                        face->furthestPoint = updates[f].furthestPoint;
+                    }
+                }
+            }
+        };
+        
+        unsigned int threadCount = std::thread::hardware_concurrency();
+        if (threadCount == 0) threadCount = 4;
+        
+        int chunkSize = static_cast<int>(pointsToReassign.size()) / threadCount;
+        std::vector<std::future<void>> futures;
+        
+        for (unsigned int i = 0; i < threadCount; ++i) {
+            int start = i * chunkSize;
+            int end = (i == threadCount - 1) ? static_cast<int>(pointsToReassign.size()) : (start + chunkSize);
+            futures.push_back(std::async(std::launch::async, processChunk, start, end));
+        }
+        
+        for (auto& f : futures) {
+            f.wait();
+        }
+    } else {
+        // Sequential reassignment
+        for (int p : pointsToReassign) {
+            for (size_t f = firstNewFaceIdx; f < m_Faces.size(); ++f) {
+                Face* face = m_Faces[f].get();
+                
+                float dist = PointToFaceDistance(p, face);
+                if (dist > m_Epsilon) {
+                    face->outsidePoints.push_back(p);
+                    
+                    if (dist > face->furthestDistance) {
+                        face->furthestDistance = dist;
+                        face->furthestPoint = p;
                     }
                 }
             }
         }
-        
-        m_Faces.push_back(std::move(newFace));
     }
 }
 
