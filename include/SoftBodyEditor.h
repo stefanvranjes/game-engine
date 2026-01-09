@@ -10,6 +10,10 @@ class SoftBodyPresetLibrary;
 class ManualTearTrigger;
 class TearHistory;
 class TearPreview;
+class VertexPicker;
+class VertexHighlighter;
+class Camera;
+struct Mouse;
 
 /**
  * @brief ImGui-based editor for PhysX soft body properties
@@ -61,6 +65,8 @@ private:
     std::unique_ptr<ManualTearTrigger> m_ManualTearTrigger;
     std::unique_ptr<TearHistory> m_TearHistory;
     std::unique_ptr<TearPreview> m_TearPreview;
+    std::unique_ptr<VertexPicker> m_VertexPicker;
+    std::unique_ptr<VertexHighlighter> m_VertexHighlighter;
     std::string m_CurrentPreset;
     
     // Tear mode state
@@ -77,6 +83,14 @@ private:
     void RenderStatisticsPanel();
     void RenderPresetPanel();
     void RenderStressVisualizationPanel();
+    
+    // Input handling
+    void HandleMouseInput(const Mouse& mouse, const Camera& camera, int screenWidth, int screenHeight);
+    
+    // Helper methods for vertex selection
+    void AddVertex(int vertexIndex);
+    void RemoveVertex(int vertexIndex);
+    bool IsVertexSelected(int vertexIndex) const;
     
     // Helper methods
     void RenderEmptyState();

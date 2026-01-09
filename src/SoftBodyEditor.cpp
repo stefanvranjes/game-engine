@@ -7,6 +7,8 @@
 #include "ManualTearTrigger.h"
 #include "TearHistory.h"
 #include "TearPreview.h"
+#include "VertexPicker.h"
+#include "VertexHighlighter.h"
 #include <imgui.h>
 #include <iostream>
 
@@ -26,6 +28,8 @@ SoftBodyEditor::SoftBodyEditor()
     m_ManualTearTrigger = std::make_unique<ManualTearTrigger>();
     m_TearHistory = std::make_unique<TearHistory>();
     m_TearPreview = std::make_unique<TearPreview>();
+    m_VertexPicker = std::make_unique<VertexPicker>();
+    m_VertexHighlighter = std::make_unique<VertexHighlighter>();
 }
 
 SoftBodyEditor::~SoftBodyEditor() {
@@ -870,3 +874,62 @@ void SoftBodyEditor::RenderStressVisualizationPanel() {
         ImGui::Text("High Stress");
     }
 }
+
+// ============================================================================
+// Vertex Selection Helpers
+// ============================================================================
+
+void SoftBodyEditor::AddVertex(int vertexIndex) {
+    if (!IsVertexSelected(vertexIndex)) {
+        m_SelectedVertices.push_back(vertexIndex);
+        m_VertexHighlighter->AddSelectedVertex(vertexIndex);
+    }
+}
+
+void SoftBodyEditor::RemoveVertex(int vertexIndex) {
+    auto it = std::find(m_SelectedVertices.begin(), m_SelectedVertices.end(), vertexIndex);
+    if (it != m_SelectedVertices.end()) {
+        m_SelectedVertices.erase(it);
+        m_VertexHighlighter->RemoveSelectedVertex(vertexIndex);
+    }
+}
+
+bool SoftBodyEditor::IsVertexSelected(int vertexIndex) const {
+    return std::find(m_SelectedVertices.begin(), m_SelectedVertices.end(), vertexIndex) 
+           != m_SelectedVertices.end();
+}
+
+// Note: HandleMouseInput would be called from the main application's input system
+// This is a placeholder showing how it would work:
+/*
+void SoftBodyEditor::HandleMouseInput(const Mouse& mouse, const Camera& camera, 
+                                      int screenWidth, int screenHeight) {
+    if (!m_TearMode || !m_SelectedSoftBody) return;
+    
+    // Create ray from camera through mouse position
+    Ray ray = camera.ScreenPointToRay(mouse.x, mouse.y, screenWidth, screenHeight);
+    
+    // Update hover
+    auto hoverResult = m_VertexPicker->PickVertex(ray, m_SelectedSoftBody);
+    if (hoverResult.hit) {
+        m_VertexHighlighter->SetHoveredVertex(hoverResult.vertexIndex);
+    } else {
+        m_VertexHighlighter->SetHoveredVertex(-1);
+    }
+    
+    // Handle click
+    if (mouse.leftButtonPressed) {
+        if (hoverResult.hit) {
+            // Toggle selection
+            if (IsVertexSelected(hoverResult.vertexIndex)) {
+                RemoveVertex(hoverResult.vertexIndex);
+            } else {
+                AddVertex(hoverResult.vertexIndex);
+            }
+        }
+    }
+    
+    // Render highlights
+    m_VertexHighlighter->Render(m_SelectedSoftBody);
+}
+*/

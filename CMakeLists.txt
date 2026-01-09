@@ -419,6 +419,8 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/ManualTearTrigger.cpp
         src/TearHistory.cpp
         src/TearPreview.cpp
+        src/VertexPicker.cpp
+        src/VertexHighlighter.cpp
     )
 else()
     # Add Bullet backend wrapper
