@@ -15,6 +15,7 @@ PhysXBackend::PhysXBackend()
     , m_Scene(nullptr)
     , m_Dispatcher(nullptr)
     , m_Pvd(nullptr)
+    , m_CudaContextManager(nullptr)
     , m_DefaultMaterial(nullptr)
     , m_Allocator(nullptr)
     , m_ErrorCallback(nullptr)
@@ -63,12 +64,39 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
     // Create default material
     m_DefaultMaterial = m_Physics->createMaterial(0.5f, 0.5f, 0.6f); // friction, friction, restitution
 
+    // Try to create CUDA context manager
+    PxCudaContextManagerDesc cudaCtxtDesc;
+    m_CudaContextManager = PxCreateCudaContextManager(*m_Foundation, cudaCtxtDesc, PxGetProfilerCallback());
+    
+    if (m_CudaContextManager) {
+        if (!m_CudaContextManager->contextIsValid()) {
+            m_CudaContextManager->release();
+            m_CudaContextManager = nullptr;
+            std::cout << "PhysX: CUDA context invalid. Falling back to CPU." << std::endl;
+        } else {
+            std::cout << "PhysX: CUDA context created. GPU acceleration enabled." << std::endl;
+        }
+    } else {
+        std::cout << "PhysX: CUDA context creation failed. Falling back to CPU." << std::endl;
+    }
+
     // Create scene
     PxSceneDesc sceneDesc(m_Physics->getTolerancesScale());
     sceneDesc.gravity = PxVec3(gravity.x, gravity.y, gravity.z);
     m_Gravity = gravity;
 
-    // Create CPU dispatcher
+    // Enable GPU dynamics if CUDA context is available
+    if (m_CudaContextManager) {
+        sceneDesc.cudaContextManager = m_CudaContextManager;
+        sceneDesc.flags |= PxSceneFlag::eENABLE_GPU_DYNAMICS;
+        sceneDesc.flags |= PxSceneFlag::eENABLE_PCM; // Persistent Contact Manifold (usually good for GPU)
+        sceneDesc.broadPhaseType = PxBroadPhaseType::eGPU;
+        sceneDesc.gpuMaxNumPartitions = 8;
+    } else {
+        sceneDesc.cpuDispatcher = m_Dispatcher; // Only need CPU dispatcher if running on CPU? Actually need it anyway for callbacks/triggers.
+    }
+
+    // Create CPU dispatcher (Always needed for API callbacks and non-GPU tasks)
     m_Dispatcher = PxDefaultCpuDispatcherCreate(2); // 2 worker threads
     sceneDesc.cpuDispatcher = m_Dispatcher;
     sceneDesc.filterShader = PxDefaultSimulationFilterShader;
@@ -152,6 +180,11 @@ void PhysXBackend::Shutdown() {
         }
         m_Pvd->release();
         m_Pvd = nullptr;
+    }
+
+    if (m_CudaContextManager) {
+        m_CudaContextManager->release();
+        m_CudaContextManager = nullptr;
     }
 
     if (m_Foundation) {

@@ -184,6 +184,8 @@ private:
     void RenderTerrain(const Mat4& view, const Mat4& projection);
     std::unique_ptr<Shader> m_GrassShader; // Grass/Vegetation Shader
     void RenderVegetation(const Mat4& view, const Mat4& projection, float time);
+    std::unique_ptr<Shader> m_ClothShader; // Cloth Shader
+    void RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projection);
     unsigned int m_RefractionTexture; // Texture for refraction
     std::shared_ptr<Texture> m_Texture; // Default texture
     Camera* m_Camera;

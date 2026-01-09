@@ -16,6 +16,7 @@ namespace physx {
     class PxMaterial;
     class PxDefaultAllocator;
     class PxDefaultErrorCallback;
+    class PxCudaContextManager;
 }
 
 class IPhysicsRigidBody;
@@ -49,6 +50,7 @@ public:
     physx::PxPhysics* GetPhysics() const { return m_Physics; }
     physx::PxScene* GetScene() const { return m_Scene; }
     physx::PxMaterial* GetDefaultMaterial() const { return m_DefaultMaterial; }
+    bool IsGpuEnabled() const { return m_CudaContextManager != nullptr; }
 
     // Registration methods (called by physics components)
     void RegisterRigidBody(IPhysicsRigidBody* body);
@@ -63,6 +65,7 @@ private:
     physx::PxScene* m_Scene;
     physx::PxDefaultCpuDispatcher* m_Dispatcher;
     physx::PxPvd* m_Pvd; // PhysX Visual Debugger
+    physx::PxCudaContextManager* m_CudaContextManager; // CUDA Context Manager
     physx::PxMaterial* m_DefaultMaterial;
 
     // Custom allocator and error callback

@@ -277,6 +277,22 @@ public:
      */
     void UpdateProgressiveTears(float deltaTime);
 
+    // Rendering Configuration
+    void SetTwoSidedRendering(bool enabled) { m_TwoSidedRendering = enabled; }
+    bool GetTwoSidedRendering() const { return m_TwoSidedRendering; }
+
+    void SetEnableSubsurface(bool enabled) { m_EnableSubsurface = enabled; }
+    bool GetEnableSubsurface() const { return m_EnableSubsurface; }
+
+    void SetTranslucency(float translucency) { m_Translucency = translucency; }
+    float GetTranslucency() const { return m_Translucency; }
+
+    void SetWrinkleScale(float scale) { m_WrinkleScale = scale; }
+    float GetWrinkleScale() const { return m_WrinkleScale; }
+
+    void SetEnableWrinkleDetail(bool enabled) { m_EnableWrinkleDetail = enabled; }
+    bool GetEnableWrinkleDetail() const { return m_EnableWrinkleDetail; }
+
     /**
      * @brief Get pattern library instance
      * @return Reference to global pattern library
@@ -297,6 +313,13 @@ private:
     int m_ParticleCount;
     int m_TriangleCount;
     bool m_Enabled;
+    
+    // Rendering Properties
+    bool m_TwoSidedRendering = true;
+    bool m_EnableSubsurface = true;
+    float m_Translucency = 0.5f;
+    float m_WrinkleScale = 1.0f;
+    bool m_EnableWrinkleDetail = false;
     bool m_Tearable;
     float m_MaxStretchRatio;
     

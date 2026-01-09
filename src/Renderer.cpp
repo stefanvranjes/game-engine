@@ -19,6 +19,7 @@
 #include "Camera.h"
 #include "GameObject.h"
 #include "GBuffer.h"
+#include "PhysXCloth.h"
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
@@ -406,6 +407,8 @@ void Renderer::UpdateShaders() {
     if (m_BRDFShader) m_BRDFShader->CheckForUpdates();
     if (m_PointShadowShader) m_PointShadowShader->CheckForUpdates();
     if (m_DecalShader) m_DecalShader->CheckForUpdates();
+    if (m_WaterShader) m_WaterShader->CheckForUpdates();
+    if (m_ClothShader) m_ClothShader->CheckForUpdates();
 }
 
 void Renderer::SetupScene() {
@@ -618,6 +621,14 @@ bool Renderer::Init() {
         std::cerr << "Failed to load water shaders" << std::endl;
         return false;
     }
+
+    // Load cloth shader
+    m_ClothShader = std::make_unique<Shader>();
+    if (!m_ClothShader->LoadFromFiles("shaders/cloth.vert", "shaders/cloth.frag")) {
+        std::cerr << "Failed to load cloth shaders" << std::endl;
+        return false;
+    }
+
 
     // Initialize Refraction Texture
     glGenTextures(1, &m_RefractionTexture);
@@ -1411,6 +1422,9 @@ void Renderer::Render() {
             // Regular rendering: Objects rendered in scene graph order
             m_Root->Draw(m_GeometryShader.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
         }
+        
+        // Render Cloth Objects (Separate Pass for now to ensure correct shader usage)
+        RenderCloth(m_Root.get(), m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -3058,5 +3072,144 @@ void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
         
         m_GizmoManager->Render(gizmoShader, *m_Camera);
     }
+}
+
+void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projection) {
+    if (!obj || !obj->GetActive()) return;
+    
+    // Recursive render for children
+    for (auto& child : obj->GetChildren()) {
+        RenderCloth(child.get(), view, projection);
+    }
+
+    // Check if object has PhysXCloth component
+    auto cloth = obj->GetComponent<PhysXCloth>();
+    if (!cloth || !cloth->IsEnabled()) return;
+    
+    // Get mesh from component or object
+    // PhysXCloth usually manages mesh updates on the Mesh attached to GameObject
+    auto mesh = obj->GetMesh();
+    if (!mesh) return;
+    
+    // Use cloth shader
+    if (!m_ClothShader) return;
+    
+    m_ClothShader->Use();
+    
+    // Set Transforms
+    Mat4 model = obj->GetTransform().GetMatrix();
+    Mat4 mvp = projection * view * model;
+    
+    // Calculate previous MVP for motion vectors (approximation if no history)
+    // For proper TAA, we should store previous matrices, but Renderer architecture might need updates
+    // For now, assume previous = current (no motion blur for now, or minimal TAA history)
+    Mat4 prevMvp = mvp; 
+    
+    m_ClothShader->SetMat4("u_Model", model.m);
+    m_ClothShader->SetMat4("u_View", view.m);
+    m_ClothShader->SetMat4("u_Projection", projection.m);
+    m_ClothShader->SetMat4("u_MVP", mvp.m);
+    m_ClothShader->SetMat4("u_PrevMVP", prevMvp.m);
+    Vec3 camPos = m_Camera->GetPosition();
+    m_ClothShader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
+    
+    // Clip plane
+    m_ClothShader->SetInt("u_UseClipPlane", m_PlanarReflectionEnabled && m_PlanarReflection->IsRendering());
+    if (m_PlanarReflectionEnabled && m_PlanarReflection->IsRendering()) {
+        Vec4 plane = m_PlanarReflection->GetClipPlane();
+        m_ClothShader->SetVec4("u_ClipPlane", plane.x, plane.y, plane.z, plane.w);
+    } else {
+        m_ClothShader->SetInt("u_UseClipPlane", 0);
+    }
+
+    // Set Material Properties
+    auto material = obj->GetMaterial();
+    if (material) {
+        // Bind textures
+        int textureSlot = 0;
+        
+        // Albedo
+        if (material->GetTexture()) {
+            glActiveTexture(GL_TEXTURE0 + textureSlot);
+            glBindTexture(GL_TEXTURE_2D, material->GetTexture()->GetID());
+            m_ClothShader->SetInt("material.texture", textureSlot++);
+            m_ClothShader->SetInt("u_HasTexture", 1);
+        } else {
+            m_ClothShader->SetInt("u_HasTexture", 0);
+        }
+        
+        // Normal Map
+        if (material->GetNormalMap()) {
+            glActiveTexture(GL_TEXTURE0 + textureSlot);
+            glBindTexture(GL_TEXTURE_2D, material->GetNormalMap()->GetID());
+            m_ClothShader->SetInt("material.normalMap", textureSlot++);
+            m_ClothShader->SetInt("u_HasNormalMap", 1);
+        } else {
+            m_ClothShader->SetInt("u_HasNormalMap", 0);
+        }
+        
+        // Roughness Map
+        if (material->GetRoughnessMap()) {
+            glActiveTexture(GL_TEXTURE0 + textureSlot);
+            glBindTexture(GL_TEXTURE_2D, material->GetRoughnessMap()->GetID());
+            m_ClothShader->SetInt("material.roughnessMap", textureSlot++);
+            m_ClothShader->SetInt("u_HasRoughnessMap", 1);
+        } else {
+            m_ClothShader->SetInt("u_HasRoughnessMap", 0);
+        }
+        
+        // Metallic Map
+        if (material->GetMetallicMap()) {
+            glActiveTexture(GL_TEXTURE0 + textureSlot);
+            glBindTexture(GL_TEXTURE_2D, material->GetMetallicMap()->GetID());
+            m_ClothShader->SetInt("material.metallicMap", textureSlot++);
+            m_ClothShader->SetInt("u_HasMetallicMap", 1);
+        } else {
+            m_ClothShader->SetInt("u_HasMetallicMap", 0);
+        }
+        
+        // AO Map
+        if (material->GetAOMap()) {
+            glActiveTexture(GL_TEXTURE0 + textureSlot);
+            glBindTexture(GL_TEXTURE_2D, material->GetAOMap()->GetID());
+            m_ClothShader->SetInt("material.aoMap", textureSlot++);
+            m_ClothShader->SetInt("u_HasAOMap", 1);
+        } else {
+            m_ClothShader->SetInt("u_HasAOMap", 0);
+        }
+        
+        // Material Params
+        m_ClothShader->SetVec3("material.diffuse", material->GetDiffuse().x, material->GetDiffuse().y, material->GetDiffuse().z);
+        m_ClothShader->SetFloat("material.roughness", material->GetRoughness());
+        m_ClothShader->SetFloat("material.metallic", material->GetMetallic());
+        m_ClothShader->SetVec3("material.emissiveColor", material->GetEmissive().x, material->GetEmissive().y, material->GetEmissive().z);
+    }
+    
+    // Set Cloth Specific Uniforms
+    m_ClothShader->SetInt("u_TwoSidedRendering", cloth->GetTwoSidedRendering() ? 1 : 0);
+    m_ClothShader->SetInt("u_EnableSubsurface", cloth->GetEnableSubsurface() ? 1 : 0);
+    m_ClothShader->SetFloat("u_Translucency", cloth->GetTranslucency());
+    m_ClothShader->SetFloat("u_WrinkleScale", cloth->GetWrinkleScale());
+    m_ClothShader->SetInt("u_EnableWrinkleDetail", cloth->GetEnableWrinkleDetail() ? 1 : 0);
+    
+    // Wind params
+    // TODO: Get from PhysXCloth or global wind system
+    // For now we simulate wind in shader, but physics simulation also has wind.
+    // Ideally these should match.
+    m_ClothShader->SetVec3("u_WindVelocity", 2.0f, 0.0f, 1.0f);
+    m_ClothShader->SetFloat("u_WindStrength", 0.5f);
+    m_ClothShader->SetFloat("u_Time", (float)glfwGetTime());
+    m_ClothShader->SetFloat("u_ClothFlexibility", 1.0f);
+    
+    m_ClothShader->SetInt("u_UsePrecomputedNormals", 1);
+    
+    // Disable Backface Culling for Cloth
+    glDisable(GL_CULL_FACE);
+    
+    // Draw Mesh
+    mesh->Draw();
+    
+    // Restore Culling
+    glEnable(GL_CULL_FACE);
 }
 
