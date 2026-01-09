@@ -412,6 +412,13 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/SoftBodyLODManager.cpp
         src/TetrahedralMeshSimplifier.cpp
         src/SoftBodySerializer.cpp
+        src/SoftBodyEditor.cpp
+        src/StressVisualizer.cpp
+        src/SoftBodyPreset.cpp
+        src/SoftBodyPresetLibrary.cpp
+        src/ManualTearTrigger.cpp
+        src/TearHistory.cpp
+        src/TearPreview.cpp
     )
 else()
     # Add Bullet backend wrapper
