@@ -3,6 +3,7 @@
 #ifdef USE_PHYSX
 
 #include "PhysXBackend.h"
+#include "PhysXSoftBody.h"
 #include "ClothMeshSplitter.h"
 #include "Mesh.h"
 #include "AsyncClothFactory.h"
@@ -301,8 +302,8 @@ void PhysXCloth::GetWorldBounds(Vec3& outMin, Vec3& outMax) const {
 
 void PhysXCloth::UpdateCollisionShapes() {
     SCOPED_PROFILE("PhysXCloth::UpdateCollisionShapes");
-    if (!m_Cloth || m_CollisionShapesList.empty()) return;
-
+    if (!m_Cloth) return;
+    
     // Calculate cloth bounds
     Vec3 minBounds, maxBounds;
     GetWorldBounds(minBounds, maxBounds);
@@ -311,70 +312,100 @@ void PhysXCloth::UpdateCollisionShapes() {
     minBounds = minBounds - Vec3(1.0f, 1.0f, 1.0f);
     maxBounds = maxBounds + Vec3(1.0f, 1.0f, 1.0f);
     
-    SpatialGrid<int>::AABB queryBounds;
-    queryBounds.min = minBounds;
-    queryBounds.max = maxBounds;
-
-    std::vector<int> nearbyShapeIndices;
-    m_SpatialGrid->Query(queryBounds, nearbyShapeIndices);
-    
-    // PhysX Limit is 32 spheres
-    if (nearbyShapeIndices.size() > 32) {
-        // Simple priority: just take first 32, or sort by distance to bounds center?
-        // Let's sort by distance to cloth center
-        Vec3 center = (minBounds + maxBounds) * 0.5f;
-        std::sort(nearbyShapeIndices.begin(), nearbyShapeIndices.end(), 
-            [&](int a, int b) {
-                const auto& sa = m_CollisionShapesList[a];
-                const auto& sb = m_CollisionShapesList[b];
-                float da = (sa.pos0 - center).LengthSquared(); // rough dist
-                float db = (sb.pos0 - center).LengthSquared();
-                return da < db;
-            });
-        nearbyShapeIndices.resize(32);
-    }
-
     // Convert to PhysX spheres/capsules
-    // PhysX manages spheres and capsules together. Capsules reference indices in the sphere array.
-    // We need to rebuild the frame-local spheres list.
-    
-    m_Cloth->clearCollisionSpheres(); // Not exposed in standard API, usually we just setCollisionSpheres
-    // API: setCollisionSpheres(const PxClothCollisionSphere* spheres, PxU32 sphereCount)
-    //      setCollisionCapsules(const PxU32* capsules, PxU32 capsuleCount)
-    
-    // We need to flatten our selected shapes into spheres and indices
     std::vector<PxClothCollisionSphere> pxSpheres;
     std::vector<PxU32> pxCapsules; // pairs of indices
-
-    for (int idx : nearbyShapeIndices) {
-        const auto& shape = m_CollisionShapesList[idx];
+    
+    // First, add soft body collision spheres
+    for (PhysXSoftBody* softBody : m_RegisteredSoftBodies) {
+        if (!softBody || !softBody->IsClothCollisionEnabled()) {
+            continue;
+        }
         
-        if (shape.type == 0) { // Sphere
+        // Get collision spheres from soft body
+        std::vector<Vec3> positions;
+        std::vector<float> radii;
+        int remainingSpace = 32 - static_cast<int>(pxSpheres.size());
+        int sphereCount = softBody->GetCollisionSpheres(positions, radii, remainingSpace);
+        
+        // Add soft body spheres to collision list
+        for (int i = 0; i < sphereCount; ++i) {
             PxClothCollisionSphere s;
-            s.pos = PxVec3(shape.pos0.x, shape.pos0.y, shape.pos0.z);
-            s.radius = shape.radius;
+            s.pos = PxVec3(positions[i].x, positions[i].y, positions[i].z);
+            s.radius = radii[i];
             pxSpheres.push_back(s);
-        } else if (shape.type == 1) { // Capsule
-            // Capsule needs two spheres
-            PxClothCollisionSphere s0, s1;
-            s0.pos = PxVec3(shape.pos0.x, shape.pos0.y, shape.pos0.z);
-            s0.radius = shape.radius;
-            s1.pos = PxVec3(shape.pos1.x, shape.pos1.y, shape.pos1.z);
-            s1.radius = shape.radius;
             
-            // Check if we have space (Max 32 spheres)
-            if (pxSpheres.size() + 2 > 32) break;
-
-            uint32_t idx0 = static_cast<uint32_t>(pxSpheres.size());
-            pxSpheres.push_back(s0);
-            uint32_t idx1 = static_cast<uint32_t>(pxSpheres.size());
-            pxSpheres.push_back(s1);
-            
-            pxCapsules.push_back(idx0);
-            pxCapsules.push_back(idx1);
+            // Stop if we've reached the limit
+            if (pxSpheres.size() >= 32) {
+                break;
+            }
+        }
+        
+        if (pxSpheres.size() >= 32) {
+            break;
         }
     }
     
+    // Then, add regular collision shapes if there's space
+    if (!m_CollisionShapesList.empty() && pxSpheres.size() < 32) {
+        SpatialGrid<int>::AABB queryBounds;
+        queryBounds.min = minBounds;
+        queryBounds.max = maxBounds;
+
+        std::vector<int> nearbyShapeIndices;
+        m_SpatialGrid->Query(queryBounds, nearbyShapeIndices);
+        
+        // Calculate remaining space
+        int remainingSpace = 32 - static_cast<int>(pxSpheres.size());
+        if (static_cast<int>(nearbyShapeIndices.size()) > remainingSpace) {
+            // Sort by distance to cloth center
+            Vec3 center = (minBounds + maxBounds) * 0.5f;
+            std::sort(nearbyShapeIndices.begin(), nearbyShapeIndices.end(), 
+                [&](int a, int b) {
+                    const auto& sa = m_CollisionShapesList[a];
+                    const auto& sb = m_CollisionShapesList[b];
+                    float da = (sa.pos0 - center).LengthSquared();
+                    float db = (sb.pos0 - center).LengthSquared();
+                    return da < db;
+                });
+            nearbyShapeIndices.resize(remainingSpace);
+        }
+
+        for (int idx : nearbyShapeIndices) {
+            const auto& shape = m_CollisionShapesList[idx];
+            
+            if (shape.type == 0) { // Sphere
+                PxClothCollisionSphere s;
+                s.pos = PxVec3(shape.pos0.x, shape.pos0.y, shape.pos0.z);
+                s.radius = shape.radius;
+                pxSpheres.push_back(s);
+            } else if (shape.type == 1) { // Capsule
+                // Capsule needs two spheres
+                PxClothCollisionSphere s0, s1;
+                s0.pos = PxVec3(shape.pos0.x, shape.pos0.y, shape.pos0.z);
+                s0.radius = shape.radius;
+                s1.pos = PxVec3(shape.pos1.x, shape.pos1.y, shape.pos1.z);
+                s1.radius = shape.radius;
+                
+                // Check if we have space (Max 32 spheres)
+                if (pxSpheres.size() + 2 > 32) break;
+
+                uint32_t idx0 = static_cast<uint32_t>(pxSpheres.size());
+                pxSpheres.push_back(s0);
+                uint32_t idx1 = static_cast<uint32_t>(pxSpheres.size());
+                pxSpheres.push_back(s1);
+                
+                pxCapsules.push_back(idx0);
+                pxCapsules.push_back(idx1);
+            }
+            
+            if (pxSpheres.size() >= 32) {
+                break;
+            }
+        }
+    }
+    
+    // Apply collision spheres to cloth
     m_Cloth->setCollisionSpheres(pxSpheres.data(), static_cast<PxU32>(pxSpheres.size()));
     if (!pxCapsules.empty()) {
         m_Cloth->setCollisionCapsules(pxCapsules.data(), static_cast<PxU32>(pxCapsules.size() / 2));
@@ -1746,6 +1777,40 @@ const ClothSyncConfig& PhysXCloth::GetSyncConfig() const {
         return m_MeshSynchronizer->GetConfig();
     }
     return defaultConfig;
+}
+
+// Soft Body Collision Implementation
+
+void PhysXCloth::RegisterSoftBodyCollision(PhysXSoftBody* softBody) {
+    if (!softBody) {
+        return;
+    }
+    
+    // Check if already registered
+    auto it = std::find(m_RegisteredSoftBodies.begin(), m_RegisteredSoftBodies.end(), softBody);
+    if (it != m_RegisteredSoftBodies.end()) {
+        return; // Already registered
+    }
+    
+    m_RegisteredSoftBodies.push_back(softBody);
+    
+    // Enable cloth collision on the soft body
+    softBody->SetClothCollisionEnabled(true);
+    
+    std::cout << "Registered soft body for cloth collision" << std::endl;
+}
+
+void PhysXCloth::UnregisterSoftBodyCollision(PhysXSoftBody* softBody) {
+    auto it = std::find(m_RegisteredSoftBodies.begin(), m_RegisteredSoftBodies.end(), softBody);
+    if (it != m_RegisteredSoftBodies.end()) {
+        m_RegisteredSoftBodies.erase(it);
+        std::cout << "Unregistered soft body from cloth collision" << std::endl;
+    }
+}
+
+void PhysXCloth::ClearSoftBodyCollisions() {
+    m_RegisteredSoftBodies.clear();
+    std::cout << "Cleared all soft body collisions" << std::endl;
 }
 
 #endif // USE_PHYSX

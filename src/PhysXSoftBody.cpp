@@ -7,6 +7,7 @@
 #include "SoftBodyTearSystem.h"
 #include "TetrahedralMeshSplitter.h"
 #include "TearResistanceMap.h"
+#include "FractureLine.h"
 #include "SoftBodyTearPattern.h"
 #include "StraightTearPattern.h"
 #include "CurvedTearPattern.h"
@@ -41,9 +42,21 @@ PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     , m_CheckTearing(false)
     , m_LastTearCheckTime(0.0f)
     , m_TearCheckInterval(0.1f)
+    , m_ClothCollisionEnabled(false)
+    , m_CollisionSphereRadius(0.1f)
+    , m_CollisionSpheresNeedUpdate(true)
+    , m_UseAdaptiveSphereCount(true)
+    , m_MinCollisionSpheres(4)
+    , m_MaxCollisionSpheres(32)
+    , m_VerticesPerSphere(50)
+    , m_AdaptiveVertexWeight(0.5f)
+    , m_AdaptiveAreaWeight(0.5f)
+    , m_AreaPerSphere(1.0f)
+    , m_CachedSurfaceArea(0.0f)
+    , m_SurfaceAreaNeedsUpdate(true)
+    , m_SurfaceAreaMode(SurfaceAreaMode::BoundingBox)
 {
     m_TearSystem = std::make_unique<SoftBodyTearSystem>();
-}
 }
 
 PhysXSoftBody::~PhysXSoftBody() {
@@ -215,12 +228,32 @@ void PhysXSoftBody::Update(float deltaTime) {
         return;
     }
     
+    // Mark collision spheres and surface area as needing update (soft body has deformed)
+    if (m_ClothCollisionEnabled) {
+        m_CollisionSpheresNeedUpdate = true;
+        m_SurfaceAreaNeedsUpdate = true;
+    }
+    
     // Update collision shapes if needed
     UpdateCollisionShapes();
     
     // Update healing
     if (m_TearSystem) {
         m_TearSystem->UpdateHealing(deltaTime, m_ResistanceMap);
+    }
+    
+    // Update plasticity
+    if (m_TearSystem && !m_RestPositions.empty()) {
+        std::vector<Vec3> currentPositions(m_VertexCount);
+        GetVertexPositions(currentPositions.data());
+        
+        m_TearSystem->UpdatePlasticity(
+            currentPositions.data(),
+            m_RestPositions.data(),
+            m_TetrahedronIndices.data(),
+            m_TetrahedronCount,
+            m_TearThreshold
+        );
     }
     
     // PhysX soft body simulation is handled automatically by the scene
@@ -970,6 +1003,408 @@ int PhysXSoftBody::GetHealingTearCount() const {
         return static_cast<int>(m_TearSystem->GetHealingTears().size());
     }
     return 0;
+}
+
+void PhysXSoftBody::SetPlasticityEnabled(bool enabled) {
+    if (m_TearSystem) {
+        m_TearSystem->SetPlasticityEnabled(enabled);
+        std::cout << "Plasticity " << (enabled ? "enabled" : "disabled") << std::endl;
+    }
+}
+
+void PhysXSoftBody::SetPlasticThreshold(float threshold) {
+    if (m_TearSystem) {
+        m_TearSystem->SetPlasticThreshold(threshold);
+        std::cout << "Plastic threshold set to " << threshold << std::endl;
+    }
+}
+
+void PhysXSoftBody::SetPlasticityRate(float rate) {
+    if (m_TearSystem) {
+        m_TearSystem->SetPlasticityRate(rate);
+        std::cout << "Plasticity rate set to " << rate << std::endl;
+    }
+}
+
+void PhysXSoftBody::ResetRestShape() {
+    if (m_InitialPositions.empty()) {
+        std::cerr << "No initial positions to reset to" << std::endl;
+        return;
+    }
+    
+    // Reset rest positions to initial positions
+    m_RestPositions = m_InitialPositions;
+    std::cout << "Rest shape reset to original" << std::endl;
+}
+
+void PhysXSoftBody::AddFractureLine(const FractureLine& fractureLine) {
+    if (!m_ResistanceMap.IsInitialized()) {
+        std::cerr << "Resistance map not initialized" << std::endl;
+        return;
+    }
+    
+    // Calculate tetrahedron centers
+    std::vector<Vec3> tetCenters(m_TetrahedronCount);
+    for (int i = 0; i < m_TetrahedronCount; ++i) {
+        int v0 = m_TetrahedronIndices[i * 4 + 0];
+        int v1 = m_TetrahedronIndices[i * 4 + 1];
+        int v2 = m_TetrahedronIndices[i * 4 + 2];
+        int v3 = m_TetrahedronIndices[i * 4 + 3];
+        
+        tetCenters[i] = (m_RestPositions[v0] + m_RestPositions[v1] + 
+                        m_RestPositions[v2] + m_RestPositions[v3]) * 0.25f;
+    }
+    
+    // Apply fracture line to resistance map
+    fractureLine.ApplyToResistanceMap(m_ResistanceMap, tetCenters.data(), m_TetrahedronCount);
+}
+
+void PhysXSoftBody::ClearFractureLines() {
+    // Reset resistance map to default
+    if (m_ResistanceMap.IsInitialized()) {
+        m_ResistanceMap.Reset();
+        std::cout << "Fracture lines cleared" << std::endl;
+    }
+}
+
+// Cloth Collision Implementation
+
+void PhysXSoftBody::SetClothCollisionEnabled(bool enabled) {
+    m_ClothCollisionEnabled = enabled;
+    if (enabled) {
+        m_CollisionSpheresNeedUpdate = true;
+    }
+}
+
+int PhysXSoftBody::GetCollisionSpheres(std::vector<Vec3>& positions, std::vector<float>& radii, int maxSpheres) const {
+    if (!m_SoftBody || !m_ClothCollisionEnabled || m_VertexCount == 0) {
+        positions.clear();
+        radii.clear();
+        return 0;
+    }
+    
+    // Determine target sphere count
+    int targetSphereCount = maxSpheres;
+    if (m_UseAdaptiveSphereCount) {
+        targetSphereCount = std::min(CalculateOptimalSphereCount(), maxSpheres);
+    }
+    
+    // Update cached collision spheres if needed
+    if (m_CollisionSpheresNeedUpdate) {
+        m_CachedCollisionSpherePositions.clear();
+        m_CachedCollisionSphereRadii.clear();
+        
+        // Get current vertex positions
+        std::vector<Vec3> currentPositions(m_VertexCount);
+        GetVertexPositions(currentPositions.data());
+        
+        // Strategy: Create collision spheres by clustering vertices
+        // We'll use a simple grid-based clustering approach
+        
+        // Calculate bounding box
+        Vec3 minBounds = currentPositions[0];
+        Vec3 maxBounds = currentPositions[0];
+        for (int i = 1; i < m_VertexCount; ++i) {
+            minBounds.x = std::min(minBounds.x, currentPositions[i].x);
+            minBounds.y = std::min(minBounds.y, currentPositions[i].y);
+            minBounds.z = std::min(minBounds.z, currentPositions[i].z);
+            maxBounds.x = std::max(maxBounds.x, currentPositions[i].x);
+            maxBounds.y = std::max(maxBounds.y, currentPositions[i].y);
+            maxBounds.z = std::max(maxBounds.z, currentPositions[i].z);
+        }
+        
+        Vec3 size = maxBounds - minBounds;
+        float maxDim = std::max(std::max(size.x, size.y), size.z);
+        
+        // Determine grid resolution based on target sphere count
+        int gridRes = static_cast<int>(std::cbrt(static_cast<float>(targetSphereCount))) + 1;
+        gridRes = std::max(2, std::min(gridRes, 5)); // Clamp between 2 and 5
+        
+        float cellSize = maxDim / static_cast<float>(gridRes);
+        
+        // Create grid cells
+        struct GridCell {
+            std::vector<int> vertexIndices;
+            Vec3 center;
+            float radius;
+        };
+        
+        std::vector<GridCell> cells;
+        cells.reserve(gridRes * gridRes * gridRes);
+        
+        // Assign vertices to grid cells
+        for (int i = 0; i < m_VertexCount; ++i) {
+            Vec3 localPos = currentPositions[i] - minBounds;
+            int ix = std::min(static_cast<int>(localPos.x / cellSize), gridRes - 1);
+            int iy = std::min(static_cast<int>(localPos.y / cellSize), gridRes - 1);
+            int iz = std::min(static_cast<int>(localPos.z / cellSize), gridRes - 1);
+            int cellIndex = ix + iy * gridRes + iz * gridRes * gridRes;
+            
+            // Ensure cell exists
+            while (static_cast<int>(cells.size()) <= cellIndex) {
+                cells.push_back(GridCell());
+            }
+            
+            cells[cellIndex].vertexIndices.push_back(i);
+        }
+        
+        // Create spheres from non-empty cells
+        for (auto& cell : cells) {
+            if (cell.vertexIndices.empty()) {
+                continue;
+            }
+            
+            // Calculate center of vertices in this cell
+            Vec3 center(0, 0, 0);
+            for (int idx : cell.vertexIndices) {
+                center = center + currentPositions[idx];
+            }
+            center = center * (1.0f / static_cast<float>(cell.vertexIndices.size()));
+            
+            // Calculate radius as max distance from center
+            float maxDist = 0.0f;
+            for (int idx : cell.vertexIndices) {
+                float dist = (currentPositions[idx] - center).Length();
+                maxDist = std::max(maxDist, dist);
+            }
+            
+            // Add padding to radius
+            float radius = maxDist + m_CollisionSphereRadius;
+            
+            m_CachedCollisionSpherePositions.push_back(center);
+            m_CachedCollisionSphereRadii.push_back(radius);
+            
+            // Stop if we've reached target sphere count
+            if (static_cast<int>(m_CachedCollisionSpherePositions.size()) >= targetSphereCount) {
+                break;
+            }
+        }
+        
+        m_CollisionSpheresNeedUpdate = false;
+    }
+    
+    // Copy cached spheres to output
+    positions = m_CachedCollisionSpherePositions;
+    radii = m_CachedCollisionSphereRadii;
+    
+    return static_cast<int>(positions.size());
+}
+
+// Adaptive Sphere Count Implementation
+
+int PhysXSoftBody::CalculateOptimalSphereCount() const {
+    if (m_VertexCount == 0) {
+        return m_MinCollisionSpheres;
+    }
+    
+    // Vertex-based component
+    float vertexSpheres = static_cast<float>(m_VertexCount) / static_cast<float>(m_VerticesPerSphere);
+    
+    // Surface area-based component
+    float surfaceArea = CalculateSurfaceArea();
+    float areaSpheres = surfaceArea / m_AreaPerSphere;
+    
+    // Weighted combination
+    float totalSpheres = static_cast<float>(m_MinCollisionSpheres) + 
+                         (vertexSpheres * m_AdaptiveVertexWeight) + 
+                         (areaSpheres * m_AdaptiveAreaWeight);
+    
+    // Clamp to min/max range
+    int sphereCount = static_cast<int>(totalSpheres + 0.5f); // Round to nearest
+    sphereCount = std::max(m_MinCollisionSpheres, std::min(sphereCount, m_MaxCollisionSpheres));
+    
+    return sphereCount;
+}
+
+void PhysXSoftBody::SetAdaptiveSphereParams(int minSpheres, int maxSpheres, int verticesPerSphere) {
+    m_MinCollisionSpheres = std::max(1, minSpheres);
+    m_MaxCollisionSpheres = std::max(m_MinCollisionSpheres, std::min(maxSpheres, 32));
+    m_VerticesPerSphere = std::max(1, verticesPerSphere);
+    
+    // Mark spheres as needing update with new parameters
+    m_CollisionSpheresNeedUpdate = true;
+}
+
+void PhysXSoftBody::GetAdaptiveSphereParams(int& minSpheres, int& maxSpheres, int& verticesPerSphere) const {
+    minSpheres = m_MinCollisionSpheres;
+    maxSpheres = m_MaxCollisionSpheres;
+    verticesPerSphere = m_VerticesPerSphere;
+}
+
+// Surface Area Calculation Implementation
+
+float PhysXSoftBody::CalculateSurfaceArea() const {
+    // Update cached surface area if needed
+    if (m_SurfaceAreaNeedsUpdate) {
+        if (m_SurfaceAreaMode == SurfaceAreaMode::BoundingBox) {
+            m_CachedSurfaceArea = CalculateBoundingBoxArea();
+        } else if (m_SurfaceAreaMode == SurfaceAreaMode::Triangles) {
+            m_CachedSurfaceArea = CalculateTriangleArea();
+        } else { // ConvexHull
+            m_CachedSurfaceArea = CalculateConvexHullArea();
+        }
+        m_SurfaceAreaNeedsUpdate = false;
+    }
+    
+    return m_CachedSurfaceArea;
+}
+
+float PhysXSoftBody::CalculateBoundingBoxArea() const {
+    if (m_VertexCount == 0) {
+        return 0.0f;
+    }
+    
+    // Get current vertex positions
+    std::vector<Vec3> currentPositions(m_VertexCount);
+    GetVertexPositions(currentPositions.data());
+    
+    // Calculate bounding box
+    Vec3 minBounds = currentPositions[0];
+    Vec3 maxBounds = currentPositions[0];
+    for (int i = 1; i < m_VertexCount; ++i) {
+        minBounds.x = std::min(minBounds.x, currentPositions[i].x);
+        minBounds.y = std::min(minBounds.y, currentPositions[i].y);
+        minBounds.z = std::min(minBounds.z, currentPositions[i].z);
+        maxBounds.x = std::max(maxBounds.x, currentPositions[i].x);
+        maxBounds.y = std::max(maxBounds.y, currentPositions[i].y);
+        maxBounds.z = std::max(maxBounds.z, currentPositions[i].z);
+    }
+    
+    // Calculate surface area using bounding box approximation
+    Vec3 size = maxBounds - minBounds;
+    return 2.0f * (size.x * size.y + size.y * size.z + size.z * size.x);
+}
+
+float PhysXSoftBody::CalculateTriangleArea() const {
+    if (m_TetrahedronCount == 0 || m_VertexCount == 0) {
+        return 0.0f;
+    }
+    
+    // Get current vertex positions
+    std::vector<Vec3> currentPositions(m_VertexCount);
+    GetVertexPositions(currentPositions.data());
+    
+    // Extract surface faces from tetrahedral mesh
+    // A face is on the surface if it's referenced by only one tetrahedron
+    
+    // Use a map to count face references
+    // Face key: sorted triple of vertex indices
+    struct Face {
+        int v0, v1, v2;
+        
+        Face(int a, int b, int c) {
+            // Sort vertices to create canonical representation
+            if (a > b) std::swap(a, b);
+            if (b > c) std::swap(b, c);
+            if (a > b) std::swap(a, b);
+            v0 = a; v1 = b; v2 = c;
+        }
+        
+        bool operator==(const Face& other) const {
+            return v0 == other.v0 && v1 == other.v1 && v2 == other.v2;
+        }
+    };
+    
+    struct FaceHash {
+        size_t operator()(const Face& f) const {
+            return std::hash<int>()(f.v0) ^ (std::hash<int>()(f.v1) << 1) ^ (std::hash<int>()(f.v2) << 2);
+        }
+    };
+    
+    std::unordered_map<Face, int, FaceHash> faceCount;
+    
+    // Iterate through all tetrahedra and count face occurrences
+    for (int i = 0; i < m_TetrahedronCount; ++i) {
+        int v0 = m_TetrahedronIndices[i * 4 + 0];
+        int v1 = m_TetrahedronIndices[i * 4 + 1];
+        int v2 = m_TetrahedronIndices[i * 4 + 2];
+        int v3 = m_TetrahedronIndices[i * 4 + 3];
+        
+        // Four faces of the tetrahedron
+        faceCount[Face(v0, v1, v2)]++;
+        faceCount[Face(v0, v1, v3)]++;
+        faceCount[Face(v0, v2, v3)]++;
+        faceCount[Face(v1, v2, v3)]++;
+    }
+    
+    // Calculate total surface area from faces with count == 1
+    float totalArea = 0.0f;
+    for (const auto& pair : faceCount) {
+        if (pair.second == 1) {  // Surface face
+            const Face& face = pair.first;
+            
+            // Get triangle vertices
+            const Vec3& p0 = currentPositions[face.v0];
+            const Vec3& p1 = currentPositions[face.v1];
+            const Vec3& p2 = currentPositions[face.v2];
+            
+            // Calculate triangle area using cross product
+            Vec3 edge1 = p1 - p0;
+            Vec3 edge2 = p2 - p0;
+            Vec3 cross = edge1.Cross(edge2);
+            float area = 0.5f * cross.Length();
+            
+            totalArea += area;
+        }
+    }
+    
+    return totalArea;
+}
+
+void PhysXSoftBody::SetSurfaceAreaMode(SurfaceAreaMode mode) {
+    if (m_SurfaceAreaMode != mode) {
+        m_SurfaceAreaMode = mode;
+        m_SurfaceAreaNeedsUpdate = true;
+        m_CollisionSpheresNeedUpdate = true;  // Sphere count may change
+    }
+}
+
+void PhysXSoftBody::SetAdaptiveWeights(float vertexWeight, float areaWeight, float areaPerSphere) {
+    // Normalize weights if they don't sum to 1.0
+    float totalWeight = vertexWeight + areaWeight;
+    if (totalWeight > 0.0f) {
+        m_AdaptiveVertexWeight = vertexWeight / totalWeight;
+        m_AdaptiveAreaWeight = areaWeight / totalWeight;
+    } else {
+        // Default to equal weights
+        m_AdaptiveVertexWeight = 0.5f;
+        m_AdaptiveAreaWeight = 0.5f;
+    }
+    
+    m_AreaPerSphere = std::max(0.1f, areaPerSphere);
+    
+    // Mark spheres as needing update with new weights
+    m_CollisionSpheresNeedUpdate = true;
+}
+
+void PhysXSoftBody::GetAdaptiveWeights(float& vertexWeight, float& areaWeight, float& areaPerSphere) const {
+    vertexWeight = m_AdaptiveVertexWeight;
+    areaWeight = m_AdaptiveAreaWeight;
+    areaPerSphere = m_AreaPerSphere;
+}
+
+#include "QuickHull.h"
+
+// ... existing includes ...
+
+// In PhysXSoftBody.cpp
+
+float PhysXSoftBody::CalculateConvexHullArea() const {
+    if (m_VertexCount < 4) {
+        return 0.0f; 
+    }
+    
+    // Get current vertex positions
+    std::vector<Vec3> points(m_VertexCount);
+    GetVertexPositions(points.data());
+    
+    // Compute convex hull using QuickHull
+    QuickHull quickHull;
+    // Set epsilon slightly larger for robustness with soft bodies
+    quickHull.SetEpsilon(1e-5f);
+    ConvexHull hull = quickHull.ComputeHull(points.data(), m_VertexCount);
+    
+    return hull.surfaceArea;
 }
 
 #endif // USE_PHYSX

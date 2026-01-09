@@ -137,11 +137,48 @@ public:
      * @brief Get healing tears
      */
     const std::vector<HealingTear>& GetHealingTears() const { return m_HealingTears; }
+    
+    /**
+     * @brief Enable/disable plasticity
+     */
+    void SetPlasticityEnabled(bool enabled) { m_PlasticityEnabled = enabled; }
+    
+    /**
+     * @brief Set plastic threshold (stress ratio)
+     */
+    void SetPlasticThreshold(float threshold) { m_PlasticThreshold = threshold; }
+    
+    /**
+     * @brief Set plasticity rate (0.0 to 1.0 per frame)
+     */
+    void SetPlasticityRate(float rate) { m_PlasticityRate = rate; }
+    
+    /**
+     * @brief Update plastic deformation
+     */
+    void UpdatePlasticity(
+        const Vec3* currentPositions,
+        Vec3* restPositions,
+        const int* tetrahedronIndices,
+        int tetrahedronCount,
+        float tearThreshold
+    );
 
 private:
     std::vector<StressData> m_StressData;
+    std::vector<HealingTear> m_HealingTears;
     float m_CurrentTime;
-
+    
+    // Healing parameters
+    bool m_HealingEnabled;
+    float m_HealingRate;   // Progress per second (0.0 to 1.0)
+    float m_HealingDelay;  // Delay before healing starts
+    
+    // Plasticity parameters
+    bool m_PlasticityEnabled;
+    float m_PlasticThreshold;  // Stress threshold for plastic deformation
+    float m_PlasticityRate;    // Rate of rest position update
+    
     // Edge indices for a tetrahedron (6 edges)
     static const int EDGE_INDICES[6][2];
 

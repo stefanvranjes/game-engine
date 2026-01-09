@@ -298,6 +298,24 @@ public:
      * @return Reference to global pattern library
      */
     static ClothTearPatternLibrary& GetPatternLibrary();
+    
+    // Soft Body Collision
+    /**
+     * @brief Register soft body for collision
+     * @param softBody Soft body to collide with
+     */
+    void RegisterSoftBodyCollision(class PhysXSoftBody* softBody);
+    
+    /**
+     * @brief Unregister soft body collision
+     * @param softBody Soft body to stop colliding with
+     */
+    void UnregisterSoftBodyCollision(class PhysXSoftBody* softBody);
+    
+    /**
+     * @brief Clear all registered soft bodies
+     */
+    void ClearSoftBodyCollisions();
 
 private:
     // Allow AsyncClothFactory to access internals for finalization
@@ -419,6 +437,9 @@ private:
     
     // We store indices to the shapes vector in the grid
     std::vector<InternalCollisionShape> m_CollisionShapesList;
+    
+    // Soft body collision
+    std::vector<class PhysXSoftBody*> m_RegisteredSoftBodies;
     
     // Tearing methods
     void DetectTears(float deltaTime);

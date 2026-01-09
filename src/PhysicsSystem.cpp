@@ -3,6 +3,7 @@
 #include "KinematicController.h"
 #include "Profiler.h"
 #include <btBulletDynamicsCommon.h>
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
 #include <iostream>
 
 // Static instance
@@ -228,7 +229,7 @@ bool PhysicsSystem::Raycast(const Vec3& from, const Vec3& to, RaycastHit& outHit
         outHit.point = Vec3(hitPoint.x(), hitPoint.y(), hitPoint.z());
         outHit.normal = Vec3(hitNormal.x(), hitNormal.y(), hitNormal.z());
         outHit.distance = (outHit.point - from).Length();
-        outHit.body = btRigidBody::upcast(rayCallback.m_collisionObject);
+        outHit.body = const_cast<btRigidBody*>(btRigidBody::upcast(rayCallback.m_collisionObject));
 
         return true;
     }

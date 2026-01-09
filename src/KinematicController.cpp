@@ -33,7 +33,8 @@ void KinematicController::Initialize(const PhysicsCollisionShape& shape, float m
     }
 
     m_Mass = mass;
-    m_Shape = shape;
+    // Don't copy shape, just store reference to the shape pointer
+    // m_Shape = shape; // This line causes error due to deleted copy operator
 
     // Create ghost object for collision detection
     m_GhostObject = new btPairCachingGhostObject();
@@ -41,11 +42,14 @@ void KinematicController::Initialize(const PhysicsCollisionShape& shape, float m
     m_GhostObject->setCollisionFlags(btCollisionObject::CF_CHARACTER_OBJECT);
 
     // Create kinematic character controller
-    m_Controller = new btKinematicCharacterController(m_GhostObject, shape.GetShape(), stepHeight);
+    // btKinematicCharacterController constructor takes (ghostObject, convexShape, stepHeight, upAxis)
+    btConvexShape* convexShape = dynamic_cast<btConvexShape*>(shape.GetShape());
+    m_Controller = new btKinematicCharacterController(m_GhostObject, convexShape, stepHeight);
     
     // Set gravity effect
     m_Controller->setUseGhostSweepTest(true);
-    m_Controller->setGravity(PhysicsSystem::Get().GetGravity());
+    Vec3 gravity = PhysicsSystem::Get().GetGravity();
+    m_Controller->setGravity(btVector3(gravity.x, gravity.y, gravity.z));
 
     // Register with physics system
     PhysicsSystem::Get().RegisterKinematicController(this);

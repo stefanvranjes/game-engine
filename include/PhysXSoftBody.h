@@ -10,6 +10,7 @@ class SoftBodyTearSystem;
 class SoftBodyPieceManager;
 class SoftBodyTearPattern;
 class TearResistanceMap;
+class FractureLine;
 
 #ifdef USE_PHYSX
 
@@ -168,6 +169,134 @@ public:
      * @brief Get number of healing tears
      */
     int GetHealingTearCount() const;
+    
+    /**
+     * @brief Enable plasticity
+     */
+    void SetPlasticityEnabled(bool enabled);
+    
+    /**
+     * @brief Set plastic threshold (stress ratio)
+     */
+    void SetPlasticThreshold(float threshold);
+    
+    /**
+     * @brief Set plasticity rate
+     */
+    void SetPlasticityRate(float rate);
+    
+    /**
+     * @brief Reset to original rest shape
+     */
+    void ResetRestShape();
+    
+    /**
+     * @brief Add fracture line
+     */
+    void AddFractureLine(const FractureLine& fractureLine);
+    
+    /**
+     * @brief Clear all fracture lines
+     */
+    void ClearFractureLines();
+    
+    // Cloth Collision
+    /**
+     * @brief Get collision spheres representing soft body surface for cloth collision
+     * @param positions Output array of sphere positions
+     * @param radii Output array of sphere radii
+     * @param maxSpheres Maximum number of spheres to generate (PhysX cloth limit is 32)
+     * @return Number of spheres generated
+     */
+    int GetCollisionSpheres(std::vector<Vec3>& positions, std::vector<float>& radii, int maxSpheres = 32) const;
+    
+    /**
+     * @brief Enable/disable collision with cloth
+     */
+    void SetClothCollisionEnabled(bool enabled);
+    
+    /**
+     * @brief Check if cloth collision is enabled
+     */
+    bool IsClothCollisionEnabled() const { return m_ClothCollisionEnabled; }
+    
+    /**
+     * @brief Set collision sphere radius scale
+     */
+    void SetCollisionSphereRadius(float radius) { m_CollisionSphereRadius = radius; }
+    
+    /**
+     * @brief Get collision sphere radius
+     */
+    float GetCollisionSphereRadius() const { return m_CollisionSphereRadius; }
+    
+    /**
+     * @brief Calculate optimal sphere count based on soft body complexity
+     * @return Recommended number of collision spheres
+     */
+    int CalculateOptimalSphereCount() const;
+    
+    /**
+     * @brief Set adaptive sphere count parameters
+     * @param minSpheres Minimum spheres (default: 4)
+     * @param maxSpheres Maximum spheres (default: 32)
+     * @param verticesPerSphere Vertices needed per additional sphere (default: 50)
+     */
+    void SetAdaptiveSphereParams(int minSpheres, int maxSpheres, int verticesPerSphere);
+    
+    /**
+     * @brief Get current adaptive parameters
+     */
+    void GetAdaptiveSphereParams(int& minSpheres, int& maxSpheres, int& verticesPerSphere) const;
+    
+    /**
+     * @brief Enable/disable adaptive sphere count
+     */
+    void SetUseAdaptiveSphereCount(bool enabled) { m_UseAdaptiveSphereCount = enabled; }
+    
+    /**
+     * @brief Check if adaptive sphere count is enabled
+     */
+    bool GetUseAdaptiveSphereCount() const { return m_UseAdaptiveSphereCount; }
+    
+    /**
+     * @brief Surface area calculation mode
+     */
+    enum class SurfaceAreaMode {
+        BoundingBox,  // Fast approximation using bounding box
+        Triangles,    // Accurate calculation using surface triangles
+        ConvexHull    // Collision envelope using convex hull
+    };
+    
+    /**
+     * @brief Calculate approximate surface area of soft body
+     * @return Surface area in square meters
+     */
+    float CalculateSurfaceArea() const;
+    
+    /**
+     * @brief Set surface area calculation mode
+     * @param mode Calculation mode (BoundingBox or Triangles)
+     */
+    void SetSurfaceAreaMode(SurfaceAreaMode mode);
+    
+    /**
+     * @brief Get current surface area calculation mode
+     */
+    SurfaceAreaMode GetSurfaceAreaMode() const { return m_SurfaceAreaMode; }
+    
+    /**
+     * @brief Set adaptive weights for sphere count calculation
+     * @param vertexWeight Weight for vertex count component (0-1, default: 0.5)
+     * @param areaWeight Weight for surface area component (0-1, default: 0.5)
+     * @param areaPerSphere Surface area per sphere in m² (default: 1.0)
+     */
+    void SetAdaptiveWeights(float vertexWeight, float areaWeight, float areaPerSphere);
+    
+    /**
+     * @brief Get current adaptive weights
+     */
+    void GetAdaptiveWeights(float& vertexWeight, float& areaWeight, float& areaPerSphere) const;
 
 private:
     PhysXBackend* m_Backend;
@@ -218,11 +347,35 @@ private:
     // Callbacks
     std::function<void(int, float)> m_TearCallback;
     std::function<void(std::shared_ptr<PhysXSoftBody>)> m_PieceCreatedCallback;
+    
+    // Cloth collision
+    bool m_ClothCollisionEnabled;
+    float m_CollisionSphereRadius;
+    mutable std::vector<Vec3> m_CachedCollisionSpherePositions;
+    mutable std::vector<float> m_CachedCollisionSphereRadii;
+    mutable bool m_CollisionSpheresNeedUpdate;
+    
+    // Adaptive sphere count
+    bool m_UseAdaptiveSphereCount;
+    int m_MinCollisionSpheres;
+    int m_MaxCollisionSpheres;
+    int m_VerticesPerSphere;
+    float m_AdaptiveVertexWeight;
+    float m_AdaptiveAreaWeight;
+    float m_AreaPerSphere;
+    mutable float m_CachedSurfaceArea;
+    mutable bool m_SurfaceAreaNeedsUpdate;
+    SurfaceAreaMode m_SurfaceAreaMode;
 
     // Helper methods
-    void CreateTetrahedralMesh(const SoftBodyDesc&amp; desc);
+    void CreateTetrahedralMesh(const SoftBodyDesc& desc);
     void RecalculateNormals(Vec3* normals) const;
     void UpdateCollisionShapes();
+    
+    // Surface area calculation helpers
+    float CalculateBoundingBoxArea() const;
+    float CalculateTriangleArea() const;
+    float CalculateConvexHullArea() const;
 };
 
 #endif // USE_PHYSX

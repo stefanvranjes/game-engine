@@ -49,7 +49,8 @@ void RigidBody::Initialize(BodyType type, float mass, const PhysicsCollisionShap
 
     m_BodyType = type;
     m_Mass = mass;
-    m_Shape = shape;
+    // Don't copy shape, just store reference to the shape pointer
+    // m_Shape = shape; // This line causes error due to deleted copy operator
 
     // Create motion state
     m_MotionState = new RigidBodyMotionState();
@@ -174,7 +175,8 @@ void RigidBody::SetGravityEnabled(bool enabled) {
     m_GravityEnabled = enabled;
     
     if (enabled) {
-        m_BtRigidBody->setGravity(PhysicsSystem::Get().GetGravity());
+        Vec3 gravity = PhysicsSystem::Get().GetGravity();
+        m_BtRigidBody->setGravity(btVector3(gravity.x, gravity.y, gravity.z));
     } else {
         m_BtRigidBody->setGravity(btVector3(0, 0, 0));
     }

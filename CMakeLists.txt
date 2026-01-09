@@ -405,6 +405,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/ClothLODManager.cpp
         src/ClothTearPattern.cpp
         src/ClothTearPatternLibrary.cpp
+        src/QuickHull.cpp
     )
 else()
     # Add Bullet backend wrapper
@@ -517,6 +518,8 @@ if(BUILD_TESTS)
         tests/test_python_scripting.cpp
         tests/test_csharp_scripting.cpp
         tests/test_vm.cpp
+        tests/test_quickhull.cpp
+        src/QuickHull.cpp
     )
     
     target_include_directories(tests PRIVATE 
@@ -552,6 +555,7 @@ if(BUILD_TESTS)
     add_test(NAME material_tests COMMAND tests --gtest_filter=MaterialTest.*)
     add_test(NAME network_tests COMMAND tests --gtest_filter=NetworkTest.*)
     add_test(NAME serialization_tests COMMAND tests --gtest_filter=SerializationTest.*)
+    add_test(NAME quickhull_tests COMMAND tests --gtest_filter=QuickHullTest.*)
     
     # Run all tests
     add_test(NAME all_tests COMMAND tests)

@@ -58,14 +58,10 @@ ParticleEmitter::ParticleEmitter(const Vec3& position, int maxParticles)
     , m_GasConstant(2000.0f)
     , m_Viscosity(0.1f)
     , m_SmoothingRadius(2.0f)
-    , m_GasConstant(2000.0f)
-    , m_Viscosity(0.1f)
-    , m_SmoothingRadius(2.0f)
     , m_Priority(5) // Default Medium Priority
     , m_VelocityInheritance(0.0f)
 {
     m_Particles.resize(maxParticles);
-    m_GPUParticles.resize(maxParticles); // Ensure GPU particles are also resized initially
     m_GPUParticles.resize(maxParticles); // Ensure GPU particles are also resized initially
     m_UseLOD = false;
     m_CurrentLODLevel = -1;
@@ -158,7 +154,6 @@ void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
         m_LastPosition = m_Position;
     }
 }
-}
 
 void ParticleEmitter::Burst(int count) {
     if (!m_Active) return;
@@ -223,7 +218,7 @@ void ParticleEmitter::SpawnParticle() {
             if (trailsEnabled) {
                 p.hasTrail = true;
                 if (!p.trail) {
-                    p.trail = std::make_shared<ParticleTrail>(m_TrailLength);
+                    p.trail = std::make_unique<ParticleTrail>(m_TrailLength);
                 }
                 p.trail->Reset();
             } else {
@@ -232,7 +227,6 @@ void ParticleEmitter::SpawnParticle() {
             
             break;
         }
-    }
     }
 }
 
