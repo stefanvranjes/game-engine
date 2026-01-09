@@ -1,4 +1,6 @@
 #include "ClothMeshSplitter.h"
+#include "ClothTearPattern.h"
+#include "SpatialHashGrid.h"
 #include <algorithm>
 #include <unordered_set>
 #include <unordered_map>
@@ -148,6 +150,105 @@ ClothMeshSplitter::SplitResult ClothMeshSplitter::SplitAlongLine(
     
     std::cout << "Split mesh along line, removed " << lineParticles.size() 
               << " particles" << std::endl;
+    
+    return result;
+}
+
+ClothMeshSplitter::SplitResult ClothMeshSplitter::SplitWithPattern(
+    const std::vector<Vec3>& positions,
+    const std::vector<int>& indices,
+    std::shared_ptr<ClothTearPattern> pattern,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale,
+    const SpatialHashGrid* spatialGrid)
+{
+    SplitResult result;
+    
+    if (!pattern) {
+        std::cerr << "Invalid pattern for splitting" << std::endl;
+        return result;
+    }
+    
+    std::cout << "Splitting cloth with pattern '" << pattern->GetName() 
+              << "' at position (" << position.x << ", " << position.y << ", " << position.z << ")"
+              << std::endl;
+    
+    // Get affected particles from pattern (with spatial grid optimization if available)
+    std::vector<int> affectedParticles;
+    if (spatialGrid) {
+        affectedParticles = pattern->GetAffectedParticles(
+            positions,
+            position,
+            direction,
+            scale,
+            spatialGrid
+        );
+    } else {
+        affectedParticles = pattern->GetAffectedParticles(
+            positions,
+            position,
+            direction,
+            scale
+        );
+    }
+    
+    if (affectedParticles.empty()) {
+        std::cerr << "Pattern did not affect any particles" << std::endl;
+        return result;
+    }
+    
+    std::cout << "Pattern affected " << affectedParticles.size() << " particles" << std::endl;
+    
+    // Find connected components after removing affected particles
+    std::vector<std::vector<int>> components;
+    FindConnectedComponents(indices, positions.size(), affectedParticles, components);
+    
+    if (components.size() < 2) {
+        std::cerr << "Pattern didn't split mesh into multiple pieces (found " 
+                  << components.size() << " component)" << std::endl;
+        return result;
+    }
+    
+    std::cout << "Found " << components.size() << " connected components" << std::endl;
+    
+    // Build piece 1 from largest component
+    BuildMeshPiece(
+        positions,
+        indices,
+        components[0],
+        result.piece1Positions,
+        result.piece1Indices,
+        result.piece1OriginalParticles
+    );
+    
+    // Build piece 2 from second largest component
+    // If there are more than 2 components, merge smaller ones into piece 2
+    std::vector<int> piece2Component = components[1];
+    for (size_t i = 2; i < components.size(); ++i) {
+        piece2Component.insert(
+            piece2Component.end(),
+            components[i].begin(),
+            components[i].end()
+        );
+    }
+    
+    BuildMeshPiece(
+        positions,
+        indices,
+        piece2Component,
+        result.piece2Positions,
+        result.piece2Indices,
+        result.piece2OriginalParticles
+    );
+    
+    // Store tear edge particles for visualization
+    result.tearEdgeParticles = affectedParticles;
+    result.success = true;
+    
+    std::cout << "Successfully split mesh with pattern into " 
+              << result.piece1Positions.size() << " and " 
+              << result.piece2Positions.size() << " particles" << std::endl;
     
     return result;
 }

@@ -1,0 +1,239 @@
+// Optimized implementations for CrossTearPattern, CustomPathTearPattern, and StressBasedTearPattern
+
+// CrossTearPattern - optimized version
+std::vector<int> CrossTearPattern::GetAffectedParticles(
+    const std::vector<Vec3>& particlePositions,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) const {
+    return GetAffectedParticles(particlePositions, position, direction, scale, nullptr);
+}
+
+std::vector<int> CrossTearPattern::GetAffectedParticles(
+    const std::vector<Vec3>& particlePositions,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale,
+    const SpatialHashGrid* spatialGrid
+) const {
+    std::vector<int> affectedParticles;
+    
+    float scaledLength = m_Length * scale;
+    float scaledWidth = m_Width * scale;
+    
+    Vec3 normalizedDir = direction;
+    normalizedDir.Normalize();
+    
+    // Create perpendicular vector for second arm
+    Vec3 perpendicular;
+    if (std::abs(normalizedDir.y) < 0.9f) {
+        perpendicular = Vec3(0, 1, 0).Cross(normalizedDir);
+    } else {
+        perpendicular = Vec3(1, 0, 0).Cross(normalizedDir);
+    }
+    perpendicular.Normalize();
+    
+    // Rotate perpendicular by angle/2
+    float halfAngleRad = (m_Angle * 0.5f) * 3.14159265f / 180.0f;
+    Vec3 arm1Dir = normalizedDir * std::cos(halfAngleRad) + perpendicular * std::sin(halfAngleRad);
+    Vec3 arm2Dir = normalizedDir * std::cos(halfAngleRad) - perpendicular * std::sin(halfAngleRad);
+    
+    // Calculate line segments for both arms
+    Vec3 lineStart1 = position - arm1Dir * (scaledLength * 0.5f);
+    Vec3 lineEnd1 = position + arm1Dir * (scaledLength * 0.5f);
+    Vec3 lineStart2 = position - arm2Dir * (scaledLength * 0.5f);
+    Vec3 lineEnd2 = position + arm2Dir * (scaledLength * 0.5f);
+    
+    // Get candidate particles
+    std::vector<int> candidates;
+    if (spatialGrid && !spatialGrid->IsEmpty()) {
+        // Query both arms and merge results
+        std::vector<int> candidates1 = spatialGrid->QueryLineSegment(lineStart1, lineEnd1, scaledWidth);
+        std::vector<int> candidates2 = spatialGrid->QueryLineSegment(lineStart2, lineEnd2, scaledWidth);
+        
+        // Merge and deduplicate
+        candidates = candidates1;
+        for (int idx : candidates2) {
+            if (std::find(candidates.begin(), candidates.end(), idx) == candidates.end()) {
+                candidates.push_back(idx);
+            }
+        }
+    } else {
+        // Fallback: check all particles
+        candidates.reserve(particlePositions.size());
+        for (size_t i = 0; i < particlePositions.size(); ++i) {
+            candidates.push_back(static_cast<int>(i));
+        }
+    }
+    
+    // Check particles against both arms
+    for (int particleIdx : candidates) {
+        const Vec3& particlePos = particlePositions[particleIdx];
+        bool affected = false;
+        
+        // Check arm 1
+        Vec3 toParticle1 = particlePos - lineStart1;
+        float projection1 = toParticle1.Dot(arm1Dir);
+        
+        if (projection1 >= 0.0f && projection1 <= scaledLength) {
+            Vec3 closestPoint1 = lineStart1 + arm1Dir * projection1;
+            float distance1 = (particlePos - closestPoint1).Length();
+            if (distance1 <= scaledWidth) {
+                affected = true;
+            }
+        }
+        
+        // Check arm 2
+        if (!affected) {
+            Vec3 toParticle2 = particlePos - lineStart2;
+            float projection2 = toParticle2.Dot(arm2Dir);
+            
+            if (projection2 >= 0.0f && projection2 <= scaledLength) {
+                Vec3 closestPoint2 = lineStart2 + arm2Dir * projection2;
+                float distance2 = (particlePos - closestPoint2).Length();
+                if (distance2 <= scaledWidth) {
+                    affected = true;
+                }
+            }
+        }
+        
+        if (affected) {
+            affectedParticles.push_back(particleIdx);
+        }
+    }
+    
+    return affectedParticles;
+}
+
+// CustomPathTearPattern - optimized version
+std::vector<int> CustomPathTearPattern::GetAffectedParticles(
+    const std::vector<Vec3>& particlePositions,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) const {
+    return GetAffectedParticles(particlePositions, position, direction, scale, nullptr);
+}
+
+std::vector<int> CustomPathTearPattern::GetAffectedParticles(
+    const std::vector<Vec3>& particlePositions,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale,
+    const SpatialHashGrid* spatialGrid
+) const {
+    std::vector<int> affectedParticles;
+    
+    if (m_ControlPoints.size() < 2) {
+        return affectedParticles;
+    }
+    
+    float scaledWidth = m_Width * scale;
+    
+    // Sample curve
+    std::vector<Vec3> curvePoints;
+    for (int i = 0; i <= m_SampleCount; ++i) {
+        float t = static_cast<float>(i) / m_SampleCount;
+        Vec3 localPoint = EvaluateBezier(t);
+        
+        // Transform to world space
+        Vec3 worldPoint = position + localPoint * scale;
+        curvePoints.push_back(worldPoint);
+    }
+    
+    // Get candidate particles
+    std::vector<int> candidates;
+    if (spatialGrid && !spatialGrid->IsEmpty()) {
+        // Query each curve segment and merge results
+        std::vector<bool> included(particlePositions.size(), false);
+        
+        for (size_t j = 0; j < curvePoints.size() - 1; ++j) {
+            std::vector<int> segmentCandidates = spatialGrid->QueryLineSegment(
+                curvePoints[j], curvePoints[j + 1], scaledWidth
+            );
+            
+            for (int idx : segmentCandidates) {
+                if (!included[idx]) {
+                    included[idx] = true;
+                    candidates.push_back(idx);
+                }
+            }
+        }
+    } else {
+        // Fallback: check all particles
+        candidates.reserve(particlePositions.size());
+        for (size_t i = 0; i < particlePositions.size(); ++i) {
+            candidates.push_back(static_cast<int>(i));
+        }
+    }
+    
+    // Check particles against curve segments
+    for (int particleIdx : candidates) {
+        const Vec3& particlePos = particlePositions[particleIdx];
+        
+        for (size_t j = 0; j < curvePoints.size() - 1; ++j) {
+            Vec3 segmentStart = curvePoints[j];
+            Vec3 segmentEnd = curvePoints[j + 1];
+            Vec3 segmentDir = segmentEnd - segmentStart;
+            float segmentLength = segmentDir.Length();
+            
+            if (segmentLength < 0.001f) continue;
+            
+            segmentDir = segmentDir * (1.0f / segmentLength);
+            
+            Vec3 toParticle = particlePos - segmentStart;
+            float projection = toParticle.Dot(segmentDir);
+            
+            if (projection >= 0.0f && projection <= segmentLength) {
+                Vec3 closestPoint = segmentStart + segmentDir * projection;
+                float distance = (particlePos - closestPoint).Length();
+                
+                if (distance <= scaledWidth) {
+                    affectedParticles.push_back(particleIdx);
+                    break;
+                }
+            }
+        }
+    }
+    
+    return affectedParticles;
+}
+
+// StressBasedTearPattern - optimized version
+std::vector<int> StressBasedTearPattern::GetAffectedParticles(
+    const std::vector<Vec3>& particlePositions,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale
+) const {
+    return GetAffectedParticles(particlePositions, position, direction, scale, nullptr);
+}
+
+std::vector<int> StressBasedTearPattern::GetAffectedParticles(
+    const std::vector<Vec3>& particlePositions,
+    const Vec3& position,
+    const Vec3& direction,
+    float scale,
+    const SpatialHashGrid* spatialGrid
+) const {
+    std::vector<int> affectedParticles;
+    
+    // Find particles near the stress point
+    float scaledRadius = m_PropagationRadius * scale;
+    
+    if (spatialGrid && !spatialGrid->IsEmpty()) {
+        // Use spatial grid for acceleration
+        affectedParticles = spatialGrid->QuerySphere(position, scaledRadius);
+    } else {
+        // Fallback: check all particles
+        for (size_t i = 0; i < particlePositions.size(); ++i) {
+            float dist = (particlePositions[i] - position).Length();
+            if (dist <= scaledRadius) {
+                affectedParticles.push_back(static_cast<int>(i));
+            }
+        }
+    }
+    
+    return affectedParticles;
+}

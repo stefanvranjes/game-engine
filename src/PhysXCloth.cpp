@@ -9,6 +9,7 @@
 #include "Profiler.h"
 #include "ClothTearPattern.h"
 #include "ClothTearPatternLibrary.h"
+#include "ClothMeshSynchronizer.h"
 #include <PxPhysicsAPI.h>
 #include <extensions/PxClothFabricCooker.h>
 #include <iostream>
@@ -44,6 +45,7 @@ PhysXCloth::PhysXCloth(PhysXBackend* backend)
     , m_UpdateFrequency(1)
 {
     m_SpatialGrid = std::make_unique<SpatialGrid<int>>(2.0f); // 2 meter grid cells
+    m_MeshSynchronizer = std::make_unique<ClothMeshSynchronizer>();
 }
 
 PhysXCloth::~PhysXCloth() {
@@ -145,6 +147,11 @@ void PhysXCloth::Initialize(const ClothDesc& desc) {
     
     // Generate simplified meshes for all LOD levels
     m_LODConfig.GenerateLODMeshes(m_ParticlePositions, m_TriangleIndices);
+    
+    // Initialize mesh synchronizer
+    if (m_MeshSynchronizer) {
+        m_MeshSynchronizer->Initialize(nullptr, m_ParticleCount, m_TriangleIndices);
+    }
 
     std::cout << "PhysXCloth initialized with " << m_ParticleCount << " particles and "
               << m_LODConfig.GetLODCount() << " LOD levels" << std::endl;
@@ -874,41 +881,15 @@ int PhysXCloth::FindNearestParticle(const Vec3& position) const {
 
 void PhysXCloth::UpdateMeshData(Mesh* mesh) {
     SCOPED_PROFILE("PhysXCloth::UpdateMeshData");
-    if (!mesh || !m_Cloth) {
+    if (!mesh || !m_Cloth || !m_MeshSynchronizer) {
         return;
     }
 
     // Update particle data from simulation
     UpdateParticleData();
-
-    // Handle Proxy Mesh (LODs)
-    if (m_CurrentLODLevel > 0) {
-        // Find current level data
-        const ClothLODLevel* level = m_LODConfig.GetLODLevel(m_CurrentLODLevel);
-        if (level && !level->particleMapping.empty()) {
-            UpdateProxyMesh(mesh, level->particleMapping);
-            return;
-        }
-    }
-
-    // High fidelity mode (LOD 0) - Original logic
-    // Get mesh vertices and normals
-    auto& vertices = mesh->GetVertices();
     
-    // Resize if needed (only for LOD 0 where 1:1 mapping is expected)
-    if (static_cast<int>(vertices.size()) != m_ParticleCount) {
-        vertices.resize(m_ParticleCount);
-    }
-
-    // Copy positions and normals to mesh
-    for (int i = 0; i < m_ParticleCount; ++i) {
-        vertices[i].Position = m_ParticlePositions[i];
-        vertices[i].Normal = m_ParticleNormals[i];
-        // Keep existing UV coordinates
-    }
-
-    // Update mesh buffers
-    mesh->UpdateVertices();
+    // Use synchronizer for mesh updates
+    m_MeshSynchronizer->Synchronize(m_ParticlePositions, &m_ParticleNormals);
 }
 
 void PhysXCloth::UpdateProxyMesh(Mesh* mesh, const std::vector<int>& mapping) {
@@ -1474,33 +1455,112 @@ bool PhysXCloth::ApplyTearPattern(
         return false;
     }
     
-    // Get affected particles from pattern
-    auto affectedParticles = pattern->GetAffectedParticles(
+    SCOPED_PROFILE("PhysXCloth::ApplyTearPattern");
+    
+    std::cout << "PhysXCloth: Applying pattern '" << pattern->GetName() 
+              << "' with mesh splitting" << std::endl;
+    
+    // Use ClothMeshSplitter to split mesh with pattern
+    auto result = ClothMeshSplitter::SplitWithPattern(
         m_ParticlePositions,
+        m_TriangleIndices,
+        pattern,
         position,
         direction,
-        scale
+        scale,
+        m_SpatialGrid.get()  // Pass spatial grid for optimization
     );
     
-    if (affectedParticles.empty()) {
-        std::cout << "PhysXCloth: Pattern '" << pattern->GetName() 
-                  << "' did not affect any particles" << std::endl;
+    if (!result.success) {
+        std::cout << "PhysXCloth: Pattern didn't create mesh split, falling back to particle tears" 
+                  << std::endl;
+        
+        // Fallback: Apply tears to affected particles (old behavior)
+        auto affectedParticles = pattern->GetAffectedParticles(
+            m_ParticlePositions,
+            position,
+            direction,
+            scale,
+            m_SpatialGrid.get()
+        );
+        
+        if (affectedParticles.empty()) {
+            return false;
+        }
+        
+        int tearsApplied = 0;
+        for (int particleIndex : affectedParticles) {
+            if (TearAtParticle(particleIndex)) {
+                tearsApplied++;
+            }
+        }
+        
+        std::cout << "PhysXCloth: Applied " << tearsApplied << " particle tears" << std::endl;
+        return tearsApplied > 0;
+    }
+    
+    // Create two new cloth pieces from split result
+    std::shared_ptr<PhysXCloth> piece1 = CreateFromSplit(
+        result.piece1Positions, 
+        result.piece1Indices
+    );
+    
+    std::shared_ptr<PhysXCloth> piece2 = CreateFromSplit(
+        result.piece2Positions, 
+        result.piece2Indices
+    );
+    
+    if (!piece1 || !piece2) {
+        std::cerr << "PhysXCloth: Failed to create cloth pieces from split" << std::endl;
         return false;
     }
     
-    // Apply tears to affected particles
-    int tearsApplied = 0;
-    for (int particleIndex : affectedParticles) {
-        if (TearAtParticle(particleIndex)) {
-            tearsApplied++;
+    // Copy properties to new pieces
+    auto copyProperties = [this](std::shared_ptr<PhysXCloth> piece) {
+        piece->SetStretchStiffness(m_StretchStiffness);
+        piece->SetBendStiffness(m_BendStiffness);
+        piece->SetShearStiffness(m_ShearStiffness);
+        piece->SetDamping(m_Damping);
+        piece->SetWindVelocity(m_WindVelocity);
+        piece->SetTearable(m_Tearable);
+        piece->SetMaxStretchRatio(m_MaxStretchRatio);
+        piece->m_UpdateFrequency = m_UpdateFrequency;
+        piece->m_EnableSceneCollision = m_EnableSceneCollision;
+        piece->m_EnableSelfCollision = m_EnableSelfCollision;
+        piece->m_SelfCollisionDistance = m_SelfCollisionDistance;
+        piece->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+        piece->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+        piece->m_CollisionMassScale = m_CollisionMassScale;
+        
+        // Apply collision settings
+        if (piece->m_Cloth) {
+            if (m_EnableSceneCollision) {
+                piece->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+            }
+            if (m_EnableSelfCollision) {
+                piece->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+                piece->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+            }
+            if (m_EnableTwoWayCoupling) {
+                piece->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+            } else {
+                piece->m_Cloth->setCollisionMassScale(0.0f);
+            }
         }
+    };
+    
+    copyProperties(piece1);
+    copyProperties(piece2);
+    
+    std::cout << "PhysXCloth: Successfully split cloth with pattern '" << pattern->GetName() 
+              << "' into 2 pieces" << std::endl;
+    
+    // Invoke tear callback if set
+    if (m_TearCallback) {
+        m_TearCallback(piece1, piece2);
     }
     
-    std::cout << "PhysXCloth: Applied pattern '" << pattern->GetName() 
-              << "' affecting " << affectedParticles.size() << " particles, "
-              << tearsApplied << " tears created" << std::endl;
-    
-    return tearsApplied > 0;
+    return true;
 }
 
 void PhysXCloth::StartProgressiveTear(
@@ -1557,14 +1617,97 @@ void PhysXCloth::UpdateProgressiveTears(float deltaTime) {
         ProgressiveTear& tear = *it;
         
         tear.elapsed += deltaTime;
+        float oldProgress = tear.progress;
         tear.progress = std::min(1.0f, tear.elapsed / tear.duration);
         
-        // Get affected particles at current progress
+        // Check if we've reached completion
+        if (tear.progress >= 1.0f && oldProgress < 1.0f) {
+            // Attempt full mesh split at completion
+            std::cout << "PhysXCloth: Progressive tear completed, attempting mesh split..." << std::endl;
+            
+            auto result = ClothMeshSplitter::SplitWithPattern(
+                m_ParticlePositions,
+                m_TriangleIndices,
+                tear.pattern,
+                tear.position,
+                tear.direction,
+                tear.scale,
+                m_SpatialGrid.get()
+            );
+            
+            if (result.success) {
+                // Create cloth pieces from split
+                std::shared_ptr<PhysXCloth> piece1 = CreateFromSplit(
+                    result.piece1Positions, 
+                    result.piece1Indices
+                );
+                
+                std::shared_ptr<PhysXCloth> piece2 = CreateFromSplit(
+                    result.piece2Positions, 
+                    result.piece2Indices
+                );
+                
+                if (piece1 && piece2) {
+                    // Copy properties (reuse lambda from ApplyTearPattern)
+                    auto copyProperties = [this](std::shared_ptr<PhysXCloth> piece) {
+                        piece->SetStretchStiffness(m_StretchStiffness);
+                        piece->SetBendStiffness(m_BendStiffness);
+                        piece->SetShearStiffness(m_ShearStiffness);
+                        piece->SetDamping(m_Damping);
+                        piece->SetWindVelocity(m_WindVelocity);
+                        piece->SetTearable(m_Tearable);
+                        piece->SetMaxStretchRatio(m_MaxStretchRatio);
+                        piece->m_UpdateFrequency = m_UpdateFrequency;
+                        piece->m_EnableSceneCollision = m_EnableSceneCollision;
+                        piece->m_EnableSelfCollision = m_EnableSelfCollision;
+                        piece->m_SelfCollisionDistance = m_SelfCollisionDistance;
+                        piece->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+                        piece->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+                        piece->m_CollisionMassScale = m_CollisionMassScale;
+                        
+                        if (piece->m_Cloth) {
+                            if (m_EnableSceneCollision) {
+                                piece->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+                            }
+                            if (m_EnableSelfCollision) {
+                                piece->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+                                piece->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+                            }
+                            if (m_EnableTwoWayCoupling) {
+                                piece->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+                            } else {
+                                piece->m_Cloth->setCollisionMassScale(0.0f);
+                            }
+                        }
+                    };
+                    
+                    copyProperties(piece1);
+                    copyProperties(piece2);
+                    
+                    std::cout << "PhysXCloth: Progressive tear created mesh split into 2 pieces" << std::endl;
+                    
+                    // Invoke tear callback
+                    if (m_TearCallback) {
+                        m_TearCallback(piece1, piece2);
+                    }
+                    
+                    // Remove this progressive tear
+                    it = m_ProgressiveTears.erase(it);
+                    continue;
+                }
+            }
+            
+            // If mesh split failed, fall back to particle tears
+            std::cout << "PhysXCloth: Mesh split failed, using particle tears" << std::endl;
+        }
+        
+        // Progressive particle tearing (for gradual effect before final split)
         auto affectedParticles = tear.pattern->GetAffectedParticles(
             m_ParticlePositions,
             tear.position,
             tear.direction,
-            tear.scale * tear.progress  // Scale pattern by progress
+            tear.scale * tear.progress,  // Scale pattern by progress
+            m_SpatialGrid.get()
         );
         
         // Apply tears to newly affected particles
@@ -1585,6 +1728,24 @@ void PhysXCloth::UpdateProgressiveTears(float deltaTime) {
             ++it;
         }
     }
+}
+
+// ============================================================================
+// Mesh Synchronization Configuration
+// ============================================================================
+
+void PhysXCloth::SetSyncConfig(const ClothSyncConfig& config) {
+    if (m_MeshSynchronizer) {
+        m_MeshSynchronizer->SetConfig(config);
+    }
+}
+
+const ClothSyncConfig& PhysXCloth::GetSyncConfig() const {
+    static ClothSyncConfig defaultConfig;
+    if (m_MeshSynchronizer) {
+        return m_MeshSynchronizer->GetConfig();
+    }
+    return defaultConfig;
 }
 
 #endif // USE_PHYSX

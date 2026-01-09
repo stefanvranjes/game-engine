@@ -21,6 +21,8 @@ class Mesh;
 class AsyncClothFactory;
 class ClothTearPattern;
 class ClothTearPatternLibrary;
+class ClothMeshSynchronizer;
+struct ClothSyncConfig;
 
 /**
  * @brief PhysX implementation of cloth simulation
@@ -73,6 +75,21 @@ public:
      * @param mesh Mesh to update with current particle positions/normals
      */
     void UpdateMeshData(Mesh* mesh);
+    
+    /**
+     * @brief Get mesh synchronizer for advanced configuration
+     */
+    ClothMeshSynchronizer* GetMeshSynchronizer() { return m_MeshSynchronizer.get(); }
+    
+    /**
+     * @brief Set mesh synchronization configuration
+     */
+    void SetSyncConfig(const ClothSyncConfig& config);
+    
+    /**
+     * @brief Get current sync configuration
+     */
+    const ClothSyncConfig& GetSyncConfig() const;
 
     /**
      * @brief Get triangle count
@@ -317,6 +334,9 @@ private:
 
     // Tear callback
     TearCallback m_TearCallback;
+    
+    // Mesh synchronization
+    std::unique_ptr<ClothMeshSynchronizer> m_MeshSynchronizer;
 
     std::shared_ptr<ClothLOD> m_LODLayer;
     ClothLODConfig m_LODConfig;

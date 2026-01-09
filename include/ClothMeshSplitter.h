@@ -2,6 +2,11 @@
 
 #include "Math/Vec3.h"
 #include <vector>
+#include <memory>
+
+// Forward declarations
+class ClothTearPattern;
+class SpatialHashGrid;
 
 /**
  * @brief Utility for splitting cloth meshes
@@ -60,6 +65,27 @@ public:
         const std::vector<int>& indices,
         const Vec3& start,
         const Vec3& end
+    );
+
+    /**
+     * @brief Split mesh using a tear pattern
+     * @param positions Original particle positions
+     * @param indices Original triangle indices
+     * @param pattern Tear pattern to apply
+     * @param position Pattern application position (world space)
+     * @param direction Pattern orientation direction (normalized)
+     * @param scale Pattern scale multiplier
+     * @param spatialGrid Optional spatial grid for performance optimization
+     * @return Split result with pieces
+     */
+    static SplitResult SplitWithPattern(
+        const std::vector<Vec3>& positions,
+        const std::vector<int>& indices,
+        std::shared_ptr<ClothTearPattern> pattern,
+        const Vec3& position,
+        const Vec3& direction,
+        float scale,
+        const SpatialHashGrid* spatialGrid = nullptr
     );
 
 private:
