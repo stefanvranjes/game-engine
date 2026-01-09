@@ -1,0 +1,975 @@
+#include "PhysXSoftBody.h"
+
+#ifdef USE_PHYSX
+
+#include "PhysXBackend.h"
+#include "PhysXRigidBody.h"
+#include "SoftBodyTearSystem.h"
+#include "TetrahedralMeshSplitter.h"
+#include "TearResistanceMap.h"
+#include "SoftBodyTearPattern.h"
+#include "StraightTearPattern.h"
+#include "CurvedTearPattern.h"
+#include "RadialTearPattern.h"
+#include <PxPhysicsAPI.h>
+#include <iostream>
+#include <cstring>
+#include <algorithm>
+
+using namespace physx;
+
+PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
+    : m_Backend(backend)
+    , m_SoftBody(nullptr)
+    , m_TetraMesh(nullptr)
+    , m_SoftBodyMesh(nullptr)
+    , m_Enabled(true)
+    , m_Tearable(false)
+    , m_VolumeStiffness(0.5f)
+    , m_ShapeStiffness(0.5f)
+    , m_DeformationStiffness(0.5f)
+    , m_MaxStretch(1.5f)
+    , m_MaxCompress(0.5f)
+    , m_LinearDamping(0.01f)
+    , m_AngularDamping(0.01f)
+    , m_CollisionMargin(0.01f)
+    , m_SceneCollisionEnabled(true)
+    , m_SelfCollisionEnabled(false)
+    , m_VertexCount(0)
+    , m_TetrahedronCount(0)
+    , m_TearThreshold(2.0f)
+    , m_CheckTearing(false)
+    , m_LastTearCheckTime(0.0f)
+    , m_TearCheckInterval(0.1f)
+{
+    m_TearSystem = std::make_unique<SoftBodyTearSystem>();
+}
+}
+
+PhysXSoftBody::~PhysXSoftBody() {
+    if (m_SoftBody) {
+        PxScene* scene = m_Backend->GetScene();
+        if (scene) {
+            scene->removeActor(*m_SoftBody);
+        }
+        m_SoftBody->release();
+        m_SoftBody = nullptr;
+    }
+    
+    if (m_TetraMesh) {
+        m_TetraMesh->release();
+        m_TetraMesh = nullptr;
+    }
+    
+    if (m_SoftBodyMesh) {
+        m_SoftBodyMesh->release();
+        m_SoftBodyMesh = nullptr;
+    }
+    
+    // Clean up collision shapes
+    for (auto& shape : m_CollisionShapes) {
+        if (shape.shape) {
+            shape.shape->release();
+        }
+    }
+    m_CollisionShapes.clear();
+}
+
+void PhysXSoftBody::Initialize(const SoftBodyDesc& desc) {
+    if (!m_Backend || !m_Backend->GetPhysics() || !m_Backend->GetScene()) {
+        std::cerr << "PhysXSoftBody: Invalid backend or scene!" << std::endl;
+        return;
+    }
+
+    m_VertexCount = desc.vertexCount;
+    
+    // Store initial positions
+    m_InitialPositions.resize(m_VertexCount);
+    for (int i = 0; i < m_VertexCount; ++i) {
+        m_InitialPositions[i] = desc.vertexPositions[i];
+    }
+    
+    // Store configuration
+    m_VolumeStiffness = desc.volumeStiffness;
+    m_ShapeStiffness = desc.shapeStiffness;
+    m_DeformationStiffness = desc.deformationStiffness;
+    m_MaxStretch = desc.maxStretch;
+    m_MaxCompress = desc.maxCompress;
+    m_LinearDamping = desc.linearDamping;
+    m_AngularDamping = desc.angularDamping;
+    m_SceneCollisionEnabled = desc.enableSceneCollision;
+    m_SelfCollisionEnabled = desc.enableSelfCollision;
+    m_CollisionMargin = desc.collisionMargin;
+    
+    // Create tetrahedral mesh
+    CreateTetrahedralMesh(desc);
+    
+    if (!m_TetraMesh) {
+        std::cerr << "PhysXSoftBody: Failed to create tetrahedral mesh!" << std::endl;
+        return;
+    }
+    
+    // Create soft body actor
+    PxPhysics* physics = m_Backend->GetPhysics();
+    PxScene* scene = m_Backend->GetScene();
+    
+    // Create soft body material
+    PxPBDMaterial* material = physics->createPBDMaterial(
+        m_VolumeStiffness,      // Volume stiffness
+        m_ShapeStiffness,       // Shape stiffness
+        m_DeformationStiffness  // Deformation stiffness
+    );
+    
+    if (!material) {
+        std::cerr << "PhysXSoftBody: Failed to create PBD material!" << std::endl;
+        return;
+    }
+    
+    // Create soft body from tetrahedral mesh
+    PxTransform transform(PxVec3(0, 0, 0));
+    m_SoftBody = physics->createSoftBody(
+        *m_TetraMesh,
+        transform,
+        *material,
+        desc.solverIterations
+    );
+    
+    if (!m_SoftBody) {
+        std::cerr << "PhysXSoftBody: Failed to create soft body!" << std::endl;
+        material->release();
+        return;
+    }
+    
+    // Configure soft body properties
+    m_SoftBody->setDamping(m_LinearDamping);
+    
+    // Set gravity
+    m_SoftBody->setExternalAcceleration(PxVec3(desc.gravity.x, desc.gravity.y, desc.gravity.z));
+    
+    // Configure collision
+    if (m_SceneCollisionEnabled) {
+        m_SoftBody->setSoftBodyFlag(PxSoftBodyFlag::eDISABLE_SELF_COLLISION, !m_SelfCollisionEnabled);
+    }
+    
+    // Set mass
+    if (desc.useDensity) {
+        m_SoftBody->setDensity(desc.density);
+    } else {
+        // Calculate density from total mass and volume
+        float volume = GetVolume();
+        if (volume > 0.0f) {
+            float density = desc.totalMass / volume;
+            m_SoftBody->setDensity(density);
+        }
+    }
+    
+    // Add to scene
+    scene->addActor(*m_SoftBody);
+    
+    // Initialize resistance map
+    m_ResistanceMap.Initialize(m_TetrahedronCount, 1.0f);
+    
+    std::cout << "PhysXSoftBody initialized with " << m_VertexCount << " vertices and "
+              << m_TetrahedronCount << " tetrahedra" << std::endl;
+}
+
+void PhysXSoftBody::CreateTetrahedralMesh(const SoftBodyDesc& desc) {
+    PxPhysics* physics = m_Backend->GetPhysics();
+    
+    // If tetrahedral mesh is provided, use it
+    if (desc.tetrahedronVertices && desc.tetrahedronIndices) {
+        m_TetrahedronCount = desc.tetrahedronCount;
+        
+        // Create tetrahedral mesh descriptor
+        PxTetrahedronMeshDesc meshDesc;
+        meshDesc.points.count = desc.tetrahedronVertexCount;
+        meshDesc.points.stride = sizeof(Vec3);
+        meshDesc.points.data = desc.tetrahedronVertices;
+        
+        meshDesc.tetrahedrons.count = desc.tetrahedronCount;
+        meshDesc.tetrahedrons.stride = sizeof(int) * 4;
+        meshDesc.tetrahedrons.data = desc.tetrahedronIndices;
+        
+        // Cook tetrahedral mesh
+        PxCooking* cooking = PxCreateCooking(PX_PHYSICS_VERSION, physics->getFoundation(), PxCookingParams(PxTolerancesScale()));
+        if (cooking) {
+            m_TetraMesh = cooking->createTetrahedronMesh(meshDesc, physics->getPhysicsInsertionCallback());
+            cooking->release();
+        }
+    } else {
+        // Auto-generate tetrahedral mesh from surface mesh
+        // For now, use a simple voxel-based approach
+        std::cerr << "PhysXSoftBody: Auto-generation of tetrahedral mesh not yet implemented!" << std::endl;
+        std::cerr << "Please provide tetrahedral mesh data in SoftBodyDesc." << std::endl;
+        
+        // TODO: Implement voxel-based or Delaunay tetrahedralization
+        // This would require:
+        // 1. Voxelize the surface mesh
+        // 2. Create tetrahedra from voxel grid
+        // 3. Map surface vertices to tetrahedral vertices
+    }
+}
+
+void PhysXSoftBody::Update(float deltaTime) {
+    if (!m_SoftBody || !m_Enabled) {
+        return;
+    }
+    
+    // Update collision shapes if needed
+    UpdateCollisionShapes();
+    
+    // Update healing
+    if (m_TearSystem) {
+        m_TearSystem->UpdateHealing(deltaTime, m_ResistanceMap);
+    }
+    
+    // PhysX soft body simulation is handled automatically by the scene
+    // We just need to read back the results when needed
+}
+
+void PhysXSoftBody::UpdateCollisionShapes() {
+    if (!m_SoftBody || m_CollisionShapes.empty()) {
+        return;
+    }
+    
+    // Update collision shape transforms if they're attached to moving objects
+    // This is handled automatically by PhysX if shapes are attached to actors
+}
+
+void PhysXSoftBody::SetEnabled(bool enabled) {
+    m_Enabled = enabled;
+    if (m_SoftBody) {
+        m_SoftBody->setActorFlag(PxActorFlag::eDISABLE_SIMULATION, !enabled);
+    }
+}
+
+bool PhysXSoftBody::IsEnabled() const {
+    return m_Enabled;
+}
+
+int PhysXSoftBody::GetVertexCount() const {
+    return m_VertexCount;
+}
+
+void PhysXSoftBody::GetVertexPositions(Vec3* positions) const {
+    if (!m_SoftBody || !positions) {
+        return;
+    }
+    
+    // Read vertex positions from soft body
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        const PxVec4* vertexPositions = data->getPositionInvMass();
+        for (int i = 0; i < m_VertexCount; ++i) {
+            positions[i].x = vertexPositions[i].x;
+            positions[i].y = vertexPositions[i].y;
+            positions[i].z = vertexPositions[i].z;
+        }
+    }
+}
+
+void PhysXSoftBody::SetVertexPositions(const Vec3* positions) {
+    if (!m_SoftBody || !positions) {
+        return;
+    }
+    
+    // Set vertex positions
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        PxVec4* vertexPositions = data->getPositionInvMass();
+        for (int i = 0; i < m_VertexCount; ++i) {
+            vertexPositions[i].x = positions[i].x;
+            vertexPositions[i].y = positions[i].y;
+            vertexPositions[i].z = positions[i].z;
+            // Keep existing inverse mass (w component)
+        }
+    }
+}
+
+void PhysXSoftBody::GetVertexNormals(Vec3* normals) const {
+    if (!normals) {
+        return;
+    }
+    
+    // Calculate normals from deformed mesh
+    // This is a simplified version - for production, use the surface mesh
+    RecalculateNormals(normals);
+}
+
+void PhysXSoftBody::RecalculateNormals(Vec3* normals) const {
+    // Reset normals
+    std::memset(normals, 0, m_VertexCount * sizeof(Vec3));
+    
+    // Get current positions
+    std::vector<Vec3> positions(m_VertexCount);
+    GetVertexPositions(positions.data());
+    
+    // Calculate face normals and accumulate
+    // Note: This requires surface triangle data, which we don't have in the current implementation
+    // For now, just set default normals
+    for (int i = 0; i < m_VertexCount; ++i) {
+        normals[i] = Vec3(0, 1, 0); // Default up normal
+    }
+}
+
+void PhysXSoftBody::GetVertexVelocities(Vec3* velocities) const {
+    if (!m_SoftBody || !velocities) {
+        return;
+    }
+    
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        const PxVec4* vertexVelocities = data->getVelocity();
+        for (int i = 0; i < m_VertexCount; ++i) {
+            velocities[i].x = vertexVelocities[i].x;
+            velocities[i].y = vertexVelocities[i].y;
+            velocities[i].z = vertexVelocities[i].z;
+        }
+    }
+}
+
+void PhysXSoftBody::SetVolumeStiffness(float stiffness) {
+    m_VolumeStiffness = stiffness;
+    if (m_SoftBody) {
+        // Update material properties
+        PxPBDMaterial* material = m_SoftBody->getMaterial();
+        if (material) {
+            material->setVolumeStiffness(stiffness);
+        }
+    }
+}
+
+float PhysXSoftBody::GetVolumeStiffness() const {
+    return m_VolumeStiffness;
+}
+
+void PhysXSoftBody::SetShapeStiffness(float stiffness) {
+    m_ShapeStiffness = stiffness;
+    if (m_SoftBody) {
+        PxPBDMaterial* material = m_SoftBody->getMaterial();
+        if (material) {
+            material->setShapeMatchingStiffness(stiffness);
+        }
+    }
+}
+
+float PhysXSoftBody::GetShapeStiffness() const {
+    return m_ShapeStiffness;
+}
+
+void PhysXSoftBody::SetDeformationStiffness(float stiffness) {
+    m_DeformationStiffness = stiffness;
+    if (m_SoftBody) {
+        PxPBDMaterial* material = m_SoftBody->getMaterial();
+        if (material) {
+            material->setDeformationStiffness(stiffness);
+        }
+    }
+}
+
+float PhysXSoftBody::GetDeformationStiffness() const {
+    return m_DeformationStiffness;
+}
+
+void PhysXSoftBody::SetMaxStretch(float maxStretch) {
+    m_MaxStretch = maxStretch;
+    // PhysX handles this through material properties
+}
+
+void PhysXSoftBody::SetMaxCompress(float maxCompress) {
+    m_MaxCompress = maxCompress;
+    // PhysX handles this through material properties
+}
+
+void PhysXSoftBody::SetDamping(float linear, float angular) {
+    m_LinearDamping = linear;
+    m_AngularDamping = angular;
+    if (m_SoftBody) {
+        m_SoftBody->setDamping(linear);
+    }
+}
+
+void PhysXSoftBody::AddForce(const Vec3& force) {
+    if (!m_SoftBody) {
+        return;
+    }
+    
+    // Apply force to all vertices
+    PxVec3 pxForce(force.x, force.y, force.z);
+    m_SoftBody->addForce(pxForce);
+}
+
+void PhysXSoftBody::AddForceAtVertex(int vertexIndex, const Vec3& force) {
+    if (!m_SoftBody || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return;
+    }
+    
+    // Apply force to specific vertex
+    PxVec3 pxForce(force.x, force.y, force.z);
+    m_SoftBody->addForce(pxForce, vertexIndex);
+}
+
+void PhysXSoftBody::AddImpulse(const Vec3& impulse) {
+    if (!m_SoftBody) {
+        return;
+    }
+    
+    // Apply impulse to all vertices
+    PxVec3 pxImpulse(impulse.x, impulse.y, impulse.z);
+    
+    // Get vertex data and apply impulse manually
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        PxVec4* velocities = data->getVelocity();
+        const PxVec4* masses = data->getPositionInvMass();
+        
+        for (int i = 0; i < m_VertexCount; ++i) {
+            float invMass = masses[i].w;
+            if (invMass > 0.0f) {
+                float mass = 1.0f / invMass;
+                PxVec3 deltaV = pxImpulse * invMass;
+                velocities[i].x += deltaV.x;
+                velocities[i].y += deltaV.y;
+                velocities[i].z += deltaV.z;
+            }
+        }
+    }
+}
+
+void PhysXSoftBody::AddImpulseAtVertex(int vertexIndex, const Vec3& impulse) {
+    if (!m_SoftBody || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return;
+    }
+    
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        PxVec4* velocities = data->getVelocity();
+        const PxVec4* masses = data->getPositionInvMass();
+        
+        float invMass = masses[vertexIndex].w;
+        if (invMass > 0.0f) {
+            PxVec3 pxImpulse(impulse.x, impulse.y, impulse.z);
+            PxVec3 deltaV = pxImpulse * invMass;
+            velocities[vertexIndex].x += deltaV.x;
+            velocities[vertexIndex].y += deltaV.y;
+            velocities[vertexIndex].z += deltaV.z;
+        }
+    }
+}
+
+void PhysXSoftBody::AttachVertexToRigidBody(int vertexIndex, IPhysicsRigidBody* rigidBody, const Vec3& localPos) {
+    if (!m_SoftBody || !rigidBody || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return;
+    }
+    
+    // Get PhysX rigid body actor
+    PhysXRigidBody* physxRigidBody = static_cast<PhysXRigidBody*>(rigidBody);
+    PxRigidActor* actor = static_cast<PxRigidActor*>(physxRigidBody->GetNativeBody());
+    
+    if (actor) {
+        // Create attachment
+        PxVec3 pxLocalPos(localPos.x, localPos.y, localPos.z);
+        m_SoftBody->attachShape(*actor, pxLocalPos, vertexIndex);
+    }
+}
+
+void PhysXSoftBody::DetachVertex(int vertexIndex) {
+    if (!m_SoftBody || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return;
+    }
+    
+    // Detach vertex by setting it to free (restore normal mass)
+    UnfixVertex(vertexIndex);
+}
+
+void PhysXSoftBody::FixVertex(int vertexIndex, const Vec3& worldPos) {
+    if (!m_SoftBody || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return;
+    }
+    
+    // Set vertex to infinite mass (fixed)
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        PxVec4* positions = data->getPositionInvMass();
+        positions[vertexIndex].x = worldPos.x;
+        positions[vertexIndex].y = worldPos.y;
+        positions[vertexIndex].z = worldPos.z;
+        positions[vertexIndex].w = 0.0f; // Infinite mass
+        
+        m_FixedVertices.push_back(vertexIndex);
+    }
+}
+
+void PhysXSoftBody::UnfixVertex(int vertexIndex) {
+    if (!m_SoftBody || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return;
+    }
+    
+    // Restore normal mass
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        PxVec4* positions = data->getPositionInvMass();
+        positions[vertexIndex].w = 1.0f; // Normal mass (inverse mass = 1.0)
+        
+        // Remove from fixed vertices list
+        auto it = std::find(m_FixedVertices.begin(), m_FixedVertices.end(), vertexIndex);
+        if (it != m_FixedVertices.end()) {
+            m_FixedVertices.erase(it);
+        }
+    }
+}
+
+void PhysXSoftBody::SetSceneCollision(bool enabled) {
+    m_SceneCollisionEnabled = enabled;
+    if (m_SoftBody) {
+        m_SoftBody->setSoftBodyFlag(PxSoftBodyFlag::eDISABLE_SELF_COLLISION, !enabled);
+    }
+}
+
+void PhysXSoftBody::SetSelfCollision(bool enabled) {
+    m_SelfCollisionEnabled = enabled;
+    if (m_SoftBody) {
+        m_SoftBody->setSoftBodyFlag(PxSoftBodyFlag::eDISABLE_SELF_COLLISION, !enabled);
+    }
+}
+
+void PhysXSoftBody::SetCollisionMargin(float margin) {
+    m_CollisionMargin = margin;
+    // PhysX handles collision margin internally
+}
+
+void PhysXSoftBody::AddCollisionSphere(const Vec3& center, float radius) {
+    if (!m_SoftBody) {
+        return;
+    }
+    
+    PxPhysics* physics = m_Backend->GetPhysics();
+    PxMaterial* material = m_Backend->GetDefaultMaterial();
+    
+    // Create sphere shape
+    PxShape* shape = physics->createShape(
+        PxSphereGeometry(radius),
+        *material,
+        true // exclusive
+    );
+    
+    if (shape) {
+        // Create static actor for the collision shape
+        PxTransform transform(PxVec3(center.x, center.y, center.z));
+        PxRigidStatic* staticActor = physics->createRigidStatic(transform);
+        staticActor->attachShape(*shape);
+        
+        m_Backend->GetScene()->addActor(*staticActor);
+        
+        CollisionShape collisionShape;
+        collisionShape.type = 0; // Sphere
+        collisionShape.pos0 = center;
+        collisionShape.radius = radius;
+        collisionShape.shape = shape;
+        
+        m_CollisionShapes.push_back(collisionShape);
+    }
+}
+
+void PhysXSoftBody::AddCollisionCapsule(const Vec3& p0, const Vec3& p1, float radius) {
+    if (!m_SoftBody) {
+        return;
+    }
+    
+    PxPhysics* physics = m_Backend->GetPhysics();
+    PxMaterial* material = m_Backend->GetDefaultMaterial();
+    
+    // Calculate capsule parameters
+    Vec3 axis = p1 - p0;
+    float halfHeight = axis.Length() * 0.5f;
+    
+    // Create capsule shape
+    PxShape* shape = physics->createShape(
+        PxCapsuleGeometry(radius, halfHeight),
+        *material,
+        true // exclusive
+    );
+    
+    if (shape) {
+        // Calculate transform
+        Vec3 center = (p0 + p1) * 0.5f;
+        PxTransform transform(PxVec3(center.x, center.y, center.z));
+        
+        PxRigidStatic* staticActor = physics->createRigidStatic(transform);
+        staticActor->attachShape(*shape);
+        
+        m_Backend->GetScene()->addActor(*staticActor);
+        
+        CollisionShape collisionShape;
+        collisionShape.type = 1; // Capsule
+        collisionShape.pos0 = p0;
+        collisionShape.pos1 = p1;
+        collisionShape.radius = radius;
+        collisionShape.shape = shape;
+        
+        m_CollisionShapes.push_back(collisionShape);
+    }
+}
+
+void PhysXSoftBody::SetTearable(bool tearable) {
+    m_Tearable = tearable;
+    // Tearing implementation would require mesh splitting logic
+}
+
+bool PhysXSoftBody::TearAtVertex(int vertexIndex) {
+    if (!m_Tearable || vertexIndex < 0 || vertexIndex >= m_VertexCount) {
+        return false;
+    }
+    
+    // Tearing implementation would require:
+    // 1. Duplicate vertex
+    // 2. Split connected tetrahedra
+    // 3. Update topology
+    // This is complex and would be implemented in a future enhancement
+    
+    std::cerr << "PhysXSoftBody: Tearing not yet implemented!" << std::endl;
+    return false;
+}
+
+float PhysXSoftBody::GetTotalMass() const {
+    if (!m_SoftBody) {
+        return 0.0f;
+    }
+    
+    // Calculate total mass from vertices
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        const PxVec4* masses = data->getPositionInvMass();
+        float totalMass = 0.0f;
+        
+        for (int i = 0; i < m_VertexCount; ++i) {
+            float invMass = masses[i].w;
+            if (invMass > 0.0f) {
+                totalMass += 1.0f / invMass;
+            }
+        }
+        
+        return totalMass;
+    }
+    
+    return 0.0f;
+}
+
+float PhysXSoftBody::GetVolume() const {
+    // Calculate volume from tetrahedral mesh
+    // This is a simplified calculation
+    if (m_TetrahedronCount == 0) {
+        return 1.0f; // Default volume
+    }
+    
+    // For accurate volume calculation, we would need to sum the volumes
+    // of all tetrahedra in the mesh
+    // Volume of tetrahedron = |det(v1-v0, v2-v0, v3-v0)| / 6
+    
+    return static_cast<float>(m_TetrahedronCount) * 0.001f; // Approximate
+}
+
+Vec3 PhysXSoftBody::GetCenterOfMass() const {
+    if (!m_SoftBody) {
+        return Vec3(0, 0, 0);
+    }
+    
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        const PxVec4* positions = data->getPositionInvMass();
+        const PxVec4* masses = data->getPositionInvMass();
+        
+        Vec3 centerOfMass(0, 0, 0);
+        float totalMass = 0.0f;
+        
+        for (int i = 0; i < m_VertexCount; ++i) {
+            float invMass = masses[i].w;
+            if (invMass > 0.0f) {
+                float mass = 1.0f / invMass;
+                centerOfMass.x += positions[i].x * mass;
+                centerOfMass.y += positions[i].y * mass;
+                centerOfMass.z += positions[i].z * mass;
+                totalMass += mass;
+            }
+        }
+        
+        if (totalMass > 0.0f) {
+            centerOfMass = centerOfMass * (1.0f / totalMass);
+        }
+        
+        return centerOfMass;
+    }
+    
+    return Vec3(0, 0, 0);
+}
+
+bool PhysXSoftBody::IsActive() const {
+    if (m_SoftBody) {
+        return !m_SoftBody->isSleeping();
+    }
+    return false;
+}
+
+void PhysXSoftBody::SetActive(bool active) {
+    if (m_SoftBody) {
+        if (active) {
+            m_SoftBody->wakeUp();
+        } else {
+            m_SoftBody->putToSleep();
+        }
+    }
+}
+
+void* PhysXSoftBody::GetNativeSoftBody() {
+    return m_SoftBody;
+}
+
+void PhysXSoftBody::SetTearThreshold(float threshold) {
+    m_TearThreshold = threshold;
+    m_CheckTearing = (threshold > 0.0f);
+}
+
+float PhysXSoftBody::GetTearThreshold() const {
+    return m_TearThreshold;
+}
+
+void PhysXSoftBody::SetTearCallback(std::function<void(int, float)> callback) {
+    m_TearCallback = callback;
+}
+
+void PhysXSoftBody::SetPieceCreatedCallback(std::function<void(std::shared_ptr<PhysXSoftBody>)> callback) {
+    m_PieceCreatedCallback = callback;
+}
+
+void PhysXSoftBody::DetectAndProcessTears() {
+    if (!m_CheckTearing || !m_TearSystem || m_RestPositions.empty()) {
+        return;
+    }
+    
+    // Get current positions
+    std::vector<Vec3> currentPositions(m_VertexCount);
+    GetVertexPositions(currentPositions.data());
+    
+    // Detect tears
+    std::vector<SoftBodyTearSystem::TearInfo> tears;
+    m_TearSystem->DetectStress(
+        currentPositions.data(),
+        m_RestPositions.data(),
+        m_TetrahedronIndices.data(),
+        m_TetrahedronCount,
+        m_TearThreshold,
+        &m_ResistanceMap,  // Pass resistance map
+        tears
+    );
+    
+    if (!tears.empty()) {
+        std::cout << "Detected " << tears.size() << " tears" << std::endl;
+        
+        // Notify callback
+        if (m_TearCallback) {
+            for (const auto& tear : tears) {
+                m_TearCallback(tear.tetrahedronIndex, tear.stress);
+            }
+        }
+        
+        // Collect torn tetrahedra
+        std::vector<int> tornTets;
+        for (const auto& tear : tears) {
+            tornTets.push_back(tear.tetrahedronIndex);
+        }
+        
+        // Split soft body
+        SplitSoftBody(tornTets);
+    }
+}
+
+void PhysXSoftBody::SplitSoftBody(const std::vector<int>& tornTetrahedra) {
+    std::cout << "Splitting soft body along " << tornTetrahedra.size() << " torn tetrahedra" << std::endl;
+    
+    // For now, just log the tear - full implementation would:
+    // 1. Use TetrahedralMeshSplitter to split the mesh
+    // 2. Create new PhysXSoftBody for the torn piece
+    // 3. Update current soft body with remaining mesh
+    // 4. Call piece created callback
+    
+    // This is a complex operation that requires:
+    // - Mesh topology analysis
+    // - Vertex duplication
+    // - PhysX actor recreation
+    // - State transfer
+    
+    std::cerr << "Full mesh splitting not yet implemented - tears detected but not applied" << std::endl;
+}
+
+void PhysXSoftBody::RecreateWithMesh(const std::vector<Vec3>& vertices, const std::vector<int>& tetrahedra) {
+    // This would recreate the PhysX soft body with new mesh topology
+    // Complex operation requiring:
+    // 1. Store current state (velocities, forces)
+    // 2. Release current PhysX actor
+    // 3. Create new tetrahedral mesh
+    // 4. Create new soft body actor
+    // 5. Restore state
+    
+    std::cerr << "Mesh recreation not yet implemented" << std::endl;
+}
+
+void PhysXSoftBody::TearAlongPattern(
+    const SoftBodyTearPattern& pattern,
+    const Vec3& startPoint,
+    const Vec3& endPoint)
+{
+    if (!m_SoftBody || m_RestPositions.empty()) {
+        std::cerr << "Cannot tear: soft body not initialized" << std::endl;
+        return;
+    }
+    
+    // Get current vertex positions
+    std::vector<Vec3> currentPositions(m_VertexCount);
+    GetVertexPositions(currentPositions.data());
+    
+    // Select tetrahedra along pattern
+    std::vector<int> selectedTets = pattern.SelectTetrahedra(
+        currentPositions.data(),
+        m_VertexCount,
+        m_TetrahedronIndices.data(),
+        m_TetrahedronCount,
+        startPoint,
+        endPoint
+    );
+    
+    if (selectedTets.empty()) {
+        std::cout << "No tetrahedra selected by pattern" << std::endl;
+        return;
+    }
+    
+    std::cout << "Tearing along pattern: " << selectedTets.size() << " tetrahedra" << std::endl;
+    
+    // Notify tear callback for each selected tet
+    if (m_TearCallback) {
+        for (int tetIdx : selectedTets) {
+            m_TearCallback(tetIdx, m_TearThreshold);
+        }
+    }
+    
+    // Register tears for healing
+    if (m_TearSystem) {
+        for (int tetIdx : selectedTets) {
+            float originalResistance = m_ResistanceMap.GetResistance(tetIdx);
+            m_TearSystem->RegisterTearForHealing(tetIdx, originalResistance);
+        }
+    }
+    
+    // Split soft body
+    SplitSoftBody(selectedTets);
+}
+
+void PhysXSoftBody::TearStraightLine(const Vec3& start, const Vec3& end, float width)
+{
+    StraightTearPattern pattern(width);
+    TearAlongPattern(pattern, start, end);
+}
+
+void PhysXSoftBody::TearCurvedPath(const Vec3& start, const Vec3& end, float curvature)
+{
+    CurvedTearPattern pattern(0.1f, curvature);
+    TearAlongPattern(pattern, start, end);
+}
+
+void PhysXSoftBody::TearRadialBurst(const Vec3& center, int rayCount, float radius)
+{
+    RadialTearPattern pattern(rayCount, 0.05f);
+    pattern.SetRadius(radius);
+    
+    // Use up vector as direction
+    Vec3 upVector(0, 1, 0);
+    TearAlongPattern(pattern, center, upVector);
+}
+
+void PhysXSoftBody::SetRegionResistance(const Vec3& center, float radius, float resistance)
+{
+    if (!m_ResistanceMap.IsInitialized()) {
+        std::cerr << "Resistance map not initialized" << std::endl;
+        return;
+    }
+    
+    // Calculate tetrahedron centers
+    std::vector<Vec3> tetCenters(m_TetrahedronCount);
+    for (int i = 0; i < m_TetrahedronCount; ++i) {
+        int v0 = m_TetrahedronIndices[i * 4 + 0];
+        int v1 = m_TetrahedronIndices[i * 4 + 1];
+        int v2 = m_TetrahedronIndices[i * 4 + 2];
+        int v3 = m_TetrahedronIndices[i * 4 + 3];
+        
+        tetCenters[i] = (m_RestPositions[v0] + m_RestPositions[v1] + 
+                        m_RestPositions[v2] + m_RestPositions[v3]) * 0.25f;
+    }
+    
+    m_ResistanceMap.SetSphereResistance(
+        tetCenters.data(),
+        m_TetrahedronCount,
+        center,
+        radius,
+        resistance
+    );
+}
+
+void PhysXSoftBody::SetResistanceGradient(
+    const Vec3& start, const Vec3& end,
+    float startResistance, float endResistance)
+{
+    if (!m_ResistanceMap.IsInitialized()) {
+        std::cerr << "Resistance map not initialized" << std::endl;
+        return;
+    }
+    
+    // Calculate tetrahedron centers
+    std::vector<Vec3> tetCenters(m_TetrahedronCount);
+    for (int i = 0; i < m_TetrahedronCount; ++i) {
+        int v0 = m_TetrahedronIndices[i * 4 + 0];
+        int v1 = m_TetrahedronIndices[i * 4 + 1];
+        int v2 = m_TetrahedronIndices[i * 4 + 2];
+        int v3 = m_TetrahedronIndices[i * 4 + 3];
+        
+        tetCenters[i] = (m_RestPositions[v0] + m_RestPositions[v1] + 
+                        m_RestPositions[v2] + m_RestPositions[v3]) * 0.25f;
+    }
+    
+    m_ResistanceMap.SetGradient(
+        tetCenters.data(),
+        m_TetrahedronCount,
+        start,
+        end,
+        startResistance,
+        endResistance
+    );
+}
+
+void PhysXSoftBody::SetHealingEnabled(bool enabled) {
+    if (m_TearSystem) {
+        m_TearSystem->SetHealingEnabled(enabled);
+        std::cout << "Healing " << (enabled ? "enabled" : "disabled") << std::endl;
+    }
+}
+
+void PhysXSoftBody::SetHealingRate(float progressPerSecond) {
+    if (m_TearSystem) {
+        m_TearSystem->SetHealingRate(progressPerSecond);
+        std::cout << "Healing rate set to " << progressPerSecond << "/sec" << std::endl;
+    }
+}
+
+void PhysXSoftBody::SetHealingDelay(float seconds) {
+    if (m_TearSystem) {
+        m_TearSystem->SetHealingDelay(seconds);
+        std::cout << "Healing delay set to " << seconds << " seconds" << std::endl;
+    }
+}
+
+int PhysXSoftBody::GetHealingTearCount() const {
+    if (m_TearSystem) {
+        return static_cast<int>(m_TearSystem->GetHealingTears().size());
+    }
+    return 0;
+}
+
+#endif // USE_PHYSX

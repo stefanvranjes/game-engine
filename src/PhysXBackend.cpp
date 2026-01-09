@@ -1,6 +1,7 @@
 #include "PhysXBackend.h"
 #include "IPhysicsRigidBody.h"
 #include "IPhysicsCharacterController.h"
+#include "IPhysicsSoftBody.h"
 
 #ifdef USE_PHYSX
 
@@ -151,6 +152,7 @@ void PhysXBackend::Shutdown() {
     // Clear registered components
     m_RigidBodies.clear();
     m_CharacterControllers.clear();
+    m_SoftBodies.clear();
 
     // Release PhysX objects in reverse order of creation
     if (m_DefaultMaterial) {
@@ -206,6 +208,13 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
 
     // Update character controllers first
     UpdateCharacterControllers(deltaTime);
+
+    // Update soft bodies
+    for (auto* softBody : m_SoftBodies) {
+        if (softBody && softBody->IsEnabled()) {
+            softBody->Update(deltaTime);
+        }
+    }
 
     // Simulate physics
     m_Scene->simulate(deltaTime);
@@ -296,6 +305,19 @@ void PhysXBackend::UnregisterCharacterController(IPhysicsCharacterController* co
     auto it = std::find(m_CharacterControllers.begin(), m_CharacterControllers.end(), controller);
     if (it != m_CharacterControllers.end()) {
         m_CharacterControllers.erase(it);
+    }
+}
+
+void PhysXBackend::RegisterSoftBody(IPhysicsSoftBody* softBody) {
+    if (softBody) {
+        m_SoftBodies.push_back(softBody);
+    }
+}
+
+void PhysXBackend::UnregisterSoftBody(IPhysicsSoftBody* softBody) {
+    auto it = std::find(m_SoftBodies.begin(), m_SoftBodies.end(), softBody);
+    if (it != m_SoftBodies.end()) {
+        m_SoftBodies.erase(it);
     }
 }
 

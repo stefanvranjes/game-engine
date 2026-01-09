@@ -384,6 +384,16 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/PhysXShape.cpp
         src/PhysXCharacterController.cpp
         src/PhysXCloth.cpp
+        src/PhysXSoftBody.cpp
+        src/TetrahedralMeshGenerator.cpp
+        src/SoftBodyTearSystem.cpp
+        src/TetrahedralMeshSplitter.cpp
+        src/SoftBodyPieceManager.cpp
+        src/TearResistanceMap.cpp
+        src/SoftBodyTearPattern.cpp
+        src/StraightTearPattern.cpp
+        src/CurvedTearPattern.cpp
+        src/RadialTearPattern.cpp
         src/ClothMeshGenerator.cpp
         src/ClothMeshSplitter.cpp
         src/ClothMeshSynchronizer.cpp

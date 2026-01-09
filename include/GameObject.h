@@ -18,6 +18,7 @@ class Water;
 class Terrain;
 class ScriptComponent;
 class IPhysicsCloth;
+class IPhysicsSoftBody;
 
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
@@ -89,6 +90,10 @@ public:
     // Cloth
     void SetCloth(std::shared_ptr<IPhysicsCloth> cloth) { m_Cloth = cloth; }
     std::shared_ptr<IPhysicsCloth> GetCloth() const { return m_Cloth; }
+
+    // Soft Body
+    void SetSoftBody(std::shared_ptr<IPhysicsSoftBody> softBody) { m_SoftBody = softBody; }
+    std::shared_ptr<IPhysicsSoftBody> GetSoftBody() const { return m_SoftBody; }
 
     // Scripting
     void SetScriptComponent(std::shared_ptr<class ScriptComponent> script) { m_ScriptComponent = script; }
@@ -196,6 +201,9 @@ private:
 
     // Cloth
     std::shared_ptr<IPhysicsCloth> m_Cloth;
+
+    // Soft Body
+    std::shared_ptr<IPhysicsSoftBody> m_SoftBody;
 
     // Scripting
     std::shared_ptr<class ScriptComponent> m_ScriptComponent;
