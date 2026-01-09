@@ -1,4 +1,5 @@
 #include "DivideAndConquerHull.h"
+#include "QuickHull.h"
 #include <algorithm>
 #include <iostream>
 #include <cmath>
@@ -291,20 +292,22 @@ DivideAndConquerHull::SubHull* DivideAndConquerHull::ComputeHullFromPoints(const
     
     SubHull* sh = new SubHull();
     // Convert back to HE structure
-    // This is overhead, but ensures the recursion works.
     
-    // Map original indices to new HE_Verts
-    std::map<int, HE_Vert*> vertMap;
+    // Create vertices
+    // We need to map new indices to new HE_Verts
     for (const auto& v : res.vertices) {
-        // We lost original IDs in QuickHull unless we track them.
-        // QuickHull returns vertices.
-        // We can just create new verts.
         HE_Vert* heV = new HE_Vert(0, v.x, v.y, v.z);
         sh->verts.push_back(heV);
-        // We need to map index in 'res.vertices' to heV
     }
     
+    // Create faces
     for (size_t i = 0; i < res.indices.size(); i += 3) {
+        if (res.indices[i] >= sh->verts.size() || 
+            res.indices[i+1] >= sh->verts.size() || 
+            res.indices[i+2] >= sh->verts.size()) {
+            continue; // Should not happen
+        }
+
         HE_Vert* v0 = sh->verts[res.indices[i]];
         HE_Vert* v1 = sh->verts[res.indices[i+1]];
         HE_Vert* v2 = sh->verts[res.indices[i+2]];
@@ -328,7 +331,17 @@ DivideAndConquerHull::SubHull* DivideAndConquerHull::ComputeHullFromPoints(const
     }
     
     // Link edges
-    // ... similar to before
+    for (auto* e1 : sh->edges) {
+        if (e1->pair) continue;
+        for (auto* e2 : sh->edges) {
+            if (e1 == e2) continue;
+            if (e1->vert == e2->next->vert && e1->next->vert == e2->vert) {
+                e1->pair = e2;
+                e2->pair = e1;
+                break;
+            }
+        }
+    }
     
     return sh;
 }

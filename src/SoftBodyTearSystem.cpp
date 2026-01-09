@@ -250,6 +250,19 @@ void SoftBodyTearSystem::RegisterTearForHealing(int tetIndex, float originalResi
     std::cout << "Registered tetrahedron " << tetIndex << " for healing" << std::endl;
 }
 
+void SoftBodyTearSystem::SetPlasticMaterialParams(float yieldStress, float hardeningCoeff, float maxStrain) {
+    m_PlasticParams.yieldStress = yieldStress;
+    m_PlasticParams.hardeningCoefficient = hardeningCoeff;
+    m_PlasticParams.maxPlasticStrain = maxStrain;
+}
+
+float SoftBodyTearSystem::GetAccumulatedPlasticStrain(int tetIndex) const {
+    if (tetIndex < 0 || tetIndex >= static_cast<int>(m_AccumulatedPlasticStrain.size())) {
+        return 0.0f;
+    }
+    return m_AccumulatedPlasticStrain[tetIndex];
+}
+
 void SoftBodyTearSystem::UpdatePlasticity(
     const Vec3* currentPositions,
     Vec3* restPositions,
@@ -261,19 +274,24 @@ void SoftBodyTearSystem::UpdatePlasticity(
         return;
     }
     
-    // Edge indices for tetrahedron
-    const int EDGE_INDICES[6][2] = {
-        {0, 1}, {0, 2}, {0, 3},
-        {1, 2}, {1, 3}, {2, 3}
-    };
+    // Initialize accumulated plastic strain if needed
+    if (m_AccumulatedPlasticStrain.size() != static_cast<size_t>(tetrahedronCount)) {
+        m_AccumulatedPlasticStrain.resize(tetrahedronCount, 0.0f);
+    }
     
     // Track which vertices have been modified
     std::vector<Vec3> positionDeltas(tetrahedronCount * 4, Vec3(0, 0, 0));
     std::vector<int> deltaCount(tetrahedronCount * 4, 0);
     
+    int plasticDeformationCount = 0;
+    
     // Process each tetrahedron
     for (int tetIdx = 0; tetIdx < tetrahedronCount; ++tetIdx) {
         const int* tet = &tetrahedronIndices[tetIdx * 4];
+        
+        // Calculate average stress across all edges (simplified von Mises approximation)
+        float totalStress = 0.0f;
+        int edgeCount = 0;
         
         // Check each edge
         for (int edgeIdx = 0; edgeIdx < 6; ++edgeIdx) {
@@ -290,19 +308,53 @@ void SoftBodyTearSystem::UpdatePlasticity(
             if (restLength < 0.0001f) continue;
             
             float stress = currentLength / restLength;
+            totalStress += stress;
+            edgeCount++;
+        }
+        
+        if (edgeCount == 0) continue;
+        
+        // Average stress (simplified von Mises equivalent)
+        float avgStress = totalStress / edgeCount;
+        
+        // Calculate current yield stress with hardening
+        float currentYieldStress = m_PlasticParams.yieldStress + 
+                                   m_PlasticParams.hardeningCoefficient * m_AccumulatedPlasticStrain[tetIdx];
+        
+        // Check if stress exceeds yield (plastic deformation occurs)
+        if (avgStress > currentYieldStress && avgStress < tearThreshold) {
+            // Calculate plastic strain increment
+            float plasticStrainIncrement = (avgStress - currentYieldStress) * m_PlasticityRate;
             
-            // Check if in plastic range
-            if (stress > m_PlasticThreshold && stress < tearThreshold) {
-                // Calculate plastic deformation
-                // Move rest edge toward current edge
-                Vec3 targetEdge = currentEdge;
-                Vec3 edgeDelta = (targetEdge - restEdge) * m_PlasticityRate;
+            // Clamp to max plastic strain
+            float newPlasticStrain = std::min(
+                m_AccumulatedPlasticStrain[tetIdx] + plasticStrainIncrement,
+                m_PlasticParams.maxPlasticStrain
+            );
+            
+            float actualIncrement = newPlasticStrain - m_AccumulatedPlasticStrain[tetIdx];
+            m_AccumulatedPlasticStrain[tetIdx] = newPlasticStrain;
+            
+            if (actualIncrement > 0.0f) {
+                plasticDeformationCount++;
                 
-                // Distribute change to both vertices
-                positionDeltas[vi] -= edgeDelta * 0.5f;
-                positionDeltas[vj] += edgeDelta * 0.5f;
-                deltaCount[vi]++;
-                deltaCount[vj]++;
+                // Apply plastic deformation to rest positions
+                for (int edgeIdx = 0; edgeIdx < 6; ++edgeIdx) {
+                    int vi = tet[EDGE_INDICES[edgeIdx][0]];
+                    int vj = tet[EDGE_INDICES[edgeIdx][1]];
+                    
+                    Vec3 currentEdge = currentPositions[vj] - currentPositions[vi];
+                    Vec3 restEdge = restPositions[vj] - restPositions[vi];
+                    
+                    // Move rest edge toward current edge
+                    Vec3 edgeDelta = (currentEdge - restEdge) * (actualIncrement / m_PlasticParams.maxPlasticStrain);
+                    
+                    // Distribute change to both vertices
+                    positionDeltas[vi] -= edgeDelta * 0.5f;
+                    positionDeltas[vj] += edgeDelta * 0.5f;
+                    deltaCount[vi]++;
+                    deltaCount[vj]++;
+                }
             }
         }
     }
@@ -317,7 +369,8 @@ void SoftBodyTearSystem::UpdatePlasticity(
         }
     }
     
-    if (modifiedCount > 0) {
-        std::cout << "Plastic deformation: " << modifiedCount << " vertices modified" << std::endl;
+    if (plasticDeformationCount > 0) {
+        std::cout << "Plastic deformation: " << plasticDeformationCount << " tetrahedra, " 
+                  << modifiedCount << " vertices modified" << std::endl;
     }
 }

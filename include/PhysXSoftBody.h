@@ -1,16 +1,27 @@
 #pragma once
 
 #include "IPhysicsSoftBody.h"
+#include "AnisotropicMaterial.h"
 #include "Math/Vec3.h"
 #include <memory>
 #include <vector>
 #include <functional>
+#include <chrono>
+#include <nlohmann/json.hpp>
 
 class SoftBodyTearSystem;
 class SoftBodyPieceManager;
 class SoftBodyTearPattern;
 class TearResistanceMap;
 class FractureLine;
+class SoftBodyLODConfig;
+class SoftBodyLODManager;
+
+struct SoftBodyStats {
+    double updateTimeMs = 0.0;
+    double collisionGenTimeMs = 0.0;
+    double tearCheckTimeMs = 0.0;
+};
 
 #ifdef USE_PHYSX
 
@@ -73,6 +84,11 @@ public:
 
     // Collision
     void SetSceneCollision(bool enabled) override;
+    void SetDebugDrawHull(bool enable) { m_DebugDrawHull = enable; }
+    void SetDebugDrawSurface(bool enable) { m_DebugDrawSurface = enable; }
+    void SetDebugDrawCollisionSpheres(bool enable) { m_DebugDrawCollisionSpheres = enable; }
+    void SetDebugDrawFibers(bool enable) { m_DebugDrawFibers = enable; }
+    void CalculateHull();
     void SetSelfCollision(bool enabled) override;
     void SetCollisionMargin(float margin) override;
     void AddCollisionSphere(const Vec3& center, float radius) override;
@@ -218,6 +234,23 @@ public:
     int GetCollisionSpheres(std::vector<Vec3>& positions, std::vector<float>& radii, int maxSpheres = 32) const;
     
     /**
+     * @brief Collision capsule primitive
+     */
+    struct CollisionCapsule {
+        Vec3 p0;        // First endpoint
+        Vec3 p1;        // Second endpoint
+        float radius;   // Capsule radius
+    };
+    
+    /**
+     * @brief Get collision capsules for elongated soft bodies
+     * @param capsules Output array of capsules
+     * @param maxCapsules Maximum number of capsules to generate
+     * @return Number of capsules generated (0 if not elongated)
+     */
+    int GetCollisionCapsules(std::vector<CollisionCapsule>& capsules, int maxCapsules = 16) const;
+    
+    /**
      * @brief Enable/disable collision with cloth
      */
     void SetClothCollisionEnabled(bool enabled);
@@ -266,14 +299,7 @@ public:
      */
     bool GetUseAdaptiveSphereCount() const { return m_UseAdaptiveSphereCount; }
     
-    /**
-     * @brief Surface area calculation mode
-     */
-    enum class SurfaceAreaMode {
-        BoundingBox,  // Fast approximation using bounding box
-        Triangles,    // Accurate calculation using surface triangles
-        ConvexHull    // Collision envelope using convex hull
-    };
+    using SurfaceAreaMode = SoftBodySurfaceAreaMode;
     
     /**
      * @brief Calculate approximate surface area of soft body
@@ -292,12 +318,7 @@ public:
      */
     SurfaceAreaMode GetSurfaceAreaMode() const { return m_SurfaceAreaMode; }
 
-    enum class ConvexHullAlgorithm {
-        QuickHull,
-        GiftWrapping,
-        Incremental,
-        DivideAndConquer
-    };
+    using ConvexHullAlgorithm = SoftBodyHullAlgorithm;
 
     /**
      * @brief Set the algorithm used for convex hull calculation
@@ -322,6 +343,85 @@ public:
      * @brief Get current adaptive weights
      */
     void GetAdaptiveWeights(float& vertexWeight, float& areaWeight, float& areaPerSphere) const;
+    
+    /**
+     * @brief Set scaling factors for sphere generation density along principal axes
+     * @param scale Scale factors (default: 1.0, 1.0, 1.0)
+     */
+    void SetSphereGenerationScale(const Vec3& scale);
+    
+    /**
+     * @brief Get sphere generation scale
+     */
+    Vec3 GetSphereGenerationScale() const { return m_SphereGenerationScale; }
+    
+    // LOD System
+    /**
+     * @brief Set LOD configuration
+     * @param config LOD configuration with multiple levels
+     */
+    void SetLODConfig(const SoftBodyLODConfig& config);
+    
+    /**
+     * @brief Get current LOD configuration
+     */
+    const SoftBodyLODConfig* GetLODConfig() const;
+    
+    /**
+     * @brief Enable/disable LOD system
+     * @param enabled True to enable automatic LOD
+     */
+    void SetLODEnabled(bool enabled) { m_LODEnabled = enabled; }
+    
+    /**
+     * @brief Check if LOD is enabled
+     */
+    bool IsLODEnabled() const { return m_LODEnabled; }
+    
+    /**
+     * @brief Set camera position for LOD distance calculation
+     * @param position Camera world position
+     */
+    void SetCameraPosition(const Vec3& position) { m_CameraPosition = position; }
+    
+    /**
+     * @brief Get current LOD level index
+     */
+    int GetCurrentLOD() const;
+    
+    /**
+     * @brief Force specific LOD level
+     * @param lodIndex LOD index to force (-1 for automatic)
+     */
+    void ForceLOD(int lodIndex);
+    
+    // Serialization
+    /**
+     * @brief Serialize soft body to JSON
+     * @return JSON object containing complete configuration
+     */
+    nlohmann::json Serialize() const;
+    
+    /**
+     * @brief Deserialize soft body from JSON
+     * @param json JSON object containing configuration
+     * @return True if successful
+     */
+    bool Deserialize(const nlohmann::json& json);
+    
+    /**
+     * @brief Save soft body configuration to file
+     * @param filename Output file path
+     * @return True if successful
+     */
+    bool SaveToFile(const std::string& filename) const;
+    
+    /**
+     * @brief Load soft body configuration from file
+     * @param filename Input file path
+     * @return True if successful
+     */
+    bool LoadFromFile(const std::string& filename);
 
 private:
     PhysXBackend* m_Backend;
@@ -342,6 +442,18 @@ private:
     float m_CollisionMargin;
     bool m_SceneCollisionEnabled;
     bool m_SelfCollisionEnabled;
+    bool m_DebugDrawHull;
+    bool m_DebugDrawSurface;
+    bool m_DebugDrawCollisionSpheres;
+    unsigned int m_DebugVAO;
+    unsigned int m_DebugVBO;
+    unsigned int m_DebugSurfaceVAO;
+    unsigned int m_DebugSurfaceVBO;
+    unsigned int m_DebugSpheresVAO;
+    unsigned int m_DebugSpheresVBO;
+    std::vector<Vec3> m_DebugHullVertices;
+    bool m_DebugResourcesInitialized;
+    bool m_DebugHullDirty;
 
     // Mesh data
     int m_VertexCount;
@@ -392,6 +504,35 @@ private:
     mutable bool m_SurfaceAreaNeedsUpdate;
     SurfaceAreaMode m_SurfaceAreaMode;
     ConvexHullAlgorithm m_HullAlgorithm;
+    Vec3 m_SphereGenerationScale;
+    float m_ElongationThreshold;  // Eigenvalue ratio threshold for capsule generation (default: 3.0)
+    
+    // Anisotropic Material
+    bool m_UseAnisotropicMaterial;
+    std::unique_ptr<class AnisotropicMaterial> m_AnisotropicMaterial;
+    
+    // Profiling & Auto-Tuning
+    mutable SoftBodyStats m_Stats;
+    bool m_AutoTuningEnabled;
+    double m_TargetFrameTimeMs;
+    int m_OriginalMaxCollisionSpheres;
+    float m_OriginalTearCheckInterval;
+    
+    // LOD System
+    bool m_LODEnabled;
+    std::unique_ptr<SoftBodyLODManager> m_LODManager;
+    Vec3 m_CameraPosition;
+    
+    void AutoTuneParameters();
+    
+    // Topology Cache for Surface Area
+    struct CachedFace {
+        int v0, v1, v2;
+    };
+    mutable std::vector<CachedFace> m_CachedSurfaceFaces;
+    mutable bool m_TopologyDirty;
+    
+    void InvalidateTopology() { m_TopologyDirty = true; m_SurfaceAreaNeedsUpdate = true; }
 
     // Helper methods
     void CreateTetrahedralMesh(const SoftBodyDesc& desc);

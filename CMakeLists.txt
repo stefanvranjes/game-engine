@@ -406,6 +406,12 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/ClothTearPattern.cpp
         src/ClothTearPatternLibrary.cpp
         src/QuickHull.cpp
+        src/SoftBodyCollisionCache.cpp
+        src/AnisotropicMaterial.cpp
+        src/SoftBodyLOD.cpp
+        src/SoftBodyLODManager.cpp
+        src/TetrahedralMeshSimplifier.cpp
+        src/SoftBodySerializer.cpp
     )
 else()
     # Add Bullet backend wrapper

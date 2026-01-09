@@ -154,6 +154,16 @@ public:
     void SetPlasticityRate(float rate) { m_PlasticityRate = rate; }
     
     /**
+     * @brief Set plastic material parameters
+     */
+    void SetPlasticMaterialParams(float yieldStress, float hardeningCoeff, float maxStrain);
+    
+    /**
+     * @brief Get accumulated plastic strain for a tetrahedron
+     */
+    float GetAccumulatedPlasticStrain(int tetIndex) const;
+    
+    /**
      * @brief Update plastic deformation
      */
     void UpdatePlasticity(
@@ -178,6 +188,24 @@ private:
     bool m_PlasticityEnabled;
     float m_PlasticThreshold;  // Stress threshold for plastic deformation
     float m_PlasticityRate;    // Rate of rest position update
+    
+    /**
+     * @brief Material parameters for plastic deformation
+     */
+    struct PlasticMaterialParams {
+        float yieldStress;           // Initial yield stress (Pa or normalized)
+        float hardeningCoefficient;  // Hardening rate (stress increase per unit plastic strain)
+        float maxPlasticStrain;      // Maximum accumulated plastic strain
+        
+        PlasticMaterialParams()
+            : yieldStress(1.2f)
+            , hardeningCoefficient(0.5f)
+            , maxPlasticStrain(2.0f)
+        {}
+    };
+    
+    PlasticMaterialParams m_PlasticParams;
+    std::vector<float> m_AccumulatedPlasticStrain;  // Per-tetrahedron plastic strain
     
     // Edge indices for a tetrahedron (6 edges)
     static const int EDGE_INDICES[6][2];

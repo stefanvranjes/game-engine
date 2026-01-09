@@ -12,14 +12,115 @@
 #include "StraightTearPattern.h"
 #include "CurvedTearPattern.h"
 #include "RadialTearPattern.h"
+#include "SoftBodyLOD.h"
+#include "SoftBodyLODManager.h"
+#include "SoftBodySerializer.h"
 #include "PhysXManager.h"
 #include "GLExtensions.h" 
 #include <PxPhysicsAPI.h>
 #include <iostream>
 #include <cstring>
 #include <algorithm>
+#include <execution>
 
 using namespace physx;
+
+namespace {
+    // 3x3 Symmetric Matrix Eigendecomposition using Jacobi algorithm
+    struct Mat3Sym {
+        float m[3][3];
+
+        void SetZero() {
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    m[i][j] = 0.0f;
+        }
+
+        // Add outer product of v to matrix: M += v * v^T
+        void AddOuterProduct(const Vec3& v) {
+            m[0][0] += v.x * v.x; m[0][1] += v.x * v.y; m[0][2] += v.x * v.z;
+            m[1][0] += v.y * v.x; m[1][1] += v.y * v.y; m[1][2] += v.y * v.z;
+            m[2][0] += v.z * v.x; m[2][1] += v.z * v.y; m[2][2] += v.z * v.z;
+        }
+
+        void Scale(float s) {
+            for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 3; j++)
+                    m[i][j] *= s;
+        }
+    };
+
+    void ComputeEigenDecomposition(const Mat3Sym& A, Vec3& eigenValues, Vec3 eigenVectors[3]) {
+        // Initialize identity matrix for eigenvectors
+        eigenVectors[0] = Vec3(1, 0, 0);
+        eigenVectors[1] = Vec3(0, 1, 0);
+        eigenVectors[2] = Vec3(0, 0, 1);
+
+        // Copy matrix
+        float D[3][3];
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                D[i][j] = A.m[i][j];
+
+        const int MAX_ITER = 50;
+        for (int iter = 0; iter < MAX_ITER; ++iter) {
+            // Find largest off-diagonal element
+            int p = 0, q = 1;
+            float maxOff = std::abs(D[0][1]);
+            if (std::abs(D[0][2]) > maxOff) { p = 0; q = 2; maxOff = std::abs(D[0][2]); }
+            if (std::abs(D[1][2]) > maxOff) { p = 1; q = 2; maxOff = std::abs(D[1][2]); }
+
+            if (maxOff < 1e-6f) break; // Converged
+
+            // Jacobi rotation
+            float phi;
+            float diff = D[q][q] - D[p][p];
+            if (std::abs(diff) < 1e-6f) {
+                phi = 3.14159265f / 4.0f;
+            } else {
+                phi = 0.5f * std::atan2(2.0f * D[p][q], diff);
+            }
+
+            float c = std::cos(phi);
+            float s = std::sin(phi);
+
+            // Update diagonal elements
+             float temp = D[p][p];
+            D[p][p] = c * c * temp - 2.0f * s * c * D[p][q] + s * s * D[q][q];
+            D[q][q] = s * s * temp + 2.0f * s * c * D[p][q] + c * c * D[q][q];
+            D[p][q] = 0.0f;
+            D[q][p] = 0.0f;
+
+            // Update off-diagonal elements
+            for (int r = 0; r < 3; ++r) {
+                if (r != p && r != q) {
+                    float Arp = D[r][p];
+                    float Arq = D[r][q];
+                    D[r][p] = c * Arp - s * Arq;
+                    D[p][r] = D[r][p];
+                    D[r][q] = s * Arp + c * Arq;
+                    D[q][r] = D[r][q];
+                }
+            }
+
+            // Update eigenvectors
+            auto RotateComp = [&](float& x, float& y, float c, float s) {
+                float tx = x; float ty = y;
+                x = c * tx - s * ty;
+                y = s * tx + c * ty;
+            };
+
+            RotateComp(eigenVectors[p].x, eigenVectors[q].x, c, s);
+            RotateComp(eigenVectors[p].y, eigenVectors[q].y, c, s);
+            RotateComp(eigenVectors[p].z, eigenVectors[q].z, c, s);
+        }
+
+        eigenValues.x = D[0][0];
+        eigenValues.y = D[1][1];
+        eigenValues.z = D[2][2];
+    }
+}
+
 
 PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     : m_Backend(backend)
@@ -58,8 +159,30 @@ PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     , m_SurfaceAreaNeedsUpdate(true)
     , m_SurfaceAreaMode(SurfaceAreaMode::BoundingBox)
     , m_HullAlgorithm(ConvexHullAlgorithm::QuickHull)
+    , m_SphereGenerationScale(1.0f, 1.0f, 1.0f)
+    , m_ElongationThreshold(3.0f)
+    , m_UseAnisotropicMaterial(false)
+    , m_TopologyDirty(true)
+    , m_DebugDrawHull(false)
+    , m_DebugDrawSurface(false)
+    , m_DebugDrawCollisionSpheres(false)
+    , m_DebugResourcesInitialized(false)
+    , m_DebugVAO(0)
+    , m_DebugVBO(0)
+    , m_DebugSurfaceVAO(0)
+    , m_DebugSurfaceVBO(0)
+    , m_DebugSpheresVAO(0)
+    , m_DebugSpheresVBO(0)
+    , m_DebugHullDirty(true)
+    , m_AutoTuningEnabled(true)
+    , m_TargetFrameTimeMs(2.0) // 2ms budget per soft body
+    , m_OriginalMaxCollisionSpheres(32)
+    , m_OriginalTearCheckInterval(0.1f)
+    , m_LODEnabled(false)
+    , m_CameraPosition(0, 0, 0)
 {
     m_TearSystem = std::make_unique<SoftBodyTearSystem>();
+    m_LODManager = std::make_unique<SoftBodyLODManager>();
 }
 
 PhysXSoftBody::~PhysXSoftBody() {
@@ -116,6 +239,31 @@ void PhysXSoftBody::Initialize(const SoftBodyDesc& desc) {
     m_SceneCollisionEnabled = desc.enableSceneCollision;
     m_SelfCollisionEnabled = desc.enableSelfCollision;
     m_CollisionMargin = desc.collisionMargin;
+    
+    // Apply detailed settings
+    const auto& details = desc.detailSettings;
+    m_SphereGenerationScale = details.sphereGenerationScale;
+    
+    // Adaptive sphere count settings
+    m_UseAdaptiveSphereCount = details.useAdaptiveSphereCount;
+    m_MinCollisionSpheres = details.minCollisionSpheres;
+    m_MaxCollisionSpheres = details.maxCollisionSpheres;
+    m_VerticesPerSphere = details.verticesPerSphere;
+    m_AdaptiveVertexWeight = details.adaptiveVertexWeight;
+    m_AdaptiveAreaWeight = details.adaptiveAreaWeight;
+    m_AreaPerSphere = details.areaPerSphere;
+    
+    // Algorithms
+    m_SurfaceAreaMode = details.surfaceAreaMode;
+    m_HullAlgorithm = details.hullAlgorithm;
+    
+    // Cloth collision
+    m_ClothCollisionEnabled = details.enableClothCollision;
+    m_CollisionSphereRadius = details.collisionSphereRadius;
+    
+    // Store original values for auto-tuning
+    m_OriginalMaxCollisionSpheres = m_MaxCollisionSpheres;
+    m_OriginalTearCheckInterval = m_TearCheckInterval;
     
     // Create tetrahedral mesh
     CreateTetrahedralMesh(desc);
@@ -227,8 +375,29 @@ void PhysXSoftBody::CreateTetrahedralMesh(const SoftBodyDesc& desc) {
 }
 
 void PhysXSoftBody::Update(float deltaTime) {
+    auto startTotal = std::chrono::high_resolution_clock::now();
+    
     if (!m_SoftBody || !m_Enabled) {
         return;
+    }
+    
+    // Update LOD system if enabled
+    if (m_LODEnabled && m_LODManager) {
+        bool lodChanged = m_LODManager->UpdateLOD(this, m_CameraPosition, deltaTime);
+        
+        // Check if we should skip update based on LOD frequency
+        if (!m_LODManager->ShouldUpdateThisFrame()) {
+            return;  // Skip this frame's update
+        }
+        
+        // If LOD changed, the mesh may have been recreated
+        // State transfer is handled by the LOD manager
+        if (lodChanged) {
+            // Invalidate cached data
+            m_CollisionSpheresNeedUpdate = true;
+            m_SurfaceAreaNeedsUpdate = true;
+            m_TopologyDirty = true;
+        }
     }
     
     // Mark collision spheres and surface area as needing update (soft body has deformed)
@@ -237,30 +406,90 @@ void PhysXSoftBody::Update(float deltaTime) {
         m_SurfaceAreaNeedsUpdate = true;
     }
     
-    // Update collision shapes if needed
+    // Update collision shapes
+    auto startCollision = std::chrono::high_resolution_clock::now();
     UpdateCollisionShapes();
+    auto endCollision = std::chrono::high_resolution_clock::now();
+    m_Stats.collisionGenTimeMs = std::chrono::duration<double, std::milli>(endCollision - startCollision).count();
     
-    // Update healing
+    // Update healing and plasticity
+    m_LastTearCheckTime += deltaTime;
+    
+    auto startTear = std::chrono::high_resolution_clock::now();
+    bool ranTearCheck = false;
+    
     if (m_TearSystem) {
+        // Healing runs every frame (usually cheap)
         m_TearSystem->UpdateHealing(deltaTime, m_ResistanceMap);
-    }
-    
-    // Update plasticity
-    if (m_TearSystem && !m_RestPositions.empty()) {
-        std::vector<Vec3> currentPositions(m_VertexCount);
-        GetVertexPositions(currentPositions.data());
         
-        m_TearSystem->UpdatePlasticity(
-            currentPositions.data(),
-            m_RestPositions.data(),
-            m_TetrahedronIndices.data(),
-            m_TetrahedronCount,
-            m_TearThreshold
-        );
+        // Plasticity/Tearing check is expensive, so throttle it
+        if (m_LastTearCheckTime >= m_TearCheckInterval) {
+            ranTearCheck = true;
+            m_LastTearCheckTime = 0.0f;
+            
+            // Update plasticity
+            if (!m_RestPositions.empty()) {
+                std::vector<Vec3> currentPositions(m_VertexCount);
+                GetVertexPositions(currentPositions.data());
+                
+                m_TearSystem->UpdatePlasticity(
+                    currentPositions.data(),
+                    m_RestPositions.data(),
+                    m_TetrahedronIndices.data(),
+                    m_TetrahedronCount,
+                    m_TearThreshold
+                );
+            }
+        }
+    }
+    auto endTear = std::chrono::high_resolution_clock::now();
+    
+    if (ranTearCheck) {
+        m_Stats.tearCheckTimeMs = std::chrono::duration<double, std::milli>(endTear - startTear).count();
     }
     
     // PhysX soft body simulation is handled automatically by the scene
-    // We just need to read back the results when needed
+    
+    auto endTotal = std::chrono::high_resolution_clock::now();
+    m_Stats.updateTimeMs = std::chrono::duration<double, std::milli>(endTotal - startTotal).count();
+    
+    if (m_AutoTuningEnabled) {
+        AutoTuneParameters();
+    }
+}
+
+void PhysXSoftBody::AutoTuneParameters() {
+    // If total update time exceeds budget, reduce quality
+    if (m_Stats.updateTimeMs > m_TargetFrameTimeMs) {
+        // Reduce collision spheres if they are expensive
+        if (m_ClothCollisionEnabled && m_MaxCollisionSpheres > m_MinCollisionSpheres) {
+            m_MaxCollisionSpheres = std::max(m_MinCollisionSpheres, m_MaxCollisionSpheres - 1);
+        }
+        
+        // Increase tear check interval if tearing is expensive
+        // (Note: Currently we aren't using the interval in the Update loop above, but we should)
+        if (m_Stats.tearCheckTimeMs > 0.5) { // If tearing takes > 0.5ms
+             m_TearCheckInterval *= 1.1f; // Increase interval by 10%
+        }
+    } else if (m_Stats.updateTimeMs < m_TargetFrameTimeMs * 0.5) {
+        // If we represent a small fraction of the budget, slowly restore quality
+        
+        // Restore collision spheres
+        if (m_MaxCollisionSpheres < m_OriginalMaxCollisionSpheres) {
+            // Only increase occasionally to avoid oscillation
+            if (rand() % 100 < 5) { 
+                m_MaxCollisionSpheres++;
+            }
+        }
+        
+        // Restore tear check interval
+        if (m_TearCheckInterval > m_OriginalTearCheckInterval) {
+            m_TearCheckInterval *= 0.95f;
+            if (m_TearCheckInterval < m_OriginalTearCheckInterval) {
+                m_TearCheckInterval = m_OriginalTearCheckInterval;
+            }
+        }
+    }
 }
 
 void PhysXSoftBody::UpdateCollisionShapes() {
@@ -1070,6 +1299,34 @@ void PhysXSoftBody::ClearFractureLines() {
     }
 }
 
+// Anisotropic Material Implementation
+
+void PhysXSoftBody::EnableAnisotropy(bool enable) {
+    m_UseAnisotropicMaterial = enable;
+    
+    if (enable && !m_AnisotropicMaterial) {
+        // Create and initialize anisotropic material
+        m_AnisotropicMaterial = std::make_unique<AnisotropicMaterial>();
+        m_AnisotropicMaterial->Initialize(m_TetrahedronCount);
+    }
+}
+
+void PhysXSoftBody::SetFiberDirection(int tetIndex, const Vec3& direction, float longStiff, float transStiff) {
+    if (!m_AnisotropicMaterial) {
+        EnableAnisotropy(true);
+    }
+    
+    m_AnisotropicMaterial->SetFiberDirection(tetIndex, direction, longStiff, transStiff);
+}
+
+void PhysXSoftBody::SetUniformFiberDirection(const Vec3& direction, float longStiff, float transStiff) {
+    if (!m_AnisotropicMaterial) {
+        EnableAnisotropy(true);
+    }
+    
+    m_AnisotropicMaterial->SetUniformFiberDirection(direction, longStiff, transStiff);
+}
+
 // Cloth Collision Implementation
 
 void PhysXSoftBody::SetClothCollisionEnabled(bool enabled) {
@@ -1104,85 +1361,152 @@ int PhysXSoftBody::GetCollisionSpheres(std::vector<Vec3>& positions, std::vector
         // Strategy: Create collision spheres by clustering vertices
         // We'll use a simple grid-based clustering approach
         
-        // Calculate bounding box
-        Vec3 minBounds = currentPositions[0];
-        Vec3 maxBounds = currentPositions[0];
-        for (int i = 1; i < m_VertexCount; ++i) {
-            minBounds.x = std::min(minBounds.x, currentPositions[i].x);
-            minBounds.y = std::min(minBounds.y, currentPositions[i].y);
-            minBounds.z = std::min(minBounds.z, currentPositions[i].z);
-            maxBounds.x = std::max(maxBounds.x, currentPositions[i].x);
-            maxBounds.y = std::max(maxBounds.y, currentPositions[i].y);
-            maxBounds.z = std::max(maxBounds.z, currentPositions[i].z);
+        // Strategy: Use PCA to determine Principal Axes and align grid to soft body shape
+        // This provides much better packing for elongated or flat objects
+        
+        // 1. Calculate Mean and Covariance
+        Vec3 mean(0, 0, 0);
+        for (const Vec3& p : currentPositions) {
+            mean = mean + p;
         }
+        mean = mean * (1.0f / m_VertexCount);
+
+        Mat3Sym covariance;
+        covariance.SetZero();
+        for (const Vec3& p : currentPositions) {
+            Vec3 diff = p - mean;
+            covariance.AddOuterProduct(diff);
+        }
+        covariance.Scale(1.0f / m_VertexCount);
+
+        // 2. Eigen Decomposition
+        Vec3 eigenValues;
+        Vec3 eigenVectors[3];
+        ComputeEigenDecomposition(covariance, eigenValues, eigenVectors);
+
+        // Ensure non-zero eigenvalues for extent calculation (sqrt of variance)
+        eigenValues.x = std::max(eigenValues.x, 1e-6f);
+        eigenValues.y = std::max(eigenValues.y, 1e-6f);
+        eigenValues.z = std::max(eigenValues.z, 1e-6f);
+
+        Vec3 extents(std::sqrt(eigenValues.x), std::sqrt(eigenValues.y), std::sqrt(eigenValues.z));
+
+        // Apply per-axis scale scaling to extents for grid resolution calculation
+        Vec3 scaledExtents = extents;
+        scaledExtents.x *= m_SphereGenerationScale.x;
+        scaledExtents.y *= m_SphereGenerationScale.y;
+        scaledExtents.z *= m_SphereGenerationScale.z;
+
+        // 3. Determine Grid Dimensions (Nx, Ny, Nz)
+        // We want Nx * Ny * Nz approx targetSphereCount
+        // And Nx:Ny:Nz approx extents.x:extents.y:extents.z
         
-        Vec3 size = maxBounds - minBounds;
-        float maxDim = std::max(std::max(size.x, size.y), size.z);
+        float product = scaledExtents.x * scaledExtents.y * scaledExtents.z;
+        float scaleFactor = std::pow(static_cast<float>(targetSphereCount) / product, 1.0f / 3.0f);
         
-        // Determine grid resolution based on target sphere count
-        int gridRes = static_cast<int>(std::cbrt(static_cast<float>(targetSphereCount))) + 1;
-        gridRes = std::max(2, std::min(gridRes, 5)); // Clamp between 2 and 5
+        int gridCounts[3];
+        gridCounts[0] = std::max(1, static_cast<int>(scaledExtents.x * scaleFactor + 0.5f));
+        gridCounts[1] = std::max(1, static_cast<int>(scaledExtents.y * scaleFactor + 0.5f));
+        gridCounts[2] = std::max(1, static_cast<int>(scaledExtents.z * scaleFactor + 0.5f));
         
-        float cellSize = maxDim / static_cast<float>(gridRes);
+        // Adjust if total is too far off (simple iterative check) or just clamp
+        while (gridCounts[0] * gridCounts[1] * gridCounts[2] > targetSphereCount * 2) {
+            // Find max dim and reduce
+            int maxAxis = 0;
+            if (gridCounts[1] > gridCounts[maxAxis]) maxAxis = 1;
+            if (gridCounts[2] > gridCounts[maxAxis]) maxAxis = 2;
+            if (gridCounts[maxAxis] > 1) gridCounts[maxAxis]--;
+            else break;
+        }
+
+        // 4. Cluster Vertices in Principal Frame
+        // Project vertices into PCA space: p' = V^T * (p - mean)
         
-        // Create grid cells
         struct GridCell {
             std::vector<int> vertexIndices;
-            Vec3 center;
-            float radius;
         };
         
-        std::vector<GridCell> cells;
-        cells.reserve(gridRes * gridRes * gridRes);
+        std::map<int, GridCell> grid;
         
-        // Assign vertices to grid cells
+        // Calculate bounds in PCA space to normalize grid coords
+        float minPCA[3] = { FLT_MAX, FLT_MAX, FLT_MAX };
+        float maxPCA[3] = { -FLT_MAX, -FLT_MAX, -FLT_MAX };
+
+        // We need to store projected points to avoid recomputing
+        std::vector<Vec3> projectedPoints(m_VertexCount);
+
         for (int i = 0; i < m_VertexCount; ++i) {
-            Vec3 localPos = currentPositions[i] - minBounds;
-            int ix = std::min(static_cast<int>(localPos.x / cellSize), gridRes - 1);
-            int iy = std::min(static_cast<int>(localPos.y / cellSize), gridRes - 1);
-            int iz = std::min(static_cast<int>(localPos.z / cellSize), gridRes - 1);
-            int cellIndex = ix + iy * gridRes + iz * gridRes * gridRes;
-            
-            // Ensure cell exists
-            while (static_cast<int>(cells.size()) <= cellIndex) {
-                cells.push_back(GridCell());
+            Vec3 diff = currentPositions[i] - mean;
+            // Dot product with eigenvectors
+            projectedPoints[i].x = diff.Dot(eigenVectors[0]);
+            projectedPoints[i].y = diff.Dot(eigenVectors[1]);
+            projectedPoints[i].z = diff.Dot(eigenVectors[2]);
+
+            for (int k = 0; k < 3; k++) {
+                 float val = (k == 0) ? projectedPoints[i].x : ((k == 1) ? projectedPoints[i].y : projectedPoints[i].z);
+                 if (val < minPCA[k]) minPCA[k] = val;
+                 if (val > maxPCA[k]) maxPCA[k] = val;
             }
-            
-            cells[cellIndex].vertexIndices.push_back(i);
         }
         
-        // Create spheres from non-empty cells
-        for (auto& cell : cells) {
-            if (cell.vertexIndices.empty()) {
-                continue;
+        // Add small epsilon to max to include boundary points
+        for(int k=0; k<3; k++) maxPCA[k] += 1e-4f;
+
+        // Bucket points
+        for (int i = 0; i < m_VertexCount; ++i) {
+            int idx[3];
+            for (int k = 0; k < 3; k++) {
+                float val = (k == 0) ? projectedPoints[i].x : ((k == 1) ? projectedPoints[i].y : projectedPoints[i].z);
+                float range = maxPCA[k] - minPCA[k];
+                if (range < 1e-9f) {
+                    idx[k] = 0;
+                } else {
+                    float t = (val - minPCA[k]) / range;
+                    idx[k] = static_cast<int>(t * gridCounts[k]);
+                    if (idx[k] >= gridCounts[k]) idx[k] = gridCounts[k] - 1;
+                }
             }
             
-            // Calculate center of vertices in this cell
-            Vec3 center(0, 0, 0);
-            for (int idx : cell.vertexIndices) {
-                center = center + currentPositions[idx];
+            // Flatten index
+            int flatIdx = idx[0] + gridCounts[0] * (idx[1] + gridCounts[1] * idx[2]);
+            grid[flatIdx].vertexIndices.push_back(i);
+        }
+
+        // 5. Generate Spheres from Clusters
+        for (const auto& pair : grid) {
+            const auto& cell = pair.second;
+            if (cell.vertexIndices.empty()) continue;
+
+            // Compute center in PCA space
+            Vec3 centerPCA(0, 0, 0);
+            for (int vIdx : cell.vertexIndices) {
+                centerPCA = centerPCA + projectedPoints[vIdx];
             }
-            center = center * (1.0f / static_cast<float>(cell.vertexIndices.size()));
-            
-            // Calculate radius as max distance from center
-            float maxDist = 0.0f;
-            for (int idx : cell.vertexIndices) {
-                float dist = (currentPositions[idx] - center).Length();
-                maxDist = std::max(maxDist, dist);
+            centerPCA = centerPCA * (1.0f / cell.vertexIndices.size());
+
+            // Compute radius as max distance from center in 3D
+            // (Distance is invariant under rotation, so we can use PCA space distance)
+            float maxDistSq = 0.0f;
+            for (int vIdx : cell.vertexIndices) {
+                Vec3 diff = projectedPoints[vIdx] - centerPCA;
+                float dSq = diff.LengthSquared();
+                if (dSq > maxDistSq) maxDistSq = dSq;
             }
-            
-            // Add padding to radius
-            float radius = maxDist + m_CollisionSphereRadius;
-            
-            m_CachedCollisionSpherePositions.push_back(center);
+            float radius = std::sqrt(maxDistSq) + m_CollisionSphereRadius;
+
+            // Transform center back to World Space
+            // centerWorld = mean + V * centerPCA
+            Vec3 centerWorld = mean;
+            centerWorld = centerWorld + eigenVectors[0] * centerPCA.x;
+            centerWorld = centerWorld + eigenVectors[1] * centerPCA.y;
+            centerWorld = centerWorld + eigenVectors[2] * centerPCA.z;
+
+            m_CachedCollisionSpherePositions.push_back(centerWorld);
             m_CachedCollisionSphereRadii.push_back(radius);
-            
-            // Stop if we've reached target sphere count
-            if (static_cast<int>(m_CachedCollisionSpherePositions.size()) >= targetSphereCount) {
-                break;
-            }
+
+            if (static_cast<int>(m_CachedCollisionSpherePositions.size()) >= targetSphereCount) break;
         }
-        
+
         m_CollisionSpheresNeedUpdate = false;
     }
     
@@ -1192,6 +1516,114 @@ int PhysXSoftBody::GetCollisionSpheres(std::vector<Vec3>& positions, std::vector
     
     return static_cast<int>(positions.size());
 }
+
+int PhysXSoftBody::GetCollisionCapsules(std::vector<CollisionCapsule>& capsules, int maxCapsules) const {
+    capsules.clear();
+    
+    if (!m_SoftBody || m_VertexCount < 4) {
+        return 0;
+    }
+    
+    // Get current vertex positions
+    std::vector<Vec3> currentPositions(m_VertexCount);
+    GetVertexPositions(currentPositions.data());
+    
+    // 1. Calculate Mean and Covariance
+    Vec3 mean(0, 0, 0);
+    for (const Vec3& p : currentPositions) {
+        mean = mean + p;
+    }
+    mean = mean * (1.0f / m_VertexCount);
+
+    Mat3Sym covariance;
+    covariance.SetZero();
+    for (const Vec3& p : currentPositions) {
+        Vec3 diff = p - mean;
+        covariance.AddOuterProduct(diff);
+    }
+    covariance.Scale(1.0f / m_VertexCount);
+
+    // 2. Eigen Decomposition
+    Vec3 eigenValues;
+    Vec3 eigenVectors[3];
+    ComputeEigenDecomposition(covariance, eigenValues, eigenVectors);
+
+    // Ensure non-zero eigenvalues
+    eigenValues.x = std::max(eigenValues.x, 1e-6f);
+    eigenValues.y = std::max(eigenValues.y, 1e-6f);
+    eigenValues.z = std::max(eigenValues.z, 1e-6f);
+
+    // 3. Check for elongation (largest eigenvalue >> others)
+    float maxEigenvalue = std::max(std::max(eigenValues.x, eigenValues.y), eigenValues.z);
+    float minEigenvalue = std::min(std::min(eigenValues.x, eigenValues.y), eigenValues.z);
+    
+    float elongationRatio = maxEigenvalue / minEigenvalue;
+    
+    if (elongationRatio < m_ElongationThreshold) {
+        // Not elongated enough, return 0 (caller should use spheres)
+        return 0;
+    }
+    
+    // 4. Determine principal axis (eigenvector with largest eigenvalue)
+    int principalAxis = 0;
+    if (eigenValues.y > eigenValues.x) principalAxis = 1;
+    if (eigenValues.z > eigenValues[principalAxis]) principalAxis = 2;
+    
+    Vec3 principalDir = eigenVectors[principalAxis];
+    
+    // 5. Project all vertices onto principal axis to find extent
+    float minProj = FLT_MAX;
+    float maxProj = -FLT_MAX;
+    
+    for (const Vec3& p : currentPositions) {
+        Vec3 diff = p - mean;
+        float proj = diff.Dot(principalDir);
+        minProj = std::min(minProj, proj);
+        maxProj = std::max(maxProj, proj);
+    }
+    
+    // 6. Calculate perpendicular radius (average of other two eigenvalues)
+    float radius = 0.0f;
+    int count = 0;
+    for (int i = 0; i < 3; ++i) {
+        if (i != principalAxis) {
+            radius += std::sqrt(eigenValues[i]);
+            count++;
+        }
+    }
+    radius /= count;
+    radius *= m_CollisionSphereRadius; // Apply user-defined scale
+    
+    // 7. Generate capsules along principal axis
+    float axisLength = maxProj - minProj;
+    int numCapsules = std::min(maxCapsules, std::max(1, static_cast<int>(axisLength / (radius * 4.0f))));
+    
+    if (numCapsules == 1) {
+        // Single capsule spanning entire length
+        CollisionCapsule cap;
+        cap.p0 = mean + principalDir * minProj;
+        cap.p1 = mean + principalDir * maxProj;
+        cap.radius = radius;
+        capsules.push_back(cap);
+    } else {
+        // Multiple capsules with overlap
+        float segmentLength = axisLength / (numCapsules - 0.5f); // Slight overlap
+        
+        for (int i = 0; i < numCapsules; ++i) {
+            float t0 = minProj + i * segmentLength;
+            float t1 = t0 + segmentLength;
+            
+            CollisionCapsule cap;
+            cap.p0 = mean + principalDir * t0;
+            cap.p1 = mean + principalDir * t1;
+            cap.radius = radius;
+            capsules.push_back(cap);
+        }
+    }
+    
+    return static_cast<int>(capsules.size());
+}
+
 
 // Adaptive Sphere Count Implementation
 
@@ -1287,68 +1719,95 @@ float PhysXSoftBody::CalculateTriangleArea() const {
     std::vector<Vec3> currentPositions(m_VertexCount);
     GetVertexPositions(currentPositions.data());
     
-    // Extract surface faces from tetrahedral mesh
-    // A face is on the surface if it's referenced by only one tetrahedron
+    // Extract surface faces using Parallel Sort
     
-    // Use a map to count face references
-    // Face key: sorted triple of vertex indices
-    struct Face {
-        int v0, v1, v2;
+    // Check if topology is dirty or cache is empty
+    if (m_TopologyDirty || m_CachedSurfaceFaces.empty()) {
+        m_CachedSurfaceFaces.clear();
         
-        Face(int a, int b, int c) {
-            // Sort vertices to create canonical representation
-            if (a > b) std::swap(a, b);
-            if (b > c) std::swap(b, c);
-            if (a > b) std::swap(a, b);
-            v0 = a; v1 = b; v2 = c;
+        // 1. Generate all faces (4 per tetrahedron)
+        // 2. Sort faces
+        // 3. Count duplicates (count=1 -> surface)
+        
+        struct Face {
+            int v0, v1, v2;
+            int originalTetIndex; // Debug/tracking
+            
+            Face() : v0(0), v1(0), v2(0), originalTetIndex(-1) {}
+            Face(int a, int b, int c, int tetIdx) : originalTetIndex(tetIdx) {
+                // Sort to canonical form
+                if (a > b) std::swap(a, b);
+                if (b > c) std::swap(b, c);
+                if (a > b) std::swap(a, b);
+                v0 = a; v1 = b; v2 = c;
+            }
+            
+            bool operator<(const Face& other) const {
+                if (v0 != other.v0) return v0 < other.v0;
+                if (v1 != other.v1) return v1 < other.v1;
+                return v2 < other.v2;
+            }
+            
+            bool operator==(const Face& other) const {
+                return v0 == other.v0 && v1 == other.v1 && v2 == other.v2;
+            }
+        };
+        
+        // Generate all faces
+        std::vector<Face> allFaces;
+        allFaces.resize(m_TetrahedronCount * 4);
+        
+        // Parallel generation (using parallel for_each with index)
+        // Using simple loop for generation as it's fast linear write
+        for (int i = 0; i < m_TetrahedronCount; ++i) {
+            int v0 = m_TetrahedronIndices[i * 4 + 0];
+            int v1 = m_TetrahedronIndices[i * 4 + 1];
+            int v2 = m_TetrahedronIndices[i * 4 + 2];
+            int v3 = m_TetrahedronIndices[i * 4 + 3];
+            
+            allFaces[i * 4 + 0] = Face(v0, v1, v2, i);
+            allFaces[i * 4 + 1] = Face(v0, v1, v3, i);
+            allFaces[i * 4 + 2] = Face(v0, v2, v3, i);
+            allFaces[i * 4 + 3] = Face(v1, v2, v3, i);
         }
         
-        bool operator==(const Face& other) const {
-            return v0 == other.v0 && v1 == other.v1 && v2 == other.v2;
-        }
-    };
-    
-    struct FaceHash {
-        size_t operator()(const Face& f) const {
-            return std::hash<int>()(f.v0) ^ (std::hash<int>()(f.v1) << 1) ^ (std::hash<int>()(f.v2) << 2);
-        }
-    };
-    
-    std::unordered_map<Face, int, FaceHash> faceCount;
-    
-    // Iterate through all tetrahedra and count face occurrences
-    for (int i = 0; i < m_TetrahedronCount; ++i) {
-        int v0 = m_TetrahedronIndices[i * 4 + 0];
-        int v1 = m_TetrahedronIndices[i * 4 + 1];
-        int v2 = m_TetrahedronIndices[i * 4 + 2];
-        int v3 = m_TetrahedronIndices[i * 4 + 3];
+        // Parallel Sort
+        std::sort(std::execution::par, allFaces.begin(), allFaces.end());
         
-        // Four faces of the tetrahedron
-        faceCount[Face(v0, v1, v2)]++;
-        faceCount[Face(v0, v1, v3)]++;
-        faceCount[Face(v0, v2, v3)]++;
-        faceCount[Face(v1, v2, v3)]++;
+        int numFaces = (int)allFaces.size();
+        if (numFaces == 0) return 0.0f;
+        
+        // Scan for surface faces
+        for (int i = 0; i < numFaces; ) {
+            int j = i + 1;
+            while (j < numFaces && allFaces[i] == allFaces[j]) {
+                j++;
+            }
+            
+            // Count is j - i
+            if ((j - i) == 1) {
+                // Surface face found
+                const Face& f = allFaces[i];
+                m_CachedSurfaceFaces.push_back({f.v0, f.v1, f.v2});
+            }
+            
+            i = j;
+        }
+        
+        m_TopologyDirty = false;
     }
     
-    // Calculate total surface area from faces with count == 1
+    // Iterate cached faces and sum areas
     float totalArea = 0.0f;
-    for (const auto& pair : faceCount) {
-        if (pair.second == 1) {  // Surface face
-            const Face& face = pair.first;
-            
-            // Get triangle vertices
-            const Vec3& p0 = currentPositions[face.v0];
-            const Vec3& p1 = currentPositions[face.v1];
-            const Vec3& p2 = currentPositions[face.v2];
-            
-            // Calculate triangle area using cross product
-            Vec3 edge1 = p1 - p0;
-            Vec3 edge2 = p2 - p0;
-            Vec3 cross = edge1.Cross(edge2);
-            float area = 0.5f * cross.Length();
-            
-            totalArea += area;
-        }
+    for (const auto& face : m_CachedSurfaceFaces) {
+        const Vec3& p0 = currentPositions[face.v0];
+        const Vec3& p1 = currentPositions[face.v1];
+        const Vec3& p2 = currentPositions[face.v2];
+        
+        Vec3 edge1 = p1 - p0;
+        Vec3 edge2 = p2 - p0;
+        Vec3 cross = edge1.Cross(edge2);
+        totalArea += 0.5f * cross.Length();
     }
     
     return totalArea;
@@ -1377,6 +1836,13 @@ void PhysXSoftBody::SetAdaptiveWeights(float vertexWeight, float areaWeight, flo
     m_AreaPerSphere = std::max(0.1f, areaPerSphere);
     
     // Mark spheres as needing update with new weights
+    m_CollisionSpheresNeedUpdate = true;
+}
+
+void PhysXSoftBody::SetSphereGenerationScale(const Vec3& scale) {
+    m_SphereGenerationScale.x = std::max(0.1f, scale.x);
+    m_SphereGenerationScale.y = std::max(0.1f, scale.y);
+    m_SphereGenerationScale.z = std::max(0.1f, scale.z);
     m_CollisionSpheresNeedUpdate = true;
 }
 
@@ -1448,6 +1914,12 @@ void PhysXSoftBody::CreateDebugResources() {
     glGenVertexArrays(1, &m_DebugVAO);
     glGenBuffers(1, &m_DebugVBO);
     
+    glGenVertexArrays(1, &m_DebugSurfaceVAO);
+    glGenBuffers(1, &m_DebugSurfaceVBO);
+    
+    glGenVertexArrays(1, &m_DebugSpheresVAO);
+    glGenBuffers(1, &m_DebugSpheresVBO);
+    
     m_DebugResourcesInitialized = true;
 }
 
@@ -1506,25 +1978,302 @@ void PhysXSoftBody::UpdateDebugBuffers() {
 }
 
 void PhysXSoftBody::DebugRender(Shader* shader) {
-    if (!m_DebugDrawHull) return;
+    if ((!m_DebugDrawHull && !m_DebugDrawSurface) || !shader) return;
     
     if (!m_DebugResourcesInitialized) {
         CreateDebugResources();
     }
     
-    // Update every frame for soft body
-    UpdateDebugBuffers();
+    // --- Draw Hull ---
+    if (m_DebugDrawHull) {
+        // Update hull (expensive, so maybe only if dirty? For now every frame like before)
+        // ideally we check if vertices changed.
+        UpdateDebugBuffers();
+        
+        if (!m_DebugHullVertices.empty()) {
+            Mat4 identity = Mat4::Identity();
+            shader->SetMat4("model", identity.m);
+            shader->SetVec3("color", 1.0f, 0.0f, 1.0f); // Magenta for hull
+            
+            glBindVertexArray(m_DebugVAO);
+            glDrawArrays(GL_LINES, 0, (int)m_DebugHullVertices.size());
+            glBindVertexArray(0);
+        }
+    }
     
-    if (m_DebugHullVertices.empty()) return;
+    // --- Draw Surface ---
+    if (m_DebugDrawSurface) {
+        // Ensure topology is up to date
+        CalculateSurfaceArea(); // This updates m_CachedSurfaceFaces if dirty
+        
+        if (!m_CachedSurfaceFaces.empty()) {
+            std::vector<Vec3> lines;
+            lines.reserve(m_CachedSurfaceFaces.size() * 6); // 3 lines per face, 2 verts per line
+            
+            std::vector<Vec3> positions(m_VertexCount);
+            GetVertexPositions(positions.data());
+            
+            for (const auto& face : m_CachedSurfaceFaces) {
+                Vec3 v0 = positions[face.v0];
+                Vec3 v1 = positions[face.v1];
+                Vec3 v2 = positions[face.v2];
+                
+                lines.push_back(v0); lines.push_back(v1);
+                lines.push_back(v1); lines.push_back(v2);
+                lines.push_back(v2); lines.push_back(v0);
+            }
+            
+            // Upload
+            glBindVertexArray(m_DebugSurfaceVAO);
+            glBindBuffer(GL_ARRAY_BUFFER, m_DebugSurfaceVBO);
+            glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(Vec3), lines.data(), GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3), (void*)0);
+            glEnableVertexAttribArray(0);
+            
+            // Draw
+            Mat4 identity = Mat4::Identity();
+            shader->SetMat4("model", identity.m);
+            shader->SetVec3("color", 0.0f, 1.0f, 1.0f); // Cyan for surface
+            
+            glDrawArrays(GL_LINES, 0, (int)lines.size());
+            glBindVertexArray(0);
+        }
+    }
     
-    // Draw
-    Mat4 identity = Mat4::Identity();
-    shader->SetMat4("model", identity.m);
-    shader->SetVec3("color", 1.0f, 0.0f, 1.0f); // Magenta for hull
+    // --- Draw Collision Spheres/Capsules ---
+    if (m_DebugDrawCollisionSpheres) {
+        // Try capsules first (for elongated bodies)
+        std::vector<CollisionCapsule> caps;
+        int numCapsules = GetCollisionCapsules(caps, 16);
+        
+        if (numCapsules > 0) {
+            // Visualize capsules
+            std::vector<Vec3> lines;
+            const int segments = 8;
+            const float PI = 3.14159265f;
+            
+            for (const auto& cap : caps) {
+                Vec3 axis = cap.p1 - cap.p0;
+                float length = axis.Length();
+                if (length < 1e-6f) continue;
+                
+                Vec3 dir = axis * (1.0f / length);
+                
+                // Find perpendicular vectors
+                Vec3 perp1;
+                if (std::abs(dir.x) < 0.9f) {
+                    perp1 = Vec3(1, 0, 0).Cross(dir);
+                } else {
+                    perp1 = Vec3(0, 1, 0).Cross(dir);
+                }
+                perp1 = perp1 * (1.0f / perp1.Length());
+                Vec3 perp2 = dir.Cross(perp1);
+                
+                // Draw cylinder rings
+                for (int ring = 0; ring <= 2; ++ring) {
+                    float t = ring * 0.5f;
+                    Vec3 center = cap.p0 + axis * t;
+                    
+                    for (int j = 0; j < segments; ++j) {
+                        float theta1 = (float)j / segments * 2.0f * PI;
+                        float theta2 = (float)(j + 1) / segments * 2.0f * PI;
+                        
+                        Vec3 offset1 = (perp1 * std::cos(theta1) + perp2 * std::sin(theta1)) * cap.radius;
+                        Vec3 offset2 = (perp1 * std::cos(theta2) + perp2 * std::sin(theta2)) * cap.radius;
+                        
+                        lines.push_back(center + offset1);
+                        lines.push_back(center + offset2);
+                    }
+                }
+                
+                // Draw longitudinal lines
+                for (int j = 0; j < 4; ++j) {
+                    float theta = (float)j / 4.0f * 2.0f * PI;
+                    Vec3 offset = (perp1 * std::cos(theta) + perp2 * std::sin(theta)) * cap.radius;
+                    
+                    lines.push_back(cap.p0 + offset);
+                    lines.push_back(cap.p1 + offset);
+                }
+            }
+            
+            if (!lines.empty()) {
+                glBindVertexArray(m_DebugSpheresVAO);
+                glBindBuffer(GL_ARRAY_BUFFER, m_DebugSpheresVBO);
+                glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(Vec3), lines.data(), GL_DYNAMIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3), (void*)0);
+                glEnableVertexAttribArray(0);
+                
+                Mat4 identity = Mat4::Identity();
+                shader->SetMat4("model", identity.m);
+                shader->SetVec3("color", 0.0f, 1.0f, 1.0f); // Cyan for capsules
+                
+                glDrawArrays(GL_LINES, 0, (int)lines.size());
+                glBindVertexArray(0);
+            }
+        } else if (m_CollisionSpheresNeedUpdate || m_ClothCollisionEnabled) {
+            // Fall back to spheres for non-elongated bodies
+            std::vector<Vec3> centers;
+            std::vector<float> radii;
+            GetCollisionSpheres(centers, radii, m_MaxCollisionSpheres);
+            
+            std::vector<Vec3> lines;
+            const int segments = 12;
+            const float PI = 3.14159265f;
+            
+            for (size_t i = 0; i < centers.size(); ++i) {
+                Vec3 c = centers[i];
+                float r = radii[i];
+                
+                for (int j = 0; j < segments; ++j) {
+                    float theta1 = (float)j / segments * 2.0f * PI;
+                    float theta2 = (float)(j + 1) / segments * 2.0f * PI;
+                    
+                    float c1 = std::cos(theta1) * r;
+                    float s1 = std::sin(theta1) * r;
+                    float c2 = std::cos(theta2) * r;
+                    float s2 = std::sin(theta2) * r;
+                    
+                    // XY
+                    lines.push_back(c + Vec3(c1, s1, 0));
+                    lines.push_back(c + Vec3(c2, s2, 0));
+                    
+                    // YZ
+                    lines.push_back(c + Vec3(0, c1, s1));
+                    lines.push_back(c + Vec3(0, c2, s2));
+                    
+                    // XZ
+                    lines.push_back(c + Vec3(c1, 0, s1));
+                    lines.push_back(c + Vec3(c2, 0, s2));
+                }
+            }
+            
+            if (!lines.empty()) {
+                glBindVertexArray(m_DebugSpheresVAO);
+                glBindBuffer(GL_ARRAY_BUFFER, m_DebugSpheresVBO);
+                glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(Vec3), lines.data(), GL_DYNAMIC_DRAW);
+                glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3), (void*)0);
+                glEnableVertexAttribArray(0);
+                
+                Mat4 identity = Mat4::Identity();
+                shader->SetMat4("model", identity.m);
+                shader->SetVec3("color", 1.0f, 1.0f, 0.0f); // Yellow for spheres
+                
+                glDrawArrays(GL_LINES, 0, (int)lines.size());
+                glBindVertexArray(0);
+            }
+        }
+    }
     
-    glBindVertexArray(m_DebugVAO);
-    glDrawArrays(GL_LINES, 0, (int)m_DebugHullVertices.size());
-    glBindVertexArray(0);
+    // --- Draw Fiber Directions ---
+    if (m_DebugDrawFibers && m_UseAnisotropicMaterial && m_AnisotropicMaterial) {
+        if (!m_AnisotropicMaterial->IsInitialized()) {
+            return;
+        }
+        
+        std::vector<Vec3> lines;
+        const float fiberLength = 0.2f; // Length of fiber direction lines
+        
+        // Get current vertex positions
+        std::vector<Vec3> positions(m_VertexCount);
+        GetVertexPositions(positions.data());
+        
+        // Draw fiber direction for each tetrahedron
+        for (int tetIdx = 0; tetIdx < m_TetrahedronCount; ++tetIdx) {
+            // Calculate tetrahedron center
+            int v0 = m_TetrahedronIndices[tetIdx * 4 + 0];
+            int v1 = m_TetrahedronIndices[tetIdx * 4 + 1];
+            int v2 = m_TetrahedronIndices[tetIdx * 4 + 2];
+            int v3 = m_TetrahedronIndices[tetIdx * 4 + 3];
+            
+            Vec3 center = (positions[v0] + positions[v1] + positions[v2] + positions[v3]) * 0.25f;
+            
+            // Get fiber data
+            const FiberData& fiber = m_AnisotropicMaterial->GetFiberData(tetIdx);
+            
+            // Draw line in fiber direction
+            Vec3 start = center - fiber.direction * (fiberLength * 0.5f);
+            Vec3 end = center + fiber.direction * (fiberLength * 0.5f);
+            
+            lines.push_back(start);
+            lines.push_back(end);
+        }
+        
+        if (!lines.empty()) {
+            glBindVertexArray(m_DebugSpheresVAO); // Reuse spheres VAO
+            glBindBuffer(GL_ARRAY_BUFFER, m_DebugSpheresVBO);
+            glBufferData(GL_ARRAY_BUFFER, lines.size() * sizeof(Vec3), lines.data(), GL_DYNAMIC_DRAW);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vec3), (void*)0);
+            glEnableVertexAttribArray(0);
+            
+            Mat4 identity = Mat4::Identity();
+            shader->SetMat4("model", identity.m);
+            shader->SetVec3("color", 1.0f, 0.0f, 1.0f); // Magenta for fibers
+            
+            glDrawArrays(GL_LINES, 0, (int)lines.size());
+            glBindVertexArray(0);
+        }
+    }
+}
+
+// ============================================================================
+// LOD System Methods
+// ============================================================================
+
+void PhysXSoftBody::SetLODConfig(const SoftBodyLODConfig& config) {
+    if (!m_LODManager) {
+        m_LODManager = std::make_unique<SoftBodyLODManager>();
+    }
+    
+    m_LODManager->SetLODConfig(config);
+    
+    // Generate LOD meshes if we have tetrahedral data
+    if (!m_TetrahedronIndices.empty() && !m_InitialPositions.empty()) {
+        SoftBodyLODConfig& mutableConfig = const_cast<SoftBodyLODConfig&>(config);
+        mutableConfig.GenerateLODMeshes(m_InitialPositions, m_TetrahedronIndices);
+    }
+    
+    std::cout << "PhysXSoftBody: LOD configuration set with " << config.GetLODCount() << " levels" << std::endl;
+}
+
+const SoftBodyLODConfig* PhysXSoftBody::GetLODConfig() const {
+    if (!m_LODManager) {
+        return nullptr;
+    }
+    return &m_LODManager->GetLODConfig();
+}
+
+int PhysXSoftBody::GetCurrentLOD() const {
+    if (!m_LODManager) {
+        return 0;
+    }
+    return m_LODManager->GetCurrentLOD();
+}
+
+void PhysXSoftBody::ForceLOD(int lodIndex) {
+    if (!m_LODManager) {
+        return;
+    }
+    m_LODManager->ForceLOD(lodIndex);
+}
+
+// ============================================================================
+// Serialization Methods
+// ============================================================================
+
+nlohmann::json PhysXSoftBody::Serialize() const {
+    return SoftBodySerializer::SerializeToJson(this);
+}
+
+bool PhysXSoftBody::Deserialize(const nlohmann::json& json) {
+    return SoftBodySerializer::DeserializeFromJson(json, this);
+}
+
+bool PhysXSoftBody::SaveToFile(const std::string& filename) const {
+    return SoftBodySerializer::SaveToFile(this, filename);
+}
+
+bool PhysXSoftBody::LoadFromFile(const std::string& filename) {
+    return SoftBodySerializer::LoadFromFile(filename, this);
 }
 
 #endif // USE_PHYSX

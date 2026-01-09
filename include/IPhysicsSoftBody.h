@@ -1,11 +1,71 @@
 #pragma once
 
 #include "Math/Vec3.h"
-#include &lt;memory&gt;
-#include &lt;vector&gt;
+#include <memory>
+#include <vector>
 
 class IPhysicsShape;
 class IPhysicsRigidBody;
+
+/**
+ * @brief Surface area calculation mode
+ */
+enum class SoftBodySurfaceAreaMode {
+    BoundingBox,  // Fast approximation using bounding box
+    Triangles,    // Accurate calculation using surface triangles
+    ConvexHull    // Collision envelope using convex hull
+};
+
+/**
+ * @brief Convex hull generation algorithm
+ */
+enum class SoftBodyHullAlgorithm {
+    QuickHull,
+    GiftWrapping,
+    Incremental,
+    DivideAndConquer
+};
+
+/**
+ * @brief Detailed settings for soft body configuration
+ * These settings allow fine-tuning behavior per soft body instance
+ */
+struct SoftBodyDetailSettings {
+    // Sphere Generation
+    Vec3 sphereGenerationScale;     // Scale factors for sphere generation density (default: 1,1,1)
+    
+    // Adaptive Sphere Count
+    bool useAdaptiveSphereCount;    // Enable adaptive sphere count
+    int minCollisionSpheres;        // Minimum sphere count
+    int maxCollisionSpheres;        // Maximum sphere count
+    int verticesPerSphere;          // Vertices per sphere
+    float adaptiveVertexWeight;     // Weight for vertex count (0-1)
+    float adaptiveAreaWeight;       // Weight for surface area (0-1)
+    float areaPerSphere;            // Area per sphere target
+    
+    // Algorithms
+    SoftBodySurfaceAreaMode surfaceAreaMode;
+    SoftBodyHullAlgorithm hullAlgorithm;
+    
+    // Cloth Collision
+    bool enableClothCollision;
+    float collisionSphereRadius;
+    
+    SoftBodyDetailSettings()
+        : sphereGenerationScale(1.0f, 1.0f, 1.0f)
+        , useAdaptiveSphereCount(true)
+        , minCollisionSpheres(4)
+        , maxCollisionSpheres(32)
+        , verticesPerSphere(50)
+        , adaptiveVertexWeight(0.5f)
+        , adaptiveAreaWeight(0.5f)
+        , areaPerSphere(1.0f)
+        , surfaceAreaMode(SoftBodySurfaceAreaMode::BoundingBox)
+        , hullAlgorithm(SoftBodyHullAlgorithm::QuickHull)
+        , enableClothCollision(false)
+        , collisionSphereRadius(0.1f)
+    {}
+};
 
 /**
  * @brief Soft body descriptor for initialization
@@ -49,6 +109,9 @@ struct SoftBodyDesc {
     
     // Simulation quality
     int solverIterations;           // Number of constraint solver iterations
+    
+    // Advanced settings
+    SoftBodyDetailSettings detailSettings;
     
     SoftBodyDesc()
         : vertexPositions(nullptr)
