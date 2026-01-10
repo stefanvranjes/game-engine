@@ -54,6 +54,14 @@ struct GpuBatchManager::Impl {
     size_t currentGpuIndex = 0;
     bool peerAccessEnabled = false;
     
+    // Dynamic migration settings
+    bool migrationEnabled = false;
+    float loadThreshold = 0.3f;          // 30% load imbalance threshold
+    size_t migrationInterval = 60;       // Check every 60 frames
+    size_t framesSinceLastMigration = 0;
+    size_t totalMigrations = 0;
+    size_t migrationsThisFrame = 0;
+    
     ~Impl() {
 #ifdef HAS_CUDA_TOOLKIT
         for (auto stream : streams) {
@@ -451,7 +459,8 @@ void GpuBatchManager::EnableMultiGpu(bool enable, const std::vector<int>& gpuIds
     std::cout << "Multi-GPU enabled with " << m_Impl->gpuDevices.size() 
               << " GPUs using " << (distribution == GpuDistribution::ROUND_ROBIN ? "ROUND_ROBIN" :
                                    distribution == GpuDistribution::LOAD_BALANCED ? "LOAD_BALANCED" :
-                                   distribution == GpuDistribution::PRIORITY_BASED ? "PRIORITY_BASED" : "MANUAL")
+                                   distribution == GpuDistribution::PRIORITY_BASED ? "PRIORITY_BASED" :
+                                   distribution == GpuDistribution::AUTO ? "AUTO" : "MANUAL")
               << " distribution" << std::endl;
 #else
     std::cout << "CUDA not available, multi-GPU disabled" << std::endl;
@@ -492,6 +501,147 @@ void GpuBatchManager::EnablePeerAccess() {
     
     m_Impl->peerAccessEnabled = anyPeerAccess;
 #endif
+}
+
+void GpuBatchManager::EnableDynamicMigration(bool enable, float loadThreshold, size_t migrationInterval) {
+    m_Impl->migrationEnabled = enable;
+    m_Impl->loadThreshold = loadThreshold;
+    m_Impl->migrationInterval = migrationInterval;
+    m_Impl->framesSinceLastMigration = 0;
+    
+    if (enable) {
+        std::cout << "Dynamic migration enabled: threshold=" << (loadThreshold * 100) 
+                  << "%, interval=" << migrationInterval << " frames" << std::endl;
+    }
+}
+
+void GpuBatchManager::MigrateSoftBody(PhysXSoftBody* softBody, int targetGpu) {
+    if (!m_Impl->multiGpuEnabled || targetGpu < 0 || 
+        targetGpu >= static_cast<int>(m_Impl->gpuDevices.size())) {
+        return;
+    }
+    
+    auto it = std::find_if(m_Impl->entries.begin(), m_Impl->entries.end(),
+        [softBody](const SoftBodyEntry& e) { return e.softBody == softBody; });
+    
+    if (it != m_Impl->entries.end()) {
+        int oldGpu = it->assignedGpu;
+        
+        // Update assignment
+        it->assignedGpu = targetGpu;
+        
+        // TODO: If peer access is enabled, could use cudaMemcpyPeer for direct transfer
+        // For now, data will be transferred on next batch operation
+        
+        m_Impl->totalMigrations++;
+        m_Impl->migrationsThisFrame++;
+        
+        std::cout << "Migrated soft body from GPU " << oldGpu 
+                  << " to GPU " << targetGpu << std::endl;
+    }
+}
+
+void GpuBatchManager::CheckAndPerformMigration() {
+    if (!m_Impl->migrationEnabled || !m_Impl->multiGpuEnabled || 
+        m_Impl->gpuDevices.size() < 2) {
+        return;
+    }
+    
+    m_Impl->framesSinceLastMigration++;
+    m_Impl->migrationsThisFrame = 0;
+    
+    // Only check periodically
+    if (m_Impl->framesSinceLastMigration < m_Impl->migrationInterval) {
+        return;
+    }
+    
+    m_Impl->framesSinceLastMigration = 0;
+    
+    GPU_PROFILE_SCOPE("CheckAndPerformMigration");
+    
+    // Calculate load imbalance
+    float imbalance = CalculateLoadImbalance();
+    
+    if (imbalance < m_Impl->loadThreshold) {
+        // Load is balanced, no migration needed
+        return;
+    }
+    
+    // Find most and least loaded GPUs
+    int maxLoadGpu = 0;
+    int minLoadGpu = 0;
+    float maxLoad = 0.0f;
+    float minLoad = FLT_MAX;
+    
+    for (size_t i = 0; i < m_Impl->gpuDevices.size(); ++i) {
+        float load = m_Impl->gpuDevices[i].currentLoad;
+        if (load > maxLoad) {
+            maxLoad = load;
+            maxLoadGpu = static_cast<int>(i);
+        }
+        if (load < minLoad) {
+            minLoad = load;
+            minLoadGpu = static_cast<int>(i);
+        }
+    }
+    
+    // Find candidates to migrate from overloaded GPU to underloaded GPU
+    // Prefer migrating lower priority soft bodies
+    std::vector<SoftBodyEntry*> candidates;
+    
+    for (auto& entry : m_Impl->entries) {
+        if (entry.assignedGpu == maxLoadGpu && entry.priority <= Priority::MEDIUM) {
+            candidates.push_back(&entry);
+        }
+    }
+    
+    // Sort by priority (lowest first)
+    std::sort(candidates.begin(), candidates.end(),
+        [](const SoftBodyEntry* a, const SoftBodyEntry* b) {
+            return a->priority < b->priority;
+        });
+    
+    // Migrate soft bodies until load is balanced
+    size_t migratedCount = 0;
+    const size_t maxMigrationsPerCheck = 5;  // Limit migrations per check
+    
+    for (auto* entry : candidates) {
+        if (migratedCount >= maxMigrationsPerCheck) {
+            break;
+        }
+        
+        // Migrate to least loaded GPU
+        MigrateSoftBody(entry->softBody, minLoadGpu);
+        migratedCount++;
+        
+        // Recalculate imbalance
+        imbalance = CalculateLoadImbalance();
+        if (imbalance < m_Impl->loadThreshold) {
+            break;  // Balanced now
+        }
+    }
+    
+    if (migratedCount > 0) {
+        std::cout << "Migrated " << migratedCount << " soft bodies from GPU " 
+                  << maxLoadGpu << " to GPU " << minLoadGpu 
+                  << " (imbalance: " << (imbalance * 100) << "%)" << std::endl;
+    }
+}
+
+float GpuBatchManager::CalculateLoadImbalance() {
+    if (m_Impl->gpuDevices.size() < 2) {
+        return 0.0f;
+    }
+    
+    float maxLoad = 0.0f;
+    float minLoad = FLT_MAX;
+    
+    for (const auto& gpu : m_Impl->gpuDevices) {
+        maxLoad = std::max(maxLoad, gpu.currentLoad);
+        minLoad = std::min(minLoad, gpu.currentLoad);
+    }
+    
+    return maxLoad - minLoad;
 }
 
 void GpuBatchManager::AssignToGpu(PhysXSoftBody* softBody, int gpuId) {
@@ -550,16 +700,142 @@ int GpuBatchManager::SelectGpuForBatch(const SoftBodyEntry& entry) {
             return 0;
         }
         
+        case GpuDistribution::AUTO: {
+            // Automatic selection based on workload complexity and GPU capabilities
+            float complexity = CalculateWorkloadComplexity(entry);
+            return SelectOptimalGpu(complexity, entry.priority);
+        }
+        
         case GpuDistribution::MANUAL:
         default:
             return 0;
     }
 }
 
+float GpuBatchManager::CalculateWorkloadComplexity(const SoftBodyEntry& entry) {
+    float complexity = 0.0f;
+    
+    // Base complexity from soft body properties
+    PhysXSoftBody* softBody = entry.softBody;
+    
+    // Vertex count factor (0-40 points)
+    size_t vertexCount = softBody->GetVertexCount();
+    if (vertexCount > 10000) {
+        complexity += 40.0f;  // Very complex
+    } else if (vertexCount > 5000) {
+        complexity += 30.0f;  // Complex
+    } else if (vertexCount > 2000) {
+        complexity += 20.0f;  // Medium
+    } else if (vertexCount > 500) {
+        complexity += 10.0f;  // Simple
+    }
+    // else: Very simple - no points
+    
+    // Simulation complexity (0-30 points)
+    // Higher iteration counts = more complex
+    if (softBody->GetSolverIterations() > 10) {
+        complexity += 30.0f;
+    } else if (softBody->GetSolverIterations() > 5) {
+        complexity += 20.0f;
+    } else {
+        complexity += 10.0f;
+    }
+    
+    // Collision complexity (0-20 points)
+    if (softBody->HasCollisionMesh()) {
+        complexity += 20.0f;
+    } else if (softBody->HasSelfCollision()) {
+        complexity += 10.0f;
+    }
+    
+    // Tear/plasticity complexity (0-10 points)
+    if (softBody->HasTearing() || softBody->HasPlasticity()) {
+        complexity += 10.0f;
+    }
+    
+    return complexity; // Range: 0-100
+}
+
+int GpuBatchManager::SelectOptimalGpu(float complexity, Priority priority) {
+    if (m_Impl->gpuDevices.empty()) {
+        return 0;
+    }
+    
+    // Score each GPU based on capability and current load
+    struct GpuScore {
+        int gpuIndex;
+        float score;
+    };
+    
+    std::vector<GpuScore> gpuScores;
+    gpuScores.reserve(m_Impl->gpuDevices.size());
+    
+    for (size_t i = 0; i < m_Impl->gpuDevices.size(); ++i) {
+        const auto& gpu = m_Impl->gpuDevices[i];
+        float score = 0.0f;
+        
+        // Compute capability factor (0-40 points)
+        // Higher compute capability = better for complex workloads
+        if (gpu.computeCapability >= 80) {
+            score += 40.0f;  // Ampere or newer
+        } else if (gpu.computeCapability >= 75) {
+            score += 35.0f;  // Turing
+        } else if (gpu.computeCapability >= 70) {
+            score += 30.0f;  // Volta
+        } else if (gpu.computeCapability >= 60) {
+            score += 25.0f;  // Pascal
+        } else {
+            score += 20.0f;  // Older
+        }
+        
+        // Available memory factor (0-30 points)
+        float memoryUtilization = 1.0f - (static_cast<float>(gpu.freeMemoryMB) / gpu.totalMemoryMB);
+        score += (1.0f - memoryUtilization) * 30.0f;
+        
+        // Current load factor (0-30 points)
+        // Lower load = higher score
+        score += (1.0f - gpu.currentLoad) * 30.0f;
+        
+        // Adjust score based on workload complexity
+        // Complex workloads prefer powerful GPUs
+        if (complexity > 70.0f) {
+            // Very complex - strongly prefer high compute capability
+            if (gpu.computeCapability >= 75) {
+                score += 20.0f;
+            }
+        } else if (complexity < 30.0f) {
+            // Simple workload - can use any GPU, prefer less loaded
+            score += (1.0f - gpu.currentLoad) * 10.0f;
+        }
+        
+        // Priority factor
+        if (priority >= Priority::HIGH && i == 0) {
+            // High priority gets bonus for GPU 0 (primary GPU)
+            score += 15.0f;
+        }
+        
+        gpuScores.push_back({static_cast<int>(i), score});
+    }
+    
+    // Select GPU with highest score
+    auto best = std::max_element(gpuScores.begin(), gpuScores.end(),
+        [](const GpuScore& a, const GpuScore& b) {
+            return a.score < b.score;
+        });
+    
+    return best->gpuIndex;
+}
+
 GpuBatchManager::MultiGpuStats GpuBatchManager::GetMultiGpuStatistics() const {
     MultiGpuStats stats;
     stats.gpuCount = m_Impl->gpuDevices.size();
     stats.peerAccessEnabled = m_Impl->peerAccessEnabled;
+    
+    // Migration stats
+    stats.migrationEnabled = m_Impl->migrationEnabled;
+    stats.totalMigrations = m_Impl->totalMigrations;
+    stats.migrationsThisFrame = m_Impl->migrationsThisFrame;
+    stats.maxLoadImbalance = CalculateLoadImbalance();
     
     stats.batchesPerGpu.resize(stats.gpuCount);
     stats.loadPerGpu.resize(stats.gpuCount);
@@ -632,6 +908,9 @@ void GpuBatchManager::ProcessMultiGpuBatches(physx::PxScene* scene) {
     }
     
     m_Impl->currentFrame++;
+    
+    // Check for load imbalance and perform migration if needed
+    CheckAndPerformMigration();
 }
 
 void GpuBatchManager::ProcessSingleGpuBatches(physx::PxScene* scene) {

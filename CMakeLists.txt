@@ -411,9 +411,77 @@ add_executable(GameEngine
     src/AsyncCollisionDetector.cpp
     src/GpuProfiler.cpp
     src/GpuBatchManager.cpp
+    src/NetworkManager.cpp
+    src/NetworkManagerASIO.cpp
+    src/NetworkManagerReliability.cpp
+    src/NetworkManagerBandwidth.cpp
+    src/StateSerializer.cpp
+    src/ProtobufSerializer.cpp
     ${IMGUI_SOURCES}
+    ${ADDITIONAL_SOURCES}  # Includes generated protobuf sources
 )
 
+# Find PhysX
+if(PHYSICS_BACKEND STREQUAL "PHYSX")
+    find_package(PhysX REQUIRED)
+endif()
+
+# Find LZ4 for state serialization compression
+find_package(PkgConfig)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(LZ4 liblz4)
+endif()
+
+if(NOT LZ4_FOUND)
+    message(STATUS "LZ4 not found via pkg-config, will use fallback RLE compression")
+    set(HAS_LZ4 FALSE)
+else()
+    message(STATUS "Found LZ4: ${LZ4_LIBRARIES}")
+    set(HAS_LZ4 TRUE)
+endif()
+
+# Find Protocol Buffers for network serialization
+find_package(Protobuf)
+if(Protobuf_FOUND)
+    message(STATUS "Found Protocol Buffers: ${Protobuf_VERSION}")
+    set(HAS_PROTOBUF TRUE)
+    
+    # Generate C++ code from .proto files
+    set(PROTO_FILES
+        ${CMAKE_SOURCE_DIR}/proto/distributed_physics.proto
+    )
+    
+    protobuf_generate_cpp(PROTO_SRCS PROTO_HDRS ${PROTO_FILES})
+    
+    # Add generated files to sources
+    list(APPEND ADDITIONAL_SOURCES ${PROTO_SRCS})
+    
+    message(STATUS "Generated Protocol Buffers sources: ${PROTO_SRCS}")
+else()
+    message(STATUS "Protocol Buffers not found, using manual serialization")
+    set(HAS_PROTOBUF FALSE)
+endif()
+
+# Find ASIO for async networking
+find_path(ASIO_INCLUDE_DIR asio.hpp)
+if(ASIO_INCLUDE_DIR)
+    message(STATUS "Found standalone ASIO: ${ASIO_INCLUDE_DIR}")
+    set(HAS_ASIO TRUE)
+    set(ASIO_STANDALONE TRUE)
+else()
+    # Try Boost.ASIO
+    find_package(Boost COMPONENTS system)
+    if(Boost_FOUND)
+        message(STATUS "Found Boost.ASIO: ${Boost_VERSION}")
+        set(HAS_ASIO TRUE)
+        set(ASIO_STANDALONE FALSE)
+    else()
+        message(STATUS "ASIO not found, using basic sockets")
+        set(HAS_ASIO FALSE)
+    endif()
+endif()
+
+# OpenGL
 # Add PhysX backend sources if using PhysX
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
     target_sources(GameEngine PRIVATE
@@ -524,7 +592,40 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
     
     # Link CUDA runtime if available
     if(CUDAToolkit_FOUND)
+        target_compile_definitions(GameEngine PRIVATE HAS_CUDA_TOOLKIT)
+        target_include_directories(GameEngine PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
         target_link_libraries(GameEngine PRIVATE CUDA::cudart)
+    endif()
+
+    # Link LZ4 if available
+    if(HAS_LZ4)
+        target_compile_definitions(GameEngine PRIVATE HAS_LZ4)
+        target_include_directories(GameEngine PRIVATE ${LZ4_INCLUDE_DIRS})
+        target_link_libraries(GameEngine PRIVATE ${LZ4_LIBRARIES})
+    endif()
+    
+    # Link Protocol Buffers if available
+    if(HAS_PROTOBUF)
+        target_compile_definitions(GameEngine PRIVATE HAS_PROTOBUF)
+        target_include_directories(GameEngine PRIVATE ${Protobuf_INCLUDE_DIRS})
+        target_include_directories(GameEngine PRIVATE ${CMAKE_CURRENT_BINARY_DIR})  # For generated headers
+        target_link_libraries(GameEngine PRIVATE ${Protobuf_LIBRARIES})
+    endif()
+    
+    # Link ASIO if available
+    if(HAS_ASIO)
+        target_compile_definitions(GameEngine PRIVATE HAS_ASIO)
+        if(ASIO_STANDALONE)
+            target_compile_definitions(GameEngine PRIVATE ASIO_STANDALONE)
+            target_include_directories(GameEngine PRIVATE ${ASIO_INCLUDE_DIR})
+        else()
+            target_include_directories(GameEngine PRIVATE ${Boost_INCLUDE_DIRS})
+            target_link_libraries(GameEngine PRIVATE ${Boost_LIBRARIES})
+        endif()
+        # Disable deprecated warnings for ASIO
+        if(MSVC)
+            target_compile_definitions(GameEngine PRIVATE _WIN32_WINNT=0x0601)  # Windows 7+
+        endif()
     endif()
 else()
     target_link_libraries(GameEngine PRIVATE 

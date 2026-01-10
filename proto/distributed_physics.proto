@@ -1,0 +1,130 @@
+syntax = "proto3";
+
+package distributed_physics;
+
+// Soft body state message
+message SoftBodyState {
+    // Metadata
+    uint32 vertex_count = 1;
+    uint32 tetrahedron_count = 2;
+    uint64 frame_number = 3;
+    
+    // Flags
+    bool has_tearing = 4;
+    bool has_plasticity = 5;
+    bool has_self_collision = 6;
+    
+    // Vertex data (packed for efficiency)
+    repeated float positions = 7 [packed=true];   // x,y,z per vertex
+    repeated float velocities = 8 [packed=true];  // x,y,z per vertex
+    
+    // Optional: Compressed data (alternative to positions/velocities)
+    bytes compressed_positions = 9;
+    bytes compressed_velocities = 10;
+    bool is_compressed = 11;
+}
+
+// Delta update message
+message SoftBodyDelta {
+    uint64 frame_number = 1;
+    uint64 base_frame_number = 2;  // Frame this delta is based on
+    
+    // Delta-encoded data
+    repeated float position_deltas = 3 [packed=true];
+    repeated float velocity_deltas = 4 [packed=true];
+    
+    // Optional: Compressed deltas
+    bytes compressed_position_deltas = 5;
+    bytes compressed_velocity_deltas = 6;
+    bool is_compressed = 7;
+}
+
+// Network message types
+enum MessageType {
+    MESSAGE_TYPE_UNKNOWN = 0;
+    BATCH_ASSIGN = 1;
+    BATCH_RESULT = 2;
+    STATE_SYNC_FULL = 3;
+    STATE_SYNC_DELTA = 4;
+    HEARTBEAT = 5;
+    LOAD_REPORT = 6;
+    MIGRATION = 7;
+    NODE_REGISTER = 8;
+    NODE_UNREGISTER = 9;
+    ACK = 10;
+    ERROR = 11;
+}
+
+// Node information
+message NodeInfo {
+    int32 node_id = 1;
+    string address = 2;
+    uint32 port = 3;
+    bool is_connected = 4;
+    uint64 last_heartbeat = 5;
+    float current_load = 6;
+    uint32 gpu_count = 7;
+    uint64 total_memory_mb = 8;
+}
+
+// Batch assignment message
+message BatchAssignment {
+    repeated uint32 soft_body_ids = 1;
+    int32 target_node = 2;
+    uint32 priority = 3;
+}
+
+// Batch result message
+message BatchResult {
+    repeated uint32 soft_body_ids = 1;
+    repeated SoftBodyState states = 2;
+    float processing_time_ms = 3;
+}
+
+// Heartbeat message
+message Heartbeat {
+    int32 node_id = 1;
+    uint64 timestamp = 2;
+    float current_load = 3;
+    uint32 active_soft_bodies = 4;
+}
+
+// Load report message
+message LoadReport {
+    int32 node_id = 1;
+    float cpu_load = 2;
+    repeated float gpu_loads = 3;
+    uint64 memory_used_mb = 4;
+    uint64 memory_total_mb = 5;
+    uint32 batches_processed = 6;
+}
+
+// Migration message
+message Migration {
+    uint32 soft_body_id = 1;
+    int32 source_node = 2;
+    int32 target_node = 3;
+    SoftBodyState state = 4;
+}
+
+// Generic network message envelope
+message NetworkMessage {
+    MessageType type = 1;
+    int32 source_node = 2;
+    int32 target_node = 3;
+    uint64 timestamp = 4;
+    uint32 sequence_number = 5;
+    
+    // Payload (one of the following)
+    oneof payload {
+        BatchAssignment batch_assignment = 10;
+        BatchResult batch_result = 11;
+        SoftBodyState state_full = 12;
+        SoftBodyDelta state_delta = 13;
+        Heartbeat heartbeat = 14;
+        LoadReport load_report = 15;
+        Migration migration = 16;
+        NodeInfo node_info = 17;
+        string error_message = 18;
+    }
+}

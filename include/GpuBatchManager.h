@@ -40,7 +40,8 @@ public:
         ROUND_ROBIN,      // Distribute evenly across GPUs
         LOAD_BALANCED,    // Distribute based on GPU load
         PRIORITY_BASED,   // High priority on fastest GPU
-        MANUAL            // User-specified GPU per soft body
+        MANUAL,           // User-specified GPU per soft body
+        AUTO              // Automatic selection based on workload and GPU capabilities
     };
     
     GpuBatchManager();
@@ -140,6 +141,21 @@ public:
                         GpuDistribution distribution = GpuDistribution::ROUND_ROBIN);
     
     /**
+     * @brief Enable dynamic migration between GPUs
+     * @param enable True to enable automatic migration
+     * @param loadThreshold Load imbalance threshold (default: 0.3 = 30%)
+     * @param migrationInterval Frames between migration checks (default: 60)
+     */
+    void EnableDynamicMigration(bool enable, float loadThreshold = 0.3f, size_t migrationInterval = 60);
+    
+    /**
+     * @brief Manually migrate soft body to specific GPU
+     * @param softBody Soft body to migrate
+     * @param targetGpu Target GPU ID
+     */
+    void MigrateSoftBody(PhysXSoftBody* softBody, int targetGpu);
+    
+    /**
      * @brief Manually assign soft body to specific GPU
      * @param softBody Soft body to assign
      * @param gpuId GPU device ID
@@ -155,6 +171,12 @@ public:
         std::vector<float> loadPerGpu;
         std::vector<size_t> memoryUsedPerGpu;
         bool peerAccessEnabled;
+        
+        // Dynamic migration stats
+        bool migrationEnabled;
+        size_t totalMigrations;
+        size_t migrationsThisFrame;
+        float maxLoadImbalance;
     };
     MultiGpuStats GetMultiGpuStatistics() const;
     
@@ -252,6 +274,20 @@ private:
     int SelectGpuForBatch(const SoftBodyEntry& entry);
     
     /**
+     * @brief Calculate workload complexity for a soft body
+     * @return Complexity score (0-100)
+     */
+    float CalculateWorkloadComplexity(const SoftBodyEntry& entry);
+    
+    /**
+     * @brief Select optimal GPU based on workload and GPU capabilities
+     * @param complexity Workload complexity score
+     * @param priority Soft body priority
+     * @return GPU index
+     */
+    int SelectOptimalGpu(float complexity, Priority priority);
+    
+    /**
      * @brief Enable peer-to-peer access between GPUs
      */
     void EnablePeerAccess();
@@ -265,6 +301,17 @@ private:
      * @brief Process batches on single GPU
      */
     void ProcessSingleGpuBatches(physx::PxScene* scene);
+    
+    /**
+     * @brief Check for load imbalance and perform migration if needed
+     */
+    void CheckAndPerformMigration();
+    
+    /**
+     * @brief Calculate current load imbalance across GPUs
+     * @return Maximum load difference (0-1)
+     */
+    float CalculateLoadImbalance();
     
     // Batch configuration
     static constexpr size_t MAX_BATCH_SIZE = 64;  // Soft bodies per batch
