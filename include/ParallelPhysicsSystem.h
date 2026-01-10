@@ -3,6 +3,7 @@
 #include "ScenePartitionManager.h"
 #include "AdaptiveQualityIntegration.h"
 #include "ParallelSoftBodyManager.h"
+#include "GpuBatchManager.h"
 #include <memory>
 
 /**
@@ -69,6 +70,12 @@ public:
         float lastFrameTime;
         float lastPhysicsTime;
         float lastLODTime;
+        
+        // GPU statistics
+        bool gpuEnabled;
+        size_t gpuMemoryUsedMB;
+        float gpuSimulationTimeMs;
+        size_t softBodiesOnGpu;
     };
     
     Statistics GetStatistics() const;
@@ -78,9 +85,11 @@ private:
     std::unique_ptr<ScenePartitionManager> m_SceneManager;
     std::unique_ptr<AdaptiveQualityIntegration> m_QualitySystem;
     std::unique_ptr<ParallelSoftBodyManager> m_LODManager;
+    std::unique_ptr<GpuBatchManager> m_BatchManager;
     
     physx::PxPhysics* m_Physics;
     bool m_ParallelPhysicsEnabled;
+    bool m_BatchGpuEnabled;
     
     // Performance tracking
     float m_LastPhysicsTime;

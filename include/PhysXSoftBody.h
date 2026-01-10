@@ -443,6 +443,34 @@ public:
      * @return True if successful
      */
     bool LoadFromFile(const std::string& filename);
+    
+    // GPU-specific methods
+    /**
+     * @brief Enable/disable direct GPU API for efficient data transfer
+     * @param enable True to use direct GPU buffers
+     */
+    void EnableDirectGpuApi(bool enable);
+    
+    /**
+     * @brief Check if direct GPU API is enabled
+     */
+    bool IsDirectGpuApiEnabled() const { return m_UseDirectGpuApi; }
+    
+    /**
+     * @brief Get GPU memory usage in bytes
+     */
+    size_t GetGpuMemoryUsage() const { return m_GpuMemoryUsage; }
+    
+    /**
+     * @brief Get GPU performance metrics
+     */
+    struct GpuMetrics {
+        float gpuSimulationTimeMs;   // Time spent on GPU simulation
+        float cpuGpuTransferTimeMs;  // Time spent transferring data
+        size_t gpuMemoryUsageBytes;  // GPU memory used by this soft body
+        bool usingDirectApi;         // Whether direct GPU API is active
+    };
+    GpuMetrics GetGpuMetrics() const;
 
 private:
     PhysXBackend* m_Backend;
@@ -546,6 +574,12 @@ private:
     bool m_LODEnabled;
     std::unique_ptr<SoftBodyLODManager> m_LODManager;
     Vec3 m_CameraPosition;
+    
+    // GPU-specific
+    bool m_UseDirectGpuApi;
+    size_t m_GpuMemoryUsage;
+    mutable float m_GpuSimulationTimeMs;
+    mutable float m_CpuGpuTransferTimeMs;
     
     void AutoTuneParameters();
     

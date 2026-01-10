@@ -52,6 +52,12 @@ public:
     physx::PxScene* GetScene() const { return m_Scene; }
     physx::PxMaterial* GetDefaultMaterial() const { return m_DefaultMaterial; }
     bool IsGpuEnabled() const { return m_CudaContextManager != nullptr; }
+    
+    // GPU-specific methods
+    physx::PxCudaContextManager* GetCudaContextManager() const { return m_CudaContextManager; }
+    bool IsGpuSoftBodySupported() const;
+    void GetGpuDeviceProperties(int& computeCapability, size_t& totalMemoryMB, size_t& freeMemoryMB) const;
+    size_t GetGpuMemoryUsageMB() const;
 
     // Registration methods (called by physics components)
     void RegisterRigidBody(IPhysicsRigidBody* body);
@@ -84,6 +90,9 @@ private:
     bool m_Initialized;
     bool m_DebugDrawEnabled;
     Vec3 m_Gravity;
+    
+    // GPU tracking
+    mutable size_t m_GpuMemoryUsageMB;
 
     // Helper methods
     void InitializePhysXVisualDebugger();

@@ -6,6 +6,9 @@
 #ifdef USE_PHYSX
 
 #include <PxPhysicsAPI.h>
+#ifdef HAS_CUDA_TOOLKIT
+#include <cuda_runtime.h>
+#endif
 #include <iostream>
 
 using namespace physx;
@@ -23,6 +26,7 @@ PhysXBackend::PhysXBackend()
     , m_Initialized(false)
     , m_DebugDrawEnabled(false)
     , m_Gravity(0, -9.81f, 0)
+    , m_GpuMemoryUsageMB(0)
 {
 }
 
@@ -74,11 +78,24 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
             m_CudaContextManager->release();
             m_CudaContextManager = nullptr;
             std::cout << "PhysX: CUDA context invalid. Falling back to CPU." << std::endl;
+            std::cout << "WARNING: Soft bodies require GPU and will not be available!" << std::endl;
         } else {
             std::cout << "PhysX: CUDA context created. GPU acceleration enabled." << std::endl;
+            
+            // Log GPU device properties
+            int computeCapability = 0;
+            size_t totalMemoryMB = 0;
+            size_t freeMemoryMB = 0;
+            GetGpuDeviceProperties(computeCapability, totalMemoryMB, freeMemoryMB);
+            
+            std::cout << "  GPU Compute Capability: " << (computeCapability / 10) << "." << (computeCapability % 10) << std::endl;
+            std::cout << "  GPU Total Memory: " << totalMemoryMB << " MB" << std::endl;
+            std::cout << "  GPU Free Memory: " << freeMemoryMB << " MB" << std::endl;
+            std::cout << "  Soft Body Support: " << (IsGpuSoftBodySupported() ? "YES" : "NO") << std::endl;
         }
     } else {
         std::cout << "PhysX: CUDA context creation failed. Falling back to CPU." << std::endl;
+        std::cout << "WARNING: Soft bodies require GPU and will not be available!" << std::endl;
     }
 
     // Create scene
@@ -319,6 +336,75 @@ void PhysXBackend::UnregisterSoftBody(IPhysicsSoftBody* softBody) {
     if (it != m_SoftBodies.end()) {
         m_SoftBodies.erase(it);
     }
+}
+
+bool PhysXBackend::IsGpuSoftBodySupported() const {
+    // PhysX 5.x soft bodies require GPU
+    // Check if CUDA context is available and valid
+    if (!m_CudaContextManager || !m_CudaContextManager->contextIsValid()) {
+        return false;
+    }
+    
+    // Check compute capability (soft bodies typically require at least 3.0)
+    int computeCapability = 0;
+    size_t totalMem = 0, freeMem = 0;
+    GetGpuDeviceProperties(computeCapability, totalMem, freeMem);
+    
+    // Require at least compute capability 3.0 and 512MB free memory
+    return (computeCapability >= 30) && (freeMem >= 512);
+}
+
+void PhysXBackend::GetGpuDeviceProperties(int& computeCapability, size_t& totalMemoryMB, size_t& freeMemoryMB) const {
+    computeCapability = 0;
+    totalMemoryMB = 0;
+    freeMemoryMB = 0;
+    
+    if (!m_CudaContextManager) {
+        return;
+    }
+    
+    // Get device ordinal from PhysX CUDA context manager
+    int deviceOrdinal = m_CudaContextManager->getDeviceOrdinal();
+    
+    #ifdef HAS_CUDA_TOOLKIT
+    // Query compute capability using CUDA Runtime API
+    int major = 0, minor = 0;
+    cudaError_t err1 = cudaDeviceGetAttribute(&major, cudaDevAttrComputeCapabilityMajor, deviceOrdinal);
+    cudaError_t err2 = cudaDeviceGetAttribute(&minor, cudaDevAttrComputeCapabilityMinor, deviceOrdinal);
+    
+    if (err1 == cudaSuccess && err2 == cudaSuccess) {
+        computeCapability = major * 10 + minor;
+    } else {
+        // Fallback to estimate if CUDA query fails
+        std::cerr << "Warning: CUDA device attribute query failed, using estimate" << std::endl;
+        computeCapability = 75; // Assume modern GPU
+    }
+    
+    // Query memory info using CUDA Runtime API
+    size_t free = 0, total = 0;
+    cudaError_t err3 = cudaMemGetInfo(&free, &total);
+    
+    if (err3 == cudaSuccess) {
+        totalMemoryMB = total / (1024 * 1024);
+        freeMemoryMB = free / (1024 * 1024);
+    } else {
+        // Fallback to estimates if CUDA query fails
+        std::cerr << "Warning: CUDA memory query failed, using estimates" << std::endl;
+        totalMemoryMB = 8192;  // 8GB typical
+        freeMemoryMB = 6144;   // 6GB free typical
+    }
+    #else
+    // CUDA Toolkit not available - use estimates
+    if (m_CudaContextManager->contextIsValid()) {
+        computeCapability = 75;  // Assume modern GPU
+        totalMemoryMB = 8192;    // 8GB typical
+        freeMemoryMB = 6144;     // 6GB free typical
+    }
+    #endif
+}
+
+size_t PhysXBackend::GetGpuMemoryUsageMB() const {
+    return m_GpuMemoryUsageMB;
 }
 
 #endif // USE_PHYSX

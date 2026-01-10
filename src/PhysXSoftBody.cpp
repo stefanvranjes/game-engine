@@ -16,7 +16,8 @@
 #include "SoftBodyLODManager.h"
 #include "SoftBodySerializer.h"
 #include "PhysXManager.h"
-#include "GLExtensions.h" 
+#include "GLExtensions.h"
+#include "GpuProfiler.h"
 #include <PxPhysicsAPI.h>
 #include <iostream>
 #include <cstring>
@@ -180,6 +181,10 @@ PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     , m_OriginalTearCheckInterval(0.1f)
     , m_LODEnabled(false)
     , m_CameraPosition(0, 0, 0)
+    , m_UseDirectGpuApi(false)
+    , m_GpuMemoryUsage(0)
+    , m_GpuSimulationTimeMs(0.0f)
+    , m_CpuGpuTransferTimeMs(0.0f)
 {
     m_TearSystem = std::make_unique<SoftBodyTearSystem>();
     m_LODManager = std::make_unique<SoftBodyLODManager>();
@@ -273,6 +278,26 @@ void PhysXSoftBody::Initialize(const SoftBodyDesc& desc) {
         return;
     }
     
+    // Validate GPU support (PhysX 5.x soft bodies require GPU)
+    if (!m_Backend->IsGpuSoftBodySupported()) {
+        std::cerr << "PhysXSoftBody: GPU soft body support not available!" << std::endl;
+        std::cerr << "  PhysX 5.x soft bodies require a CUDA-capable NVIDIA GPU." << std::endl;
+        std::cerr << "  Please ensure:" << std::endl;
+        std::cerr << "    - NVIDIA GPU with compute capability >= 3.0" << std::endl;
+        std::cerr << "    - At least 512MB free GPU memory" << std::endl;
+        std::cerr << "    - Latest NVIDIA drivers installed" << std::endl;
+        
+        // Clean up tetrahedral mesh
+        if (m_TetraMesh) {
+            m_TetraMesh->release();
+            m_TetraMesh = nullptr;
+        }
+        return;
+    }
+    
+    // Enable direct GPU API by default if GPU is available
+    m_UseDirectGpuApi = m_Backend->IsGpuEnabled();
+    
     // Create soft body actor
     PxPhysics* physics = m_Backend->GetPhysics();
     PxScene* scene = m_Backend->GetScene();
@@ -333,8 +358,16 @@ void PhysXSoftBody::Initialize(const SoftBodyDesc& desc) {
     // Initialize resistance map
     m_ResistanceMap.Initialize(m_TetrahedronCount, 1.0f);
     
+    // Calculate GPU memory usage
+    // Estimate: positions (4 floats), velocities (4 floats), rest positions, etc.
+    size_t vertexDataSize = m_VertexCount * sizeof(float) * 4 * 3; // pos, vel, rest pos
+    size_t tetraDataSize = m_TetrahedronCount * sizeof(int) * 4;
+    m_GpuMemoryUsage = vertexDataSize + tetraDataSize;
+    
     std::cout << "PhysXSoftBody initialized with " << m_VertexCount << " vertices and "
               << m_TetrahedronCount << " tetrahedra" << std::endl;
+    std::cout << "  GPU Memory Usage: " << (m_GpuMemoryUsage / 1024 / 1024) << " MB" << std::endl;
+    std::cout << "  Direct GPU API: " << (m_UseDirectGpuApi ? "Enabled" : "Disabled") << std::endl;
 }
 
 void PhysXSoftBody::CreateTetrahedralMesh(const SoftBodyDesc& desc) {
@@ -375,6 +408,8 @@ void PhysXSoftBody::CreateTetrahedralMesh(const SoftBodyDesc& desc) {
 }
 
 void PhysXSoftBody::Update(float deltaTime) {
+    GPU_PROFILE_SCOPE_COLOR("PhysXSoftBody::Update", GpuProfiler::COLOR_SOFT_BODY);
+    
     auto startTotal = std::chrono::high_resolution_clock::now();
     
     if (!m_SoftBody || !m_Enabled) {
@@ -382,21 +417,25 @@ void PhysXSoftBody::Update(float deltaTime) {
     }
     
     // Update LOD system if enabled
-    if (m_LODEnabled && m_LODManager) {
-        bool lodChanged = m_LODManager->UpdateLOD(this, m_CameraPosition, deltaTime);
+    {
+        GPU_PROFILE_SCOPE_COLOR("LOD Update", GpuProfiler::COLOR_LOD);
         
-        // Check if we should skip update based on LOD frequency
-        if (!m_LODManager->ShouldUpdateThisFrame()) {
-            return;  // Skip this frame's update
-        }
-        
-        // If LOD changed, the mesh may have been recreated
-        // State transfer is handled by the LOD manager
-        if (lodChanged) {
-            // Invalidate cached data
-            m_CollisionSpheresNeedUpdate = true;
-            m_SurfaceAreaNeedsUpdate = true;
-            m_TopologyDirty = true;
+        if (m_LODEnabled && m_LODManager) {
+            bool lodChanged = m_LODManager->UpdateLOD(this, m_CameraPosition, deltaTime);
+            
+            // Check if we should skip update based on LOD frequency
+            if (!m_LODManager->ShouldUpdateThisFrame()) {
+                return;  // Skip this frame's update
+            }
+            
+            // If LOD changed, the mesh may have been recreated
+            // State transfer is handled by the LOD manager
+            if (lodChanged) {
+                // Invalidate cached data
+                m_CollisionSpheresNeedUpdate = true;
+                m_SurfaceAreaNeedsUpdate = true;
+                m_TopologyDirty = true;
+            }
         }
     }
     
@@ -407,10 +446,14 @@ void PhysXSoftBody::Update(float deltaTime) {
     }
     
     // Update collision shapes
-    auto startCollision = std::chrono::high_resolution_clock::now();
-    UpdateCollisionShapes();
-    auto endCollision = std::chrono::high_resolution_clock::now();
-    m_Stats.collisionGenTimeMs = std::chrono::duration<double, std::milli>(endCollision - startCollision).count();
+    {
+        GPU_PROFILE_SCOPE_COLOR("Collision Generation", GpuProfiler::COLOR_COLLISION);
+        
+        auto startCollision = std::chrono::high_resolution_clock::now();
+        UpdateCollisionShapes();
+        auto endCollision = std::chrono::high_resolution_clock::now();
+        m_Stats.collisionGenTimeMs = std::chrono::duration<double, std::milli>(endCollision - startCollision).count();
+    }
     
     // Update healing and plasticity
     m_LastTearCheckTime += deltaTime;
@@ -2351,6 +2394,37 @@ bool PhysXSoftBody::SaveToFile(const std::string& filename) const {
 
 bool PhysXSoftBody::LoadFromFile(const std::string& filename) {
     return SoftBodySerializer::LoadFromFile(filename, this);
+}
+
+// ============================================================================
+// GPU Methods
+// ============================================================================
+
+void PhysXSoftBody::EnableDirectGpuApi(bool enable) {
+    if (!m_Backend->IsGpuEnabled()) {
+        if (enable) {
+            std::cerr << "PhysXSoftBody: Cannot enable direct GPU API - GPU not available!" << std::endl;
+        }
+        m_UseDirectGpuApi = false;
+        return;
+    }
+    
+    m_UseDirectGpuApi = enable;
+    
+    if (enable) {
+        std::cout << "PhysXSoftBody: Direct GPU API enabled for efficient data transfer" << std::endl;
+    } else {
+        std::cout << "PhysXSoftBody: Direct GPU API disabled, using standard CPU-GPU transfer" << std::endl;
+    }
+}
+
+PhysXSoftBody::GpuMetrics PhysXSoftBody::GetGpuMetrics() const {
+    GpuMetrics metrics;
+    metrics.gpuSimulationTimeMs = m_GpuSimulationTimeMs;
+    metrics.cpuGpuTransferTimeMs = m_CpuGpuTransferTimeMs;
+    metrics.gpuMemoryUsageBytes = m_GpuMemoryUsage;
+    metrics.usingDirectApi = m_UseDirectGpuApi;
+    return metrics;
 }
 
 #endif // USE_PHYSX

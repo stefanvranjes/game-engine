@@ -163,6 +163,26 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
     message(STATUS "Using PhysX physics backend")
     add_compile_definitions(USE_PHYSX)
     
+    # Try to enable CUDA language for GPU queries (optional)
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+        enable_language(CUDA)
+        find_package(CUDAToolkit)
+        if(CUDAToolkit_FOUND)
+            message(STATUS "CUDA Toolkit found - GPU memory queries will use actual CUDA API")
+            add_compile_definitions(HAS_CUDA_TOOLKIT)
+            
+            # Enable NVTX profiling markers (header-only, included with CUDA Toolkit)
+            add_compile_definitions(HAS_NVTX)
+            message(STATUS "NVTX profiling markers enabled")
+        else()
+            message(WARNING "CUDA Toolkit not found - GPU memory queries will use estimates")
+        endif()
+    else()
+        message(WARNING "CUDA compiler not found - GPU memory queries will use estimates")
+    endif()
+    
     # Fetch PhysX SDK
     FetchContent_Declare(
         physx
@@ -388,6 +408,9 @@ add_executable(GameEngine
     src/PhysXScenePartition.cpp
     src/ScenePartitionManager.cpp
     src/ParallelPhysicsSystem.cpp
+    src/AsyncCollisionDetector.cpp
+    src/GpuProfiler.cpp
+    src/GpuBatchManager.cpp
     ${IMGUI_SOURCES}
 )
 
@@ -462,6 +485,11 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         ${PHYSX_ROOT_DIR}/include
         ${PXSHARED_ROOT_DIR}/include
     )
+    
+    # Add CUDA includes if available
+    if(CUDAToolkit_FOUND)
+        target_include_directories(GameEngine PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+    endif()
 else()
     target_include_directories(GameEngine PUBLIC 
         include 
@@ -493,6 +521,11 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         PhysXExtensions
         PhysXCharacterKinematic
     )
+    
+    # Link CUDA runtime if available
+    if(CUDAToolkit_FOUND)
+        target_link_libraries(GameEngine PRIVATE CUDA::cudart)
+    endif()
 else()
     target_link_libraries(GameEngine PRIVATE 
         glfw 
