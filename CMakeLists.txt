@@ -373,6 +373,21 @@ add_executable(GameEngine
     # src/RenderPass.cpp
     # src/HybridRenderer.cpp
     # src/GPUCullingSystem.cpp
+    # Adaptive Quality System
+    src/PerformanceMonitor.cpp
+    src/AdaptiveQualityController.cpp
+    src/AdaptiveQualityIntegration.cpp
+    # Multi-Threading Support
+    src/ThreadPool.cpp
+    src/ParallelSoftBodyManager.cpp
+    src/Job.cpp
+    src/JobScheduler.cpp
+    src/WorkStealingThreadPool.cpp
+    src/ThreadAffinity.cpp
+    # Scene Partitioning
+    src/PhysXScenePartition.cpp
+    src/ScenePartitionManager.cpp
+    src/ParallelPhysicsSystem.cpp
     ${IMGUI_SOURCES}
 )
 

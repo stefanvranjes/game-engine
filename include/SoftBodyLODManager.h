@@ -57,12 +57,25 @@ public:
      */
     float GetDistanceToCamera() const { return m_DistanceToCamera; }
     
+    /**
+     * @brief Set LOD distance multiplier (from quality settings)
+     * Lower values = more aggressive LOD (better performance)
+     * Higher values = less aggressive LOD (better quality)
+     */
+    void SetLODDistanceMultiplier(float multiplier) { m_LODDistanceMultiplier = multiplier; }
+    
+    /**
+     * @brief Get LOD distance multiplier
+     */
+    float GetLODDistanceMultiplier() const { return m_LODDistanceMultiplier; }
+
 private:
     SoftBodyLODConfig m_Config;
     int m_CurrentLOD;
     int m_ForcedLOD;  // -1 for automatic
     float m_DistanceToCamera;
     int m_FrameCounter;
+    float m_LODDistanceMultiplier;  // Quality-based distance multiplier
     
     /**
      * @brief Calculate distance from soft body to camera

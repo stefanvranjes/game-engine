@@ -8,6 +8,7 @@ SoftBodyLODManager::SoftBodyLODManager()
     , m_ForcedLOD(-1)
     , m_DistanceToCamera(0.0f)
     , m_FrameCounter(0)
+    , m_LODDistanceMultiplier(1.0f)
 {
 }
 
@@ -23,7 +24,12 @@ bool SoftBodyLODManager::UpdateLOD(PhysXSoftBody* softBody, const Vec3& cameraPo
     m_FrameCounter++;
     
     // Calculate distance to camera
-    m_DistanceToCamera = CalculateDistance(softBody, cameraPosition);
+    float actualDistance = CalculateDistance(softBody, cameraPosition);
+    
+    // Apply quality-based distance multiplier
+    // Lower multiplier = more aggressive LOD (objects appear farther away)
+    // Higher multiplier = less aggressive LOD (objects appear closer)
+    m_DistanceToCamera = actualDistance / m_LODDistanceMultiplier;
     
     // Determine appropriate LOD
     int targetLOD = m_CurrentLOD;
