@@ -9,6 +9,9 @@
 #include "TearPreview.h"
 #include "VertexPicker.h"
 #include "VertexHighlighter.h"
+#include "Ray.h"
+#include "Mouse.h"
+#include "Camera.h"
 #include <imgui.h>
 #include <iostream>
 
@@ -899,9 +902,6 @@ bool SoftBodyEditor::IsVertexSelected(int vertexIndex) const {
            != m_SelectedVertices.end();
 }
 
-// Note: HandleMouseInput would be called from the main application's input system
-// This is a placeholder showing how it would work:
-/*
 void SoftBodyEditor::HandleMouseInput(const Mouse& mouse, const Camera& camera, 
                                       int screenWidth, int screenHeight) {
     if (!m_TearMode || !m_SelectedSoftBody) return;
@@ -932,4 +932,3 @@ void SoftBodyEditor::HandleMouseInput(const Mouse& mouse, const Camera& camera,
     // Render highlights
     m_VertexHighlighter->Render(m_SelectedSoftBody);
 }
-*/

@@ -1,4 +1,5 @@
 #include "Camera.h"
+#include "Ray.h"
 #include <GLFW/glfw3.h>
 #include <cmath>
 
@@ -151,4 +152,33 @@ void Camera::GetFrustumPlanes(Vec4 planes[6]) const {
             planes[i].w /= length;
         }
     }
+}
+
+Ray Camera::ScreenPointToRay(float screenX, float screenY, int screenWidth, int screenHeight) const {
+    // Normalize screen coordinates to NDC [-1, 1]
+    float ndcX = (2.0f * screenX) / screenWidth - 1.0f;
+    float ndcY = 1.0f - (2.0f * screenY) / screenHeight;  // Flip Y (screen Y is top-down)
+    
+    // Create clip space point (near plane)
+    Vec4 rayClip(ndcX, ndcY, -1.0f, 1.0f);
+    
+    // Unproject to view space
+    Mat4 projMatrix = GetProjectionMatrix();
+    Mat4 invProj = projMatrix.Inverse();
+    Vec4 rayEye = invProj * rayClip;
+    
+    // Convert to direction in view space
+    rayEye.z = -1.0f;
+    rayEye.w = 0.0f;
+    
+    // Unproject to world space
+    Mat4 viewMatrix = GetViewMatrix();
+    Mat4 invView = viewMatrix.Inverse();
+    Vec4 rayWorld = invView * rayEye;
+    
+    // Create direction vector
+    Vec3 direction(rayWorld.x, rayWorld.y, rayWorld.z);
+    direction.Normalize();
+    
+    return Ray(m_Position, direction);
 }

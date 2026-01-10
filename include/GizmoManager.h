@@ -4,6 +4,7 @@
 #include "TranslationGizmo.h"
 #include "RotationGizmo.h"
 #include "ScaleGizmo.h"
+#include "FractureLineGizmo.h"
 #include <memory> 
 
 class GameObject;
@@ -66,8 +67,10 @@ public:
         Object,
         Vertex,
         Edge,
-        Face // Triangle
+        Face, // Triangle
+        FractureLine
     };
+    
     
     void SetEditMode(EditMode mode) { m_EditMode = mode; }
     EditMode GetEditMode() const { return m_EditMode; }
@@ -77,6 +80,48 @@ public:
     const std::vector<int>& GetSelectedFaces() const { return m_SelectedFaces; }
     
     void ClearSubObjectSelection();
+    
+    // Fracture Line Gizmo
+    /**
+     * @brief Get fracture line gizmo
+     */
+    FractureLineGizmo* GetFractureLineGizmo();
+    
+    /**
+     * @brief Create new fracture line for selected soft body
+     */
+    void CreateNewFractureLine();
+    
+    /**
+     * @brief Delete selected fracture line
+     */
+    void DeleteSelectedFractureLine();
+    
+    // Pattern Library
+    /**
+     * @brief Get pattern library
+     */
+    class FractureLinePatternLibrary* GetPatternLibrary() { return m_PatternLibrary.get(); }
+    
+    /**
+     * @brief Save selected fracture line as preset
+     */
+    bool SaveFractureLinePreset(const std::string& name, const std::string& description = "");
+    
+    /**
+     * @brief Load fracture line preset
+     */
+    bool LoadFractureLinePreset(const std::string& name);
+    
+    /**
+     * @brief Save pattern library to file
+     */
+    bool SavePatternLibrary(const std::string& filename = "");
+    
+    /**
+     * @brief Load pattern library from file
+     */
+    bool LoadPatternLibrary(const std::string& filename = "");
 
 private:
     EditMode m_EditMode = EditMode::Object;
@@ -88,4 +133,10 @@ private:
     
     // Cached original positions for dragging
     std::vector<Vec3> m_OriginalVertexPositions;
+    
+    // Fracture line gizmo
+    std::unique_ptr<FractureLineGizmo> m_FractureLineGizmo;
+    
+    // Pattern library
+    std::unique_ptr<class FractureLinePatternLibrary> m_PatternLibrary;
 };

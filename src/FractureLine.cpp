@@ -72,3 +72,37 @@ void FractureLine::ApplyToResistanceMap(
     
     std::cout << "Fracture line applied: " << affectedCount << " tetrahedra weakened" << std::endl;
 }
+
+void FractureLine::RemovePoint(int index) {
+    if (index >= 0 && index < static_cast<int>(m_Points.size())) {
+        m_Points.erase(m_Points.begin() + index);
+    }
+}
+
+void FractureLine::InsertPoint(int index, const Vec3& point) {
+    if (index >= 0 && index <= static_cast<int>(m_Points.size())) {
+        m_Points.insert(m_Points.begin() + index, point);
+    }
+}
+
+void FractureLine::SetPoint(int index, const Vec3& point) {
+    if (index >= 0 && index < static_cast<int>(m_Points.size())) {
+        m_Points[index] = point;
+    }
+}
+
+Vec3 FractureLine::GetPoint(int index) const {
+    if (index >= 0 && index < static_cast<int>(m_Points.size())) {
+        return m_Points[index];
+    }
+    return Vec3(0, 0, 0);
+}
+
+int FractureLine::GetPointCount() const {
+    return static_cast<int>(m_Points.size());
+}
+
+void FractureLine::ClearPoints() {
+    m_Points.clear();
+}
+

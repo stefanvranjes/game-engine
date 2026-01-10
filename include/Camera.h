@@ -4,6 +4,7 @@
 #include "Math/Vec2.h"
 #include "Math/Mat4.h"
 
+class Ray;
 struct GLFWwindow;
 
 class Camera {
@@ -28,6 +29,16 @@ public:
     
     // Frustum planes: Left, Right, Bottom, Top, Near, Far
     void GetFrustumPlanes(Vec4 planes[6]) const;
+    
+    /**
+     * @brief Create ray from screen coordinates
+     * @param screenX Screen X coordinate (0 to screenWidth)
+     * @param screenY Screen Y coordinate (0 to screenHeight)
+     * @param screenWidth Screen width in pixels
+     * @param screenHeight Screen height in pixels
+     * @return Ray from camera through screen point
+     */
+    Ray ScreenPointToRay(float screenX, float screenY, int screenWidth, int screenHeight) const;
     
 private:
     Vec3 m_Position;

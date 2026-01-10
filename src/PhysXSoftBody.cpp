@@ -1289,15 +1289,92 @@ void PhysXSoftBody::AddFractureLine(const FractureLine& fractureLine) {
     
     // Apply fracture line to resistance map
     fractureLine.ApplyToResistanceMap(m_ResistanceMap, tetCenters.data(), m_TetrahedronCount);
+    
+    // Store fracture line
+    m_FractureLines.push_back(fractureLine);
 }
 
 void PhysXSoftBody::ClearFractureLines() {
+    // Clear stored fracture lines
+    m_FractureLines.clear();
+    
     // Reset resistance map to default
     if (m_ResistanceMap.IsInitialized()) {
         m_ResistanceMap.Reset();
         std::cout << "Fracture lines cleared" << std::endl;
     }
 }
+
+const std::vector<FractureLine>& PhysXSoftBody::GetFractureLines() const {
+    return m_FractureLines;
+}
+
+FractureLine* PhysXSoftBody::GetFractureLine(int index) {
+    if (index >= 0 && index < static_cast<int>(m_FractureLines.size())) {
+        return &m_FractureLines[index];
+    }
+    return nullptr;
+}
+
+void PhysXSoftBody::RemoveFractureLine(int index) {
+    if (index >= 0 && index < static_cast<int>(m_FractureLines.size())) {
+        m_FractureLines.erase(m_FractureLines.begin() + index);
+        
+        // Reapply all remaining fracture lines
+        if (m_ResistanceMap.IsInitialized()) {
+            m_ResistanceMap.Reset();
+            
+            // Calculate tetrahedron centers
+            std::vector<Vec3> tetCenters(m_TetrahedronCount);
+            for (int i = 0; i < m_TetrahedronCount; ++i) {
+                int v0 = m_TetrahedronIndices[i * 4 + 0];
+                int v1 = m_TetrahedronIndices[i * 4 + 1];
+                int v2 = m_TetrahedronIndices[i * 4 + 2];
+                int v3 = m_TetrahedronIndices[i * 4 + 3];
+                
+                tetCenters[i] = (m_RestPositions[v0] + m_RestPositions[v1] + 
+                                m_RestPositions[v2] + m_RestPositions[v3]) * 0.25f;
+            }
+            
+            // Reapply all fracture lines
+            for (const auto& line : m_FractureLines) {
+                line.ApplyToResistanceMap(m_ResistanceMap, tetCenters.data(), m_TetrahedronCount);
+            }
+        }
+    }
+}
+
+void PhysXSoftBody::UpdateFractureLine(int index) {
+    if (index < 0 || index >= static_cast<int>(m_FractureLines.size())) {
+        return;
+    }
+    
+    if (!m_ResistanceMap.IsInitialized()) {
+        std::cerr << "Resistance map not initialized" << std::endl;
+        return;
+    }
+    
+    // Reset resistance map and reapply all fracture lines
+    m_ResistanceMap.Reset();
+    
+    // Calculate tetrahedron centers
+    std::vector<Vec3> tetCenters(m_TetrahedronCount);
+    for (int i = 0; i < m_TetrahedronCount; ++i) {
+        int v0 = m_TetrahedronIndices[i * 4 + 0];
+        int v1 = m_TetrahedronIndices[i * 4 + 1];
+        int v2 = m_TetrahedronIndices[i * 4 + 2];
+        int v3 = m_TetrahedronIndices[i * 4 + 3];
+        
+        tetCenters[i] = (m_RestPositions[v0] + m_RestPositions[v1] + 
+                        m_RestPositions[v2] + m_RestPositions[v3]) * 0.25f;
+    }
+    
+    // Reapply all fracture lines
+    for (const auto& line : m_FractureLines) {
+        line.ApplyToResistanceMap(m_ResistanceMap, tetCenters.data(), m_TetrahedronCount);
+    }
+}
+
 
 // Anisotropic Material Implementation
 

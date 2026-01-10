@@ -223,6 +223,27 @@ public:
      */
     void ClearFractureLines();
     
+    /**
+     * @brief Get all fracture lines
+     */
+    const std::vector<FractureLine>& GetFractureLines() const;
+    
+    /**
+     * @brief Get mutable fracture line by index
+     */
+    FractureLine* GetFractureLine(int index);
+    
+    /**
+     * @brief Remove fracture line by index
+     */
+    void RemoveFractureLine(int index);
+    
+    /**
+     * @brief Update fracture line (reapplies to resistance map)
+     */
+    void UpdateFractureLine(int index);
+    
+    
     // Cloth Collision
     /**
      * @brief Get collision spheres representing soft body surface for cloth collision
@@ -484,6 +505,9 @@ private:
     // Callbacks
     std::function<void(int, float)> m_TearCallback;
     std::function<void(std::shared_ptr<PhysXSoftBody>)> m_PieceCreatedCallback;
+    
+    // Fracture lines
+    std::vector<FractureLine> m_FractureLines;
     
     // Cloth collision
     bool m_ClothCollisionEnabled;

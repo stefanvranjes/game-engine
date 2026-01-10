@@ -1,5 +1,7 @@
 #include "GizmoManager.h"
 #include "GameObject.h"
+#include "PhysXSoftBody.h"
+#include "FractureLinePatternLibrary.h"
 #include "Camera.h"
 #include <GLFW/glfw3.h>
 
@@ -7,6 +9,14 @@ GizmoManager::GizmoManager() {
     m_TranslationGizmo = std::make_unique<TranslationGizmo>();
     m_RotationGizmo = std::make_unique<RotationGizmo>();
     m_ScaleGizmo = std::make_unique<ScaleGizmo>();
+    m_FractureLineGizmo = std::make_unique<FractureLineGizmo>();
+    
+    // Initialize pattern library
+    m_PatternLibrary = std::make_unique<FractureLinePatternLibrary>();
+    m_FractureLineGizmo->SetPatternLibrary(m_PatternLibrary.get());
+    
+    // Try to load existing library
+    LoadPatternLibrary();
 }
 
 void GizmoManager::SetSelectedObject(std::shared_ptr<GameObject> object) {
@@ -16,10 +26,20 @@ void GizmoManager::SetSelectedObject(std::shared_ptr<GameObject> object) {
          m_TranslationGizmo->SetTransform(&m_SelectedObject->GetTransform());
          m_RotationGizmo->SetTransform(&m_SelectedObject->GetTransform());
          m_ScaleGizmo->SetTransform(&m_SelectedObject->GetTransform());
+         
+         // Bind soft body to fracture line gizmo
+         if (m_FractureLineGizmo) {
+             auto softBody = m_SelectedObject->GetSoftBody();
+             m_FractureLineGizmo->SetSoftBody(softBody);
+         }
     } else {
          m_TranslationGizmo->SetTransform(nullptr);
          m_RotationGizmo->SetTransform(nullptr);
          m_ScaleGizmo->SetTransform(nullptr);
+         
+         if (m_FractureLineGizmo) {
+             m_FractureLineGizmo->SetSoftBody(nullptr);
+         }
     }
 }
 
@@ -52,6 +72,12 @@ void GizmoManager::Update(float deltaTime) {
 
 void GizmoManager::Render(Shader* shader, const Camera& camera) {
     if (!m_SelectedObject) return;
+    
+    // Render fracture line gizmo in FractureLine edit mode
+    if (m_EditMode == EditMode::FractureLine && m_FractureLineGizmo) {
+        m_FractureLineGizmo->Draw(shader, camera);
+        return;
+    }
     
     Gizmo* active = GetActiveGizmo();
     if (active) {
@@ -141,3 +167,75 @@ void GizmoManager::ProcessInput(GLFWwindow* window, float deltaTime, const Camer
         active->OnMouseMove(ray);
     }
 }
+
+void GizmoManager::ClearSubObjectSelection() {
+    m_SelectedVertices.clear();
+    m_SelectedFaces.clear();
+}
+
+FractureLineGizmo* GizmoManager::GetFractureLineGizmo() {
+    return m_FractureLineGizmo.get();
+}
+
+void GizmoManager::CreateNewFractureLine() {
+    if (!m_SelectedObject || !m_FractureLineGizmo) return;
+    
+    auto softBody = m_SelectedObject->GetSoftBody();
+    if (softBody) {
+        m_FractureLineGizmo->CreateNewFractureLine();
+    }
+}
+
+void GizmoManager::DeleteSelectedFractureLine() {
+    if (m_FractureLineGizmo) {
+        m_FractureLineGizmo->DeleteSelectedFractureLine();
+    }
+}
+
+// Pattern Library Methods
+
+bool GizmoManager::SaveFractureLinePreset(const std::string& name, const std::string& description) {
+    if (!m_FractureLineGizmo) {
+        return false;
+    }
+    
+    bool result = m_FractureLineGizmo->SaveAsPreset(name, description);
+    
+    // Auto-save library after adding preset
+    if (result) {
+        SavePatternLibrary();
+    }
+    
+    return result;
+}
+
+bool GizmoManager::LoadFractureLinePreset(const std::string& name) {
+    if (!m_FractureLineGizmo) {
+        return false;
+    }
+    
+    return m_FractureLineGizmo->LoadPreset(name);
+}
+
+bool GizmoManager::SavePatternLibrary(const std::string& filename) {
+    if (!m_PatternLibrary) {
+        return false;
+    }
+    
+    std::string path = filename.empty() ? 
+        FractureLinePatternLibrary::GetDefaultLibraryPath() : filename;
+    
+    return m_PatternLibrary->SaveToFile(path);
+}
+
+bool GizmoManager::LoadPatternLibrary(const std::string& filename) {
+    if (!m_PatternLibrary) {
+        return false;
+    }
+    
+    std::string path = filename.empty() ? 
+        FractureLinePatternLibrary::GetDefaultLibraryPath() : filename;
+    
+    return m_PatternLibrary->LoadFromFile(path);
+}
+

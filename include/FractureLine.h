@@ -52,6 +52,36 @@ public:
         const Vec3* tetCenters,
         int tetCount
     ) const;
+    
+    /**
+     * @brief Remove point at index
+     */
+    void RemovePoint(int index);
+    
+    /**
+     * @brief Insert point at index
+     */
+    void InsertPoint(int index, const Vec3& point);
+    
+    /**
+     * @brief Update point position
+     */
+    void SetPoint(int index, const Vec3& point);
+    
+    /**
+     * @brief Get point at index
+     */
+    Vec3 GetPoint(int index) const;
+    
+    /**
+     * @brief Get number of points
+     */
+    int GetPointCount() const;
+    
+    /**
+     * @brief Clear all points
+     */
+    void ClearPoints();
 
 private:
     std::vector<Vec3> m_Points;

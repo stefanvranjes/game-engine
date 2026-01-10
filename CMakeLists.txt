@@ -421,6 +421,11 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/TearPreview.cpp
         src/VertexPicker.cpp
         src/VertexHighlighter.cpp
+        src/FractureLine.cpp
+        src/FractureLineGizmo.cpp
+        src/FractureLineToPattern.cpp
+        src/TearPatternGizmo.cpp
+        src/FractureLinePatternLibrary.cpp
     )
 else()
     # Add Bullet backend wrapper
