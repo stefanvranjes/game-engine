@@ -29,7 +29,11 @@ public:
         NODE_REGISTER = 7,     // Worker → Master: Register as worker
         NODE_UNREGISTER = 8,   // Worker → Master: Unregister worker
         ACK = 9,               // Acknowledgment
-        ERROR = 10             // Error message
+        ERROR = 10,            // Error message
+        VOTE_REQUEST = 11,     // Candidate → All: Request vote for election
+        VOTE_RESPONSE = 12,    // All → Candidate: Vote response
+        LEADER_ANNOUNCEMENT = 13, // New Leader → All: Announce leadership
+        STATE_REQUEST = 14     // New Leader → Workers: Request state for reconstruction
     };
     
     /**

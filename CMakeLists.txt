@@ -415,8 +415,25 @@ add_executable(GameEngine
     src/NetworkManagerASIO.cpp
     src/NetworkManagerReliability.cpp
     src/NetworkManagerBandwidth.cpp
+    src/DistributedBatchManager.cpp
+    src/DistributedBatchManagerFaultTolerance.cpp
+    src/DistributedBatchManagerFailover.cpp
+    src/DistributedBatchManagerSync.cpp
+    src/DistributedBatchManagerResults.cpp
+    src/DistributedBatchManagerRegistration.cpp
     src/StateSerializer.cpp
     src/ProtobufSerializer.cpp
+)
+
+# Add RDMA sources if available
+if(HAS_RDMA)
+    list(APPEND SOURCES
+        src/RdmaManager.cpp
+        src/DistributedBatchManagerRdma.cpp
+    )
+endif()
+
+set(SOURCES ${SOURCES}
     ${IMGUI_SOURCES}
     ${ADDITIONAL_SOURCES}  # Includes generated protobuf sources
 )
