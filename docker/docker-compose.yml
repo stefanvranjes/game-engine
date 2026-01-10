@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  master:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.master
+    ports:
+      - "8080:8080"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - physics-net
+
+  worker1:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - MASTER_ADDRESS=master
+      - NVIDIA_VISIBLE_DEVICES=all
+    depends_on:
+      - master
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - physics-net
+
+  worker2:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - MASTER_ADDRESS=master
+      - NVIDIA_VISIBLE_DEVICES=all
+    depends_on:
+      - master
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - physics-net
+
+networks:
+  physics-net:
+    driver: bridge

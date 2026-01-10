@@ -421,6 +421,8 @@ add_executable(GameEngine
     src/DistributedBatchManagerSync.cpp
     src/DistributedBatchManagerResults.cpp
     src/DistributedBatchManagerRegistration.cpp
+    src/DistributedBatchManagerHierarchical.cpp
+    src/CloudProvider.cpp
     src/StateSerializer.cpp
     src/ProtobufSerializer.cpp
 )

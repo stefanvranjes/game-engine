@@ -117,6 +117,35 @@ public:
     bool InitializeAsWorker(const std::string& masterAddress, uint16_t masterPort);
     
     /**
+     * @brief Initialize as global master (hierarchical)
+     * @param port Port to listen on
+     * @return True if successful
+     */
+    bool InitializeAsGlobalMaster(uint16_t port);
+    
+    /**
+     * @brief Initialize as regional master (hierarchical)
+     * @param globalMasterAddress Global master address
+     * @param globalMasterPort Global master port
+     * @param localPort Port to listen on for workers
+     * @param region Region identifier (e.g., "us-west", "europe")
+     * @return True if successful
+     */
+    bool InitializeAsRegionalMaster(const std::string& globalMasterAddress,
+                                     uint16_t globalMasterPort,
+                                     uint16_t localPort,
+                                     const std::string& region);
+    
+    /**
+     * @brief Initialize as worker in specific region (hierarchical)
+     * @param regionalMasterAddress Regional master address
+     * @param regionalMasterPort Regional master port
+     * @return True if successful
+     */
+    bool InitializeAsWorkerInRegion(const std::string& regionalMasterAddress,
+                                     uint16_t regionalMasterPort);
+    
+    /**
      * @brief Initialize as standalone (no distribution)
      * @return True if successful
      */
@@ -272,6 +301,41 @@ public:
      * @brief Print RDMA statistics
      */
     void PrintRdmaStatistics() const;
+    
+    // Hierarchical Distribution
+    
+    /**
+     * @brief Get hierarchy configuration
+     * @return Hierarchy config
+     */
+    const HierarchyConfig& GetHierarchyConfig() const;
+    
+    /**
+     * @brief Register regional master
+     * @param nodeId Regional master node ID
+     * @param region Region identifier
+     */
+    void RegisterRegionalMaster(int nodeId, const std::string& region);
+    
+    /**
+     * @brief Select region for batch assignment
+     * @param softBodies Soft bodies in batch
+     * @return Region identifier
+     */
+    std::string SelectRegionForBatch(const std::vector<PhysXSoftBody*>& softBodies);
+    
+    /**
+     * @brief Assign batch to specific region
+     * @param batchId Batch ID
+     * @param region Region identifier
+     */
+    void AssignBatchToRegion(uint32_t batchId, const std::string& region);
+    
+    /**
+     * @brief Broadcast message to all regions
+     * @param msg Message to broadcast
+     */
+    void BroadcastToAllRegions(const NetworkManager::Message& msg);
 
 private:
     struct Impl;

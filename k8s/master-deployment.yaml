@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: physics-master
+  labels:
+    app: physics
+    role: master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: physics
+      role: master
+  template:
+    metadata:
+      labels:
+        app: physics
+        role: master
+    spec:
+      containers:
+      - name: master
+        image: your-registry/physics-master:latest
+        ports:
+        - containerPort: 8080
+          name: master-port
+        resources:
+          limits:
+            nvidia.com/gpu: 1
+          requests:
+            nvidia.com/gpu: 1
+        env:
+        - name: NODE_ROLE
+          value: "master"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: physics-master
+spec:
+  selector:
+    app: physics
+    role: master
+  ports:
+  - port: 8080
+    targetPort: 8080
+    name: master-port
+  type: LoadBalancer
