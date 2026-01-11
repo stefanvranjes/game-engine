@@ -40,20 +40,47 @@ TetrahedralMeshSplitter::SplitResult TetrahedralMeshSplitter::SplitAlongTear(
     std::cout << "Partitioned mesh: " << partition1.size() << " tets in piece 1, "
               << partition2.size() << " tets in piece 2" << std::endl;
 
+    // Collect tear vertices
+    std::unordered_set<int> tearVertices;
+    for (const auto& tear : tears) {
+        tearVertices.insert(tear.edgeVertices[0]);
+        tearVertices.insert(tear.edgeVertices[1]);
+    }
+    
+    // Determine which partition owns each tear vertex
+    std::unordered_map<int, int> vertexOwnership;
+    DetermineVertexOwnership(partition1, partition2, tetrahedra, tearVertices, vertexOwnership);
+    
     // Duplicate vertices along tear line
     std::unordered_map<int, int> vertexDuplication;
     DuplicateTearVertices(vertices, vertexCount, tears, partition1, partition2, 
                          tetrahedra, vertexDuplication);
 
-    // Extract meshes for each partition
+    // Extract meshes for each partition (partition 0 = piece 1, partition 1 = piece 2)
     ExtractPartitionMesh(vertices, vertexCount, tetrahedra, partition1, vertexDuplication,
-                        result.vertices1, result.tetrahedra1, result.vertexMapping1);
+                        vertexOwnership, 0, result.vertices1, result.tetrahedra1, result.vertexMapping1);
     
     ExtractPartitionMesh(vertices, vertexCount, tetrahedra, partition2, vertexDuplication,
-                        result.vertices2, result.tetrahedra2, result.vertexMapping2);
+                        vertexOwnership, 1, result.vertices2, result.tetrahedra2, result.vertexMapping2);
 
     result.piece1VertexCount = static_cast<int>(result.vertices1.size());
     result.piece2VertexCount = static_cast<int>(result.vertices2.size());
+    
+    // Calculate tear boundary information
+    result.tearEnergy = 0.0f;
+    for (const auto& tear : tears) {
+        // Store tear edge positions
+        Vec3 v0 = vertices[tear.edgeVertices[0]];
+        Vec3 v1 = vertices[tear.edgeVertices[1]];
+        Vec3 midpoint = (v0 + v1) * 0.5f;
+        result.tearBoundaryPositions.push_back(midpoint);
+        result.tearBoundaryNormals.push_back(tear.tearNormal);
+        
+        // Accumulate tear energy (proportional to stress and edge length)
+        float edgeLength = (v1 - v0).Length();
+        result.tearEnergy += tear.stress * edgeLength;
+    }
+    
     result.splitSuccessful = true;
 
     return result;
@@ -213,6 +240,8 @@ void TetrahedralMeshSplitter::ExtractPartitionMesh(
     const int* tetrahedra,
     const std::vector<int>& partition,
     const std::unordered_map<int, int>& vertexDuplication,
+    const std::unordered_map<int, int>& vertexOwnership,
+    int partitionId,
     std::vector<Vec3>& outVertices,
     std::vector<int>& outTetrahedra,
     std::vector<int>& outVertexMapping)
@@ -229,23 +258,36 @@ void TetrahedralMeshSplitter::ExtractPartitionMesh(
         }
     }
 
-    // Create vertex mapping
+    // Create vertex mapping for non-duplicated vertices
     for (int oldIdx : usedVertices) {
-        vertexRemap[oldIdx] = newVertexIndex++;
-        outVertices.push_back(vertices[oldIdx]);
-        outVertexMapping.push_back(oldIdx);
-    }
-
-    // Handle duplicated vertices (for partition 2)
-    for (const auto& pair : vertexDuplication) {
-        int originalIdx = pair.first;
-        int duplicateIdx = pair.second;
-        
-        // Check if this partition uses the duplicated vertex
-        if (usedVertices.count(originalIdx) > 0) {
-            // For partition 2, remap to duplicate
-            // This is a simplified approach - in production, you'd check which partition
-            // actually needs the duplicate based on connectivity
+        // Check if this is a duplicated vertex
+        auto dupIt = vertexDuplication.find(oldIdx);
+        if (dupIt != vertexDuplication.end()) {
+            // This is a tear vertex - check ownership
+            auto ownIt = vertexOwnership.find(oldIdx);
+            if (ownIt != vertexOwnership.end()) {
+                if (ownIt->second == partitionId) {
+                    // This partition owns the original vertex
+                    vertexRemap[oldIdx] = newVertexIndex++;
+                    outVertices.push_back(vertices[oldIdx]);
+                    outVertexMapping.push_back(oldIdx);
+                } else {
+                    // This partition gets the duplicate
+                    vertexRemap[oldIdx] = newVertexIndex++;
+                    outVertices.push_back(vertices[oldIdx]);  // Same position initially
+                    outVertexMapping.push_back(oldIdx);  // Track original for velocity transfer
+                }
+            } else {
+                // No ownership info, just use original
+                vertexRemap[oldIdx] = newVertexIndex++;
+                outVertices.push_back(vertices[oldIdx]);
+                outVertexMapping.push_back(oldIdx);
+            }
+        } else {
+            // Regular vertex, not duplicated
+            vertexRemap[oldIdx] = newVertexIndex++;
+            outVertices.push_back(vertices[oldIdx]);
+            outVertexMapping.push_back(oldIdx);
         }
     }
 
@@ -288,3 +330,83 @@ bool TetrahedralMeshSplitter::TetrahedraShareEdge(
     
     return false;
 }
+
+TetrahedralMeshSplitter::SplitResult TetrahedralMeshSplitter::SplitWithStateTransfer(
+    const Vec3* vertices,
+    int vertexCount,
+    const int* tetrahedra,
+    int tetrahedronCount,
+    const std::vector<SoftBodyTearSystem::TearInfo>& tears,
+    const Vec3* velocities,
+    std::vector<Vec3>& outVelocities1,
+    std::vector<Vec3>& outVelocities2)
+{
+    // First perform the standard split
+    SplitResult result = SplitAlongTear(vertices, vertexCount, tetrahedra, tetrahedronCount, tears);
+    
+    if (!result.splitSuccessful || !velocities) {
+        return result;
+    }
+    
+    // Transfer velocities for piece 1
+    outVelocities1.resize(result.vertices1.size());
+    for (size_t i = 0; i < result.vertexMapping1.size(); ++i) {
+        int originalIdx = result.vertexMapping1[i];
+        if (originalIdx >= 0 && originalIdx < vertexCount) {
+            outVelocities1[i] = velocities[originalIdx];
+        }
+    }
+    
+    // Transfer velocities for piece 2
+    outVelocities2.resize(result.vertices2.size());
+    for (size_t i = 0; i < result.vertexMapping2.size(); ++i) {
+        int originalIdx = result.vertexMapping2[i];
+        if (originalIdx >= 0 && originalIdx < vertexCount) {
+            outVelocities2[i] = velocities[originalIdx];
+        }
+    }
+    
+    return result;
+}
+
+void TetrahedralMeshSplitter::DetermineVertexOwnership(
+    const std::vector<int>& partition1,
+    const std::vector<int>& partition2,
+    const int* tetrahedra,
+    const std::unordered_set<int>& tearVertices,
+    std::unordered_map<int, int>& outOwnership)
+{
+    outOwnership.clear();
+    
+    // For each tear vertex, count how many tets in each partition use it
+    for (int vertexId : tearVertices) {
+        int count1 = 0;
+        int count2 = 0;
+        
+        // Count usage in partition 1
+        for (int tetIdx : partition1) {
+            const int* tet = &tetrahedra[tetIdx * 4];
+            for (int i = 0; i < 4; ++i) {
+                if (tet[i] == vertexId) {
+                    count1++;
+                    break;
+                }
+            }
+        }
+        
+        // Count usage in partition 2
+        for (int tetIdx : partition2) {
+            const int* tet = &tetrahedra[tetIdx * 4];
+            for (int i = 0; i < 4; ++i) {
+                if (tet[i] == vertexId) {
+                    count2++;
+                    break;
+                }
+            }
+        }
+        
+        // Assign to partition with more usage
+        outOwnership[vertexId] = (count1 >= count2) ? 0 : 1;
+    }
+}
+

@@ -10,6 +10,8 @@
 #include <nlohmann/json.hpp>
 
 class SoftBodyTearSystem;
+class PartialTearSystem;
+class CrackRenderer;
 class SoftBodyPieceManager;
 class SoftBodyTearPattern;
 class TearResistanceMap;
@@ -244,6 +246,73 @@ public:
      * @brief Update fracture line (reapplies to resistance map)
      */
     void UpdateFractureLine(int index);
+    
+    // Partial Tearing (Cracks)
+    /**
+     * @brief Enable/disable partial tearing (cracks without full separation)
+     */
+    void SetPartialTearingEnabled(bool enabled);
+    
+    /**
+     * @brief Check if partial tearing is enabled
+     */
+    bool IsPartialTearingEnabled() const;
+    
+    /**
+     * @brief Set crack threshold (stress level to initiate crack)
+     */
+    void SetCrackThreshold(float threshold);
+    
+    /**
+     * @brief Get crack threshold
+     */
+    float GetCrackThreshold() const;
+    
+    /**
+     * @brief Set crack progression rate (damage increase per second under stress)
+     */
+    void SetCrackProgressionRate(float rate);
+    
+    /**
+     * @brief Get crack progression rate
+     */
+    float GetCrackProgressionRate() const;
+    
+    /**
+     * @brief Get all active cracks for visualization
+     */
+    const std::vector<struct PartialTearSystem::Crack>& GetCracks() const;
+    
+    /**
+     * @brief Get number of active cracks
+     */
+    int GetCrackCount() const;
+    
+    /**
+     * @brief Enable/disable crack healing
+     */
+    void SetCrackHealingEnabled(bool enabled);
+    
+    /**
+     * @brief Set crack healing rate
+     */
+    void SetCrackHealingRate(float rate);
+    
+    // Crack Visualization
+    /**
+     * @brief Enable/disable crack visualization
+     */
+    void SetCrackVisualizationEnabled(bool enabled);
+    
+    /**
+     * @brief Check if crack visualization is enabled
+     */
+    bool IsCrackVisualizationEnabled() const;
+    
+    /**
+     * @brief Set crack render settings
+     */
+    void SetCrackRenderSettings(const struct CrackRenderer::RenderSettings& settings);
     
     
     // Cloth Collision
@@ -635,6 +704,17 @@ private:
     
     // Fracture lines
     std::vector<FractureLine> m_FractureLines;
+    
+    // Partial tearing (cracks)
+    std::unique_ptr<PartialTearSystem> m_PartialTearSystem;
+    bool m_PartialTearingEnabled;
+    float m_CrackThreshold;
+    float m_CrackProgressionRate;
+    float m_SimulationTime;  // Track simulation time for crack system
+    
+    // Crack visualization
+    std::unique_ptr<CrackRenderer> m_CrackRenderer;
+    bool m_CrackVisualizationEnabled;
     
     // Cloth collision
     bool m_ClothCollisionEnabled;

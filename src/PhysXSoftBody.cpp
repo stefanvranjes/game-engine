@@ -5,6 +5,8 @@
 #include "PhysXBackend.h"
 #include "PhysXRigidBody.h"
 #include "SoftBodyTearSystem.h"
+#include "PartialTearSystem.h"
+#include "CrackRenderer.h"
 #include "TetrahedralMeshSplitter.h"
 #include "TearResistanceMap.h"
 #include "FractureLine.h"
@@ -188,8 +190,15 @@ PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     , m_CpuGpuTransferTimeMs(0.0f)
     , m_IsPlayingBack(false)
     , m_RecordingStartTime(0.0f)
+    , m_PartialTearingEnabled(false)
+    , m_CrackThreshold(1.2f)
+    , m_CrackProgressionRate(0.1f)
+    , m_SimulationTime(0.0f)
+    , m_CrackVisualizationEnabled(false)
 {
     m_TearSystem = std::make_unique<SoftBodyTearSystem>();
+    m_PartialTearSystem = std::make_unique<PartialTearSystem>();
+    m_CrackRenderer = std::make_unique<CrackRenderer>();
     m_LODManager = std::make_unique<SoftBodyLODManager>();
     m_Recorder = std::make_unique<SoftBodyDeformationRecorder>();
 }
@@ -419,6 +428,9 @@ void PhysXSoftBody::Update(float deltaTime) {
     if (!m_SoftBody || !m_Enabled) {
         return;
     }
+    
+    // Track simulation time for crack system
+    m_SimulationTime += deltaTime;
     
     // Handle playback mode
     if (m_IsPlayingBack && m_Recorder) {
@@ -673,6 +685,23 @@ void PhysXSoftBody::GetVertexVelocities(Vec3* velocities) const {
         }
     }
 }
+
+void PhysXSoftBody::SetVertexVelocities(const Vec3* velocities, int count) {
+    if (!m_SoftBody || !velocities || count != m_VertexCount) {
+        return;
+    }
+    
+    PxSoftBodyData* data = m_SoftBody->getSoftBodyData();
+    if (data) {
+        PxVec4* vertexVelocities = data->getVelocity();
+        for (int i = 0; i < count; ++i) {
+            vertexVelocities[i].x = velocities[i].x;
+            vertexVelocities[i].y = velocities[i].y;
+            vertexVelocities[i].z = velocities[i].z;
+        }
+    }
+}
+
 
 void PhysXSoftBody::SetVolumeStiffness(float stiffness) {
     m_VolumeStiffness = stiffness;
@@ -1096,7 +1125,46 @@ void PhysXSoftBody::DetectAndProcessTears() {
     std::vector<Vec3> currentPositions(m_VertexCount);
     GetVertexPositions(currentPositions.data());
     
-    // Detect tears
+    // Get stress data
+    const auto& stressData = m_TearSystem->GetStressData();
+    
+    // 1. Handle partial tearing (cracks)
+    if (m_PartialTearingEnabled && m_PartialTearSystem) {
+        // Detect new cracks
+        m_PartialTearSystem->DetectCracks(
+            currentPositions.data(),
+            m_RestPositions.data(),
+            m_TetrahedronIndices.data(),
+            m_TetrahedronCount,
+            stressData.data(),
+            m_CrackThreshold,
+            m_TearThreshold,
+            m_SimulationTime
+        );
+        
+        // Progress existing cracks
+        m_PartialTearSystem->ProgressCracks(
+            0.016f,  // Approximate deltaTime (will be improved)
+            stressData.data(),
+            m_CrackProgressionRate,
+            m_SimulationTime
+        );
+        
+        // Check for fully damaged cracks that should convert to tears
+        auto fullyDamagedTets = m_PartialTearSystem->GetFullyDamagedTets();
+        if (!fullyDamagedTets.empty()) {
+            std::cout << "Converting " << fullyDamagedTets.size() << " fully damaged cracks to tears" << std::endl;
+            
+            // Remove cracks before tearing
+            m_PartialTearSystem->RemoveCracks(fullyDamagedTets);
+            
+            // Split along fully damaged cracks
+            SplitSoftBody(fullyDamagedTets);
+            return;  // Don't process regular tears this frame
+        }
+    }
+    
+    // 2. Detect regular tears (stress > tear threshold)
     std::vector<SoftBodyTearSystem::TearInfo> tears;
     m_TearSystem->DetectStress(
         currentPositions.data(),
@@ -1132,31 +1200,206 @@ void PhysXSoftBody::DetectAndProcessTears() {
 void PhysXSoftBody::SplitSoftBody(const std::vector<int>& tornTetrahedra) {
     std::cout << "Splitting soft body along " << tornTetrahedra.size() << " torn tetrahedra" << std::endl;
     
-    // For now, just log the tear - full implementation would:
-    // 1. Use TetrahedralMeshSplitter to split the mesh
-    // 2. Create new PhysXSoftBody for the torn piece
-    // 3. Update current soft body with remaining mesh
-    // 4. Call piece created callback
+    if (tornTetrahedra.empty() || m_RestPositions.empty()) {
+        std::cerr << "Cannot split: no tears or mesh not initialized" << std::endl;
+        return;
+    }
     
-    // This is a complex operation that requires:
-    // - Mesh topology analysis
-    // - Vertex duplication
-    // - PhysX actor recreation
-    // - State transfer
+    // Get current positions and velocities
+    std::vector<Vec3> currentPositions(m_VertexCount);
+    std::vector<Vec3> currentVelocities(m_VertexCount);
+    GetVertexPositions(currentPositions.data());
+    GetVertexVelocities(currentVelocities.data());
     
-    std::cerr << "Full mesh splitting not yet implemented - tears detected but not applied" << std::endl;
+    // Build tear info from torn tetrahedra
+    std::vector<SoftBodyTearSystem::TearInfo> tears;
+    for (int tetIdx : tornTetrahedra) {
+        if (tetIdx >= 0 && tetIdx < m_TetrahedronCount) {
+            const auto& stressData = m_TearSystem->GetStressData();
+            if (tetIdx < static_cast<int>(stressData.size())) {
+                SoftBodyTearSystem::TearInfo tear;
+                tear.tetrahedronIndex = tetIdx;
+                tear.stress = 0.0f;
+                
+                // Find the most stressed edge
+                int maxEdgeIdx = 0;
+                for (int i = 1; i < 6; ++i) {
+                    if (stressData[tetIdx].edgeStress[i] > stressData[tetIdx].edgeStress[maxEdgeIdx]) {
+                        maxEdgeIdx = i;
+                    }
+                }
+                
+                // Get edge vertices (simplified - using first edge)
+                const int* tet = &m_TetrahedronIndices[tetIdx * 4];
+                tear.edgeVertices[0] = tet[0];
+                tear.edgeVertices[1] = tet[1];
+                tear.stress = stressData[tetIdx].edgeStress[maxEdgeIdx];
+                tear.tearPosition = (currentPositions[tear.edgeVertices[0]] + 
+                                    currentPositions[tear.edgeVertices[1]]) * 0.5f;
+                tear.tearNormal = Vec3(0, 1, 0);  // Placeholder
+                tear.timestamp = 0.0f;
+                
+                tears.push_back(tear);
+            }
+        }
+    }
+    
+    if (tears.empty()) {
+        std::cerr << "No valid tears to process" << std::endl;
+        return;
+    }
+    
+    // Perform mesh split with state transfer
+    std::vector<Vec3> velocities1, velocities2;
+    auto result = TetrahedralMeshSplitter::SplitWithStateTransfer(
+        currentPositions.data(),
+        m_VertexCount,
+        m_TetrahedronIndices.data(),
+        m_TetrahedronCount,
+        tears,
+        currentVelocities.data(),
+        velocities1,
+        velocities2
+    );
+    
+    if (!result.splitSuccessful) {
+        std::cerr << "Mesh split failed" << std::endl;
+        return;
+    }
+    
+    std::cout << "Split successful: piece1=" << result.piece1VertexCount 
+             << " verts, piece2=" << result.piece2VertexCount << " verts" << std::endl;
+    
+    // Check if piece 2 is large enough to create
+    float minPieceSizeRatio = 0.05f;  // At least 5% of original
+    float piece2Ratio = static_cast<float>(result.piece2VertexCount) / m_VertexCount;
+    
+    if (piece2Ratio < minPieceSizeRatio) {
+        std::cout << "Piece 2 too small (" << (piece2Ratio * 100.0f) << "%), not creating" << std::endl;
+        return;
+    }
+    
+    // Create new soft body for piece 2
+    auto newPiece = std::make_shared<PhysXSoftBody>(m_Backend);
+    
+    // Initialize piece 2 with split mesh
+    SoftBodyDesc desc2;
+    desc2.tetrahedronVertices = result.vertices2.data();
+    desc2.tetrahedronVertexCount = result.piece2VertexCount;
+    desc2.tetrahedronIndices = result.tetrahedra2.data();
+    desc2.tetrahedronCount = static_cast<int>(result.tetrahedra2.size() / 4);
+    
+    // Copy material properties from original
+    desc2.volumeStiffness = m_VolumeStiffness;
+    desc2.shapeStiffness = m_ShapeStiffness;
+    desc2.deformationStiffness = m_DeformationStiffness;
+    desc2.totalMass = m_TotalMass * piece2Ratio;
+    desc2.useDensity = false;
+    desc2.enableSceneCollision = m_SceneCollisionEnabled;
+    desc2.gravity = Vec3(0, -9.81f, 0);
+    
+    if (newPiece->Initialize(desc2)) {
+        // Set velocities for piece 2
+        newPiece->SetVertexVelocities(velocities2.data(), static_cast<int>(velocities2.size()));
+        
+        // Notify callback
+        if (m_PieceCreatedCallback) {
+            m_PieceCreatedCallback(newPiece);
+        }
+        
+        std::cout << "Created new piece with " << desc2.tetrahedronCount << " tetrahedra" << std::endl;
+    } else {
+        std::cerr << "Failed to initialize new piece" << std::endl;
+    }
+    
+    // Update current soft body with piece 1
+    RecreateWithMesh(result.vertices1, result.tetrahedra1, velocities1);
 }
 
 void PhysXSoftBody::RecreateWithMesh(const std::vector<Vec3>& vertices, const std::vector<int>& tetrahedra) {
-    // This would recreate the PhysX soft body with new mesh topology
-    // Complex operation requiring:
-    // 1. Store current state (velocities, forces)
-    // 2. Release current PhysX actor
-    // 3. Create new tetrahedral mesh
-    // 4. Create new soft body actor
-    // 5. Restore state
+    std::vector<Vec3> velocities(vertices.size(), Vec3(0, 0, 0));
+    RecreateWithMesh(vertices, tetrahedra, velocities);
+}
+
+void PhysXSoftBody::RecreateWithMesh(const std::vector<Vec3>& vertices, const std::vector<int>& tetrahedra, const std::vector<Vec3>& velocities) {
+    std::cout << "Recreating soft body with new mesh: " << vertices.size() 
+             << " vertices, " << (tetrahedra.size() / 4) << " tetrahedra" << std::endl;
     
-    std::cerr << "Mesh recreation not yet implemented" << std::endl;
+    if (vertices.empty() || tetrahedra.empty()) {
+        std::cerr << "Cannot recreate: invalid mesh data" << std::endl;
+        return;
+    }
+    
+    // Store current state
+    std::vector<int> fixedVertices = m_FixedVertices;
+    float volumeStiffness = m_VolumeStiffness;
+    float shapeStiffness = m_ShapeStiffness;
+    float deformationStiffness = m_DeformationStiffness;
+    float totalMass = m_TotalMass;
+    bool sceneCollision = m_SceneCollisionEnabled;
+    bool selfCollision = m_SelfCollisionEnabled;
+    
+    // Release current PhysX actor
+    if (m_SoftBody) {
+        PxScene* scene = m_Backend->GetScene();
+        if (scene) {
+            scene->removeActor(*m_SoftBody);
+        }
+        m_SoftBody->release();
+        m_SoftBody = nullptr;
+    }
+    
+    // Update internal mesh data
+    m_VertexCount = static_cast<int>(vertices.size());
+    m_TetrahedronCount = static_cast<int>(tetrahedra.size() / 4);
+    m_TetrahedronIndices = tetrahedra;
+    m_RestPositions = vertices;
+    m_InitialPositions = vertices;
+    
+    // Create new soft body descriptor
+    SoftBodyDesc desc;
+    desc.tetrahedronVertices = vertices.data();
+    desc.tetrahedronVertexCount = m_VertexCount;
+    desc.tetrahedronIndices = tetrahedra.data();
+    desc.tetrahedronCount = m_TetrahedronCount;
+    desc.volumeStiffness = volumeStiffness;
+    desc.shapeStiffness = shapeStiffness;
+    desc.deformationStiffness = deformationStiffness;
+    desc.totalMass = totalMass;
+    desc.useDensity = false;
+    desc.enableSceneCollision = sceneCollision;
+    desc.gravity = Vec3(0, -9.81f, 0);
+    
+    // Reinitialize PhysX actor
+    if (!Initialize(desc)) {
+        std::cerr << "Failed to reinitialize soft body" << std::endl;
+        return;
+    }
+    
+    // Restore velocities
+    if (!velocities.empty() && velocities.size() == vertices.size()) {
+        SetVertexVelocities(velocities.data(), static_cast<int>(velocities.size()));
+    }
+    
+    // Restore fixed vertices (note: indices may have changed, so this is approximate)
+    // In a production system, you'd need to track vertex mappings
+    for (int vertexIdx : fixedVertices) {
+        if (vertexIdx < m_VertexCount) {
+            FixVertex(vertexIdx, vertices[vertexIdx]);
+        }
+    }
+    
+    // Reinitialize tear system
+    if (m_TearSystem) {
+        m_TearSystem->ClearStressData();
+    }
+    
+    // Reinitialize resistance map
+    if (m_ResistanceMap.IsInitialized()) {
+        m_ResistanceMap.Reset();
+    }
+    
+    std::cout << "Soft body recreated successfully" << std::endl;
 }
 
 void PhysXSoftBody::TearAlongPattern(
@@ -2198,6 +2441,25 @@ void PhysXSoftBody::DebugRender(Shader* shader) {
         }
     }
     
+    // --- Draw Cracks ---
+    if (m_CrackVisualizationEnabled && m_CrackRenderer && m_PartialTearSystem) {
+        const auto& cracks = m_PartialTearSystem->GetCracks();
+        if (!cracks.empty()) {
+            std::vector<Vec3> positions(m_VertexCount);
+            GetVertexPositions(positions.data());
+            
+            Mat4 identity = Mat4::Identity();
+            m_CrackRenderer->RenderCracks(
+                cracks,
+                positions.data(),
+                m_TetrahedronIndices.data(),
+                shader,
+                identity,
+                m_SimulationTime  // Pass time for animations
+            );
+        }
+    }
+    
     // --- Draw Collision Spheres/Capsules ---
     if (m_DebugDrawCollisionSpheres) {
         // Try capsules first (for elongated bodies)
@@ -2557,6 +2819,74 @@ bool PhysXSoftBody::SaveRecording(const std::string& filename, bool binary) cons
 
 bool PhysXSoftBody::LoadRecording(const std::string& filename) {
     return m_Recorder ? m_Recorder->LoadFromFile(filename) : false;
+}
+
+// Partial Tearing (Cracks) Implementation
+
+void PhysXSoftBody::SetPartialTearingEnabled(bool enabled) {
+    m_PartialTearingEnabled = enabled;
+    std::cout << "Partial tearing " << (enabled ? "enabled" : "disabled") << std::endl;
+}
+
+bool PhysXSoftBody::IsPartialTearingEnabled() const {
+    return m_PartialTearingEnabled;
+}
+
+void PhysXSoftBody::SetCrackThreshold(float threshold) {
+    m_CrackThreshold = threshold;
+}
+
+float PhysXSoftBody::GetCrackThreshold() const {
+    return m_CrackThreshold;
+}
+
+void PhysXSoftBody::SetCrackProgressionRate(float rate) {
+    m_CrackProgressionRate = rate;
+}
+
+float PhysXSoftBody::GetCrackProgressionRate() const {
+    return m_CrackProgressionRate;
+}
+
+const std::vector<PartialTearSystem::Crack>& PhysXSoftBody::GetCracks() const {
+    static std::vector<PartialTearSystem::Crack> empty;
+    if (m_PartialTearSystem) {
+        return m_PartialTearSystem->GetCracks();
+    }
+    return empty;
+}
+
+int PhysXSoftBody::GetCrackCount() const {
+    return m_PartialTearSystem ? m_PartialTearSystem->GetCrackCount() : 0;
+}
+
+void PhysXSoftBody::SetCrackHealingEnabled(bool enabled) {
+    if (m_PartialTearSystem) {
+        m_PartialTearSystem->SetHealingEnabled(enabled);
+    }
+}
+
+void PhysXSoftBody::SetCrackHealingRate(float rate) {
+    if (m_PartialTearSystem) {
+        m_PartialTearSystem->SetHealingRate(rate);
+    }
+}
+
+// Crack Visualization Implementation
+
+void PhysXSoftBody::SetCrackVisualizationEnabled(bool enabled) {
+    m_CrackVisualizationEnabled = enabled;
+    std::cout << "Crack visualization " << (enabled ? "enabled" : "disabled") << std::endl;
+}
+
+bool PhysXSoftBody::IsCrackVisualizationEnabled() const {
+    return m_CrackVisualizationEnabled;
+}
+
+void PhysXSoftBody::SetCrackRenderSettings(const CrackRenderer::RenderSettings& settings) {
+    if (m_CrackRenderer) {
+        m_CrackRenderer->SetRenderSettings(settings);
+    }
 }
 
 #endif // USE_PHYSX

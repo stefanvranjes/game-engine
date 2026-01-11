@@ -513,6 +513,10 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/TetrahedralMeshGenerator.cpp
         src/SoftBodyTearSystem.cpp
         src/TetrahedralMeshSplitter.cpp
+        src/ProceduralTearGenerator.cpp
+        src/TearPropagationSystem.cpp
+        src/PartialTearSystem.cpp
+        src/CrackRenderer.cpp
         src/SoftBodyPieceManager.cpp
         src/TearResistanceMap.cpp
         src/SoftBodyTearPattern.cpp
