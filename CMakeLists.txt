@@ -562,6 +562,8 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/FluidSimulation.cpp
         src/FluidRenderer.cpp
         src/FoamParticleSystem.cpp
+        src/FluidSimulationEditor.cpp
+        src/FluidDebugGizmo.cpp
     )
     
     if(CUDAToolkit_FOUND)

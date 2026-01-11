@@ -325,6 +325,27 @@ void* PhysXBackend::GetNativeWorld() {
     return m_Scene;
 }
 
+void PhysXBackend::ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) {
+    if (!userData) return;
+    
+    // Cast generic pointer to PxRigidActor
+    physx::PxRigidActor* actor = static_cast<physx::PxRigidActor*>(userData);
+    
+    // Check if it's dynamic
+    if (actor->getType() == physx::PxActorType::eRIGID_DYNAMIC) {
+        physx::PxRigidDynamic* dynamicActor = static_cast<physx::PxRigidDynamic*>(actor);
+        
+        // Only apply if not kinematic
+        if (!(dynamicActor->getRigidBodyFlags() & physx::PxRigidBodyFlag::eKINEMATIC)) {
+            physx::PxVec3 pxImpulse(impulse.x, impulse.y, impulse.z);
+            physx::PxVec3 pxPoint(point.x, point.y, point.z);
+            
+            physx::PxRigidBodyExt::addForceAtPos(*dynamicActor, pxImpulse, pxPoint, physx::PxForceMode::eIMPULSE);
+        }
+    }
+    // TODO: Verify if Articulations need special handling, but PxRigidActor covers standard rigid bodies
+}
+
 void PhysXBackend::RegisterRigidBody(IPhysicsRigidBody* body) {
     if (body) {
         m_RigidBodies.push_back(body);

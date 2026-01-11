@@ -98,4 +98,12 @@ public:
      * @return Opaque pointer to backend world
      */
     virtual void* GetNativeWorld() = 0;
+
+    /**
+     * @brief Apply an impulse to a rigid body
+     * @param userData Backend-specific rigid body pointer (from RaycastHit)
+     * @param impulse Impulse vector to apply
+     * @param point Point of application in world space
+     */
+    virtual void ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) = 0;
 };

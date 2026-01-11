@@ -46,7 +46,9 @@ public:
     void SetDebugDrawEnabled(bool enabled) override;
     bool IsDebugDrawEnabled() const override;
     const char* GetBackendName() const override { return "PhysX 5.x"; }
+    const char* GetBackendName() const override { return "PhysX 5.x"; }
     void* GetNativeWorld() override;
+    void ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) override;
 
     // PhysX-specific methods
     physx::PxPhysics* GetPhysics() const { return m_Physics; }

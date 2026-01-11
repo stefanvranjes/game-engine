@@ -58,6 +58,9 @@ public:
     float GetKernelRadius() const { return m_KernelRadius; }
     int GetSolverIterations() const { return m_SolverIterations; }
     Vec3 GetGravity() const { return m_Gravity; }
+    Vec3 GetBoundaryMin() const { return m_BoundaryMin; }
+    Vec3 GetBoundaryMax() const { return m_BoundaryMax; }
+    bool IsBoundaryEnabled() const { return m_EnableBoundary; }
     
     /**
      * @brief Get performance statistics

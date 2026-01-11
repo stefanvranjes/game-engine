@@ -2,6 +2,8 @@
 #include "PhysXBackend.h"
 #include <cmath>
 #include <algorithm>
+#include <execution>
+#include <atomic>
 #include <chrono>
 
 #ifndef M_PI
@@ -107,18 +109,20 @@ void PBDFluidSolver::ApplyExternalForces(std::vector<FluidParticle>& particles,
 void PBDFluidSolver::PredictPositions(std::vector<FluidParticle>& particles, 
                                       const std::vector<FluidType>& fluidTypes,
                                       float dt) {
-    for (auto& p : particles) {
-        if (!p.active) continue;
-        
-        // Update velocity with forces
-        p.velocity = p.velocity + (p.force / fluidTypes[p.fluidType].particleMass) * dt;
-        
-        // Predict position
-        p.predictedPosition = p.position + p.velocity * dt;
-        
-        // Reset delta position
-        p.deltaPosition = Vec3(0, 0, 0);
-    }
+    std::for_each(std::execution::par, particles.begin(), particles.end(), 
+        [&](FluidParticle& p) {
+            if (!p.active) return;
+            
+            // Update velocity with forces
+            p.velocity = p.velocity + (p.force / fluidTypes[p.fluidType].particleMass) * dt;
+            
+            // Predict position
+            p.predictedPosition = p.position + p.velocity * dt;
+            
+            // Reset delta position
+            p.deltaPosition = Vec3(0, 0, 0);
+        }
+    );
 }
 
 void PBDFluidSolver::BuildSpatialGrid(const std::vector<FluidParticle>& particles) {
@@ -137,36 +141,37 @@ void PBDFluidSolver::BuildSpatialGrid(const std::vector<FluidParticle>& particle
 }
 
 void PBDFluidSolver::FindNeighbors(std::vector<FluidParticle>& particles) {
-    int totalNeighbors = 0;
-    int activeCount = 0;
+    std::atomic<int> totalNeighbors = 0;
+    std::atomic<int> activeCount = 0;
     
-    for (size_t i = 0; i < particles.size(); ++i) {
-        auto& p = particles[i];
-        if (!p.active) continue;
-        
-        // Clear previous neighbors
-        p.neighbors.clear();
-        
-        // Query spatial grid
-        std::vector<int> nearbyParticles = m_SpatialGrid->QuerySphere(
-            p.predictedPosition, m_KernelRadius);
-        
-        // Filter by actual distance
-        for (int j : nearbyParticles) {
-            if (i == static_cast<size_t>(j)) continue;  // Skip self
-            if (!particles[j].active) continue;
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
             
-            Vec3 diff = particles[j].predictedPosition - p.predictedPosition;
-            float distSq = diff.LengthSquared();
+            // Clear previous neighbors
+            p.neighbors.clear();
             
-            if (distSq < m_KernelRadius * m_KernelRadius) {
-                p.neighbors.push_back(j);
+            // Query spatial grid
+            std::vector<int> nearbyParticles = m_SpatialGrid->QuerySphere(
+                p.predictedPosition, m_KernelRadius);
+            
+            // Filter by actual distance
+            for (int j : nearbyParticles) {
+                if (&p == &particles[j]) continue;  // Skip self (pointer comparison)
+                if (!particles[j].active) continue;
+                
+                Vec3 diff = particles[j].predictedPosition - p.predictedPosition;
+                float distSq = diff.LengthSquared();
+                
+                if (distSq < m_KernelRadius * m_KernelRadius) {
+                    p.neighbors.push_back(j);
+                }
             }
+            
+            totalNeighbors += static_cast<int>(p.neighbors.size());
+            activeCount++;
         }
-        
-        totalNeighbors += static_cast<int>(p.neighbors.size());
-        activeCount++;
-    }
+    );
     
     m_Stats.avgNeighborsPerParticle = activeCount > 0 ? totalNeighbors / activeCount : 0;
 }
@@ -194,93 +199,101 @@ void PBDFluidSolver::SolveConstraints(std::vector<FluidParticle>& particles,
 
 void PBDFluidSolver::ComputeDensityAndPressure(std::vector<FluidParticle>& particles,
                                               const std::vector<FluidType>& fluidTypes) {
-    for (auto& p : particles) {
-        if (!p.active) continue;
-        
-        float density = 0.0f;
-        const FluidType& type = fluidTypes[p.fluidType];
-        
-        // Self contribution
-        density += type.particleMass * Poly6Kernel(0.0f, m_KernelRadius);
-        
-        // Neighbor contributions
-        for (int neighborIdx : p.neighbors) {
-            const auto& neighbor = particles[neighborIdx];
-            Vec3 diff = p.predictedPosition - neighbor.predictedPosition;
-            float dist = diff.Length();
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
             
-            density += type.particleMass * Poly6Kernel(dist, m_KernelRadius);
+            float density = 0.0f;
+            const FluidType& type = fluidTypes[p.fluidType];
+            
+            // Self contribution
+            density += type.particleMass * Poly6Kernel(0.0f, m_KernelRadius);
+            
+            // Neighbor contributions
+            for (int neighborIdx : p.neighbors) {
+                const auto& neighbor = particles[neighborIdx];
+                Vec3 diff = p.predictedPosition - neighbor.predictedPosition;
+                float dist = diff.Length();
+                
+                density += type.particleMass * Poly6Kernel(dist, m_KernelRadius);
+            }
+            
+            p.density = density;
         }
-        
-        p.density = density;
-    }
+    );
 }
 
 void PBDFluidSolver::ComputeLambda(std::vector<FluidParticle>& particles,
                                   const std::vector<FluidType>& fluidTypes) {
-    for (auto& p : particles) {
-        if (!p.active) continue;
-        
-        const FluidType& type = fluidTypes[p.fluidType];
-        float restDensity = type.restDensity;
-        
-        // Constraint: C = density / restDensity - 1
-        float constraint = p.density / restDensity - 1.0f;
-        
-        // Compute gradient sum
-        float gradientSum = 0.0f;
-        Vec3 gradientI(0, 0, 0);
-        
-        for (int neighborIdx : p.neighbors) {
-            const auto& neighbor = particles[neighborIdx];
-            Vec3 diff = p.predictedPosition - neighbor.predictedPosition;
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
             
-            Vec3 gradient = SpikyGradient(diff, m_KernelRadius) / restDensity;
-            gradientI = gradientI + gradient;
-            gradientSum += gradient.LengthSquared();
+            const FluidType& type = fluidTypes[p.fluidType];
+            float restDensity = type.restDensity;
+            
+            // Constraint: C = density / restDensity - 1
+            float constraint = p.density / restDensity - 1.0f;
+            
+            // Compute gradient sum
+            float gradientSum = 0.0f;
+            Vec3 gradientI(0, 0, 0);
+            
+            for (int neighborIdx : p.neighbors) {
+                const auto& neighbor = particles[neighborIdx];
+                Vec3 diff = p.predictedPosition - neighbor.predictedPosition;
+                
+                Vec3 gradient = SpikyGradient(diff, m_KernelRadius) / restDensity;
+                gradientI = gradientI + gradient;
+                gradientSum += gradient.LengthSquared();
+            }
+            
+            gradientSum += gradientI.LengthSquared();
+            
+            // Compute lambda with relaxation
+            p.lambda = -constraint / (gradientSum + m_RelaxationEpsilon);
         }
-        
-        gradientSum += gradientI.LengthSquared();
-        
-        // Compute lambda with relaxation
-        p.lambda = -constraint / (gradientSum + m_RelaxationEpsilon);
-    }
+    );
 }
 
 void PBDFluidSolver::ComputeDeltaPosition(std::vector<FluidParticle>& particles,
                                          const std::vector<FluidType>& fluidTypes) {
-    for (auto& p : particles) {
-        if (!p.active) continue;
-        
-        const FluidType& type = fluidTypes[p.fluidType];
-        float restDensity = type.restDensity;
-        
-        Vec3 deltaPos(0, 0, 0);
-        
-        for (int neighborIdx : p.neighbors) {
-            const auto& neighbor = particles[neighborIdx];
-            Vec3 diff = p.predictedPosition - neighbor.predictedPosition;
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
             
-            Vec3 gradient = SpikyGradient(diff, m_KernelRadius);
-            deltaPos = deltaPos + gradient * (p.lambda + neighbor.lambda) / restDensity;
+            const FluidType& type = fluidTypes[p.fluidType];
+            float restDensity = type.restDensity;
+            
+            Vec3 deltaPos(0, 0, 0);
+            
+            for (int neighborIdx : p.neighbors) {
+                const auto& neighbor = particles[neighborIdx];
+                Vec3 diff = p.predictedPosition - neighbor.predictedPosition;
+                
+                Vec3 gradient = SpikyGradient(diff, m_KernelRadius);
+                deltaPos = deltaPos + gradient * (p.lambda + neighbor.lambda) / restDensity;
+            }
+            
+            p.deltaPosition = deltaPos;
         }
-        
-        p.deltaPosition = deltaPos;
-    }
+    );
 }
 
 void PBDFluidSolver::UpdateVelocities(std::vector<FluidParticle>& particles, float dt) {
     float invDt = 1.0f / dt;
     
-    for (auto& p : particles) {
-        if (!p.active) continue;
-        
-        // Update velocity from position change
-        p.velocity = (p.predictedPosition - p.position) * invDt;
-        
-        // Update position
-        p.position = p.predictedPosition;
-    }
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
+            
+            // Update velocity from position change
+            p.velocity = (p.predictedPosition - p.position) * invDt;
+            
+            // Update position
+            p.position = p.predictedPosition;
+        }
+    );
 }
 
 void PBDFluidSolver::ApplyViscosity(std::vector<FluidParticle>& particles,
@@ -410,6 +423,54 @@ void PBDFluidSolver::HandleRigidBodyCollisions(std::vector<FluidParticle>& parti
                     float restitution = 0.0f; // No bounce (inelastic)
                     
                     p.velocity = vt * (1.0f - friction) - vn * restitution;
+                    
+                    // TWO-WAY COUPLING: Apply impulse to Rigid Body
+                    // Impulse J = mass * delta_v
+                    // We approximate the impulse as the force needed to stop the particle's normal velocity
+                    // or the force exerted by the position correction.
+                    // Simple approach: The particle lost momentum 'mass * vn'. That momentum went into the wall.
+                    // Since vn is negative (into wall), the impulse on wall is 'mass * vn' (in direction of normal? No).
+                    // Particle initial momentum p_in = m * v_in. Final p_out = m * v_out.
+                    // Change = p_out - p_in.
+                    // Impulse on particle J_p = m * (v_out - v_in).
+                    // Impulse on wall J_w = -J_p = m * (v_in - v_out).
+                    
+                    // v_out = vt * (1-f) - vn * r.
+                    // v_in = vt + vn. (Decomposed).
+                    // Let's focus on normal component for push.
+                    // v_in_n = vn (negative). v_out_n = -vn * r (positive).
+                    // J_w_n = m * (vn - (-vn*r)) = m * vn * (1+r).
+                    // Since vn is towards wall (negative dot), J_w_n is negative (towards wall).
+                    // Vector direction: normal is OUT of wall. so vn vector is INTO wall.
+                    // The impulse vector should be INTO the wall.
+                    
+                    // Let's use the actual velocity change for accuracy including friction.
+                    /*
+                    Vec3 v_old = p.velocity; // This 'p.velocity' was just updated above? No, we updated it.
+                    // Need old velocity.
+                    // Let's use the computed response.
+                    */
+                    
+                    if (hit.userData) {
+                        // Re-calculate the change we just made or estimate it
+                        // Impulse = mass * (velocity_before - velocity_after) ?? No, Force on body = Force FROM particle.
+                        // Force on Particle = m * a.
+                        // Force on Body = - Force on Particle.
+                        
+                        // Let's just apply a push based on penetration/impact.
+                        // A robust way for PBD is to rely on the position correction.
+                        // But velocity change is fine for impact.
+                        
+                        // Force magnitude roughly:
+                        float impulseMag = std::abs(vDotN) * fluidTypes[p.fluidType].particleMass * (1.0f + restitution);
+                        
+                        // Direction: Into the wall (opposite to normal)
+                        Vec3 impulseDir = -normal;
+                        
+                        // Apply scaled impulse
+                        float interactionScale = 1.0f; // Tune this to control fluid strength
+                        m_PhysicsBackend->ApplyImpulse(hit.userData, impulseDir * impulseMag * interactionScale, hit.point);
+                    }
                 }
             } else {
                 // Moving towards wall but haven't hit it yet in this step?
