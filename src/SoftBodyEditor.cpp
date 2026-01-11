@@ -9,6 +9,7 @@
 #include "TearPreview.h"
 #include "VertexPicker.h"
 #include "VertexHighlighter.h"
+#include "SoftBodyRecordingPanel.h"
 #include "Ray.h"
 #include "Mouse.h"
 #include "Camera.h"
@@ -21,9 +22,6 @@ SoftBodyEditor::SoftBodyEditor()
     : m_SelectedSoftBody(nullptr)
     , m_Visible(true)
     , m_CurrentTab(0)
-    , m_SaveFilePath("softbody_config.json")
-    , m_LoadFilePath("softbody_config.json")
-    , m_CurrentPreset("None")
     , m_TearMode(false)
 {
     m_StressVisualizer = std::make_unique<StressVisualizer>();
@@ -33,6 +31,11 @@ SoftBodyEditor::SoftBodyEditor()
     m_TearPreview = std::make_unique<TearPreview>();
     m_VertexPicker = std::make_unique<VertexPicker>();
     m_VertexHighlighter = std::make_unique<VertexHighlighter>();
+    m_RecordingPanel = std::make_unique<SoftBodyRecordingPanel>();
+    
+    m_SaveFilePath = "softbody.json";
+    m_LoadFilePath = "softbody.json";
+    m_CurrentPreset = "None";
 }
 
 SoftBodyEditor::~SoftBodyEditor() {
@@ -103,6 +106,10 @@ void SoftBodyEditor::RenderTabBar() {
         }
         if (ImGui::BeginTabItem("Tearing")) {
             m_CurrentTab = 3;
+            ImGui::EndTabItem();
+        }
+        if (ImGui::BeginTabItem("Recording")) { // Added Recording tab
+            m_CurrentTab = 9; // Assign a new tab index
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem("Visualization")) {

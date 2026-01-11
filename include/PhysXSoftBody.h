@@ -16,6 +16,8 @@ class TearResistanceMap;
 class FractureLine;
 class SoftBodyLODConfig;
 class SoftBodyLODManager;
+class SoftBodyDeformationRecorder;
+enum class LoopMode;
 
 struct SoftBodyStats {
     double updateTimeMs = 0.0;
@@ -416,6 +418,103 @@ public:
      */
     void ForceLOD(int lodIndex);
     
+    // Deformation Recording
+    /**
+     * @brief Start recording deformation
+     * @param sampleRate Samples per second (default: 60)
+     * @param recordVelocities Whether to record velocities (increases size)
+     */
+    void StartRecording(float sampleRate = 60.0f, bool recordVelocities = false);
+    
+    /**
+     * @brief Stop recording
+     */
+    void StopRecording();
+    
+    /**
+     * @brief Pause recording
+     */
+    void PauseRecording();
+    
+    /**
+     * @brief Resume recording after pause
+     */
+    void ResumeRecording();
+    
+    /**
+     * @brief Check if currently recording
+     */
+    bool IsRecording() const;
+    
+    /**
+     * @brief Start playback from beginning
+     */
+    void StartPlayback();
+    
+    /**
+     * @brief Stop playback
+     */
+    void StopPlayback();
+    
+    /**
+     * @brief Pause playback
+     */
+    void PausePlayback();
+    
+    /**
+     * @brief Seek to specific time in playback
+     * @param time Time in seconds
+     */
+    void SeekPlayback(float time);
+    
+    /**
+     * @brief Check if currently playing back
+     */
+    bool IsPlayingBack() const;
+    
+    /**
+     * @brief Get recording duration
+     */
+    float GetRecordingDuration() const;
+    
+    /**
+     * @brief Get current playback time
+     */
+    float GetPlaybackTime() const;
+    
+    /**
+     * @brief Set playback speed multiplier
+     * @param speed Speed multiplier (1.0 = normal)
+     */
+    void SetPlaybackSpeed(float speed);
+    
+    /**
+     * @brief Set playback loop mode
+     * @param mode Loop mode (None, Loop, PingPong)
+     */
+    void SetPlaybackLoopMode(LoopMode mode);
+    
+    /**
+     * @brief Get deformation recorder
+     */
+    SoftBodyDeformationRecorder* GetRecorder() { return m_Recorder.get(); }
+    const SoftBodyDeformationRecorder* GetRecorder() const { return m_Recorder.get(); }
+    
+    /**
+     * @brief Save recording to file
+     * @param filename Output file path
+     * @param binary Use binary format (more efficient)
+     * @return True if successful
+     */
+    bool SaveRecording(const std::string& filename, bool binary = false) const;
+    
+    /**
+     * @brief Load recording from file
+     * @param filename Input file path
+     * @return True if successful
+     */
+    bool LoadRecording(const std::string& filename);
+    
     // Serialization
     /**
      * @brief Serialize soft body to JSON
@@ -580,6 +679,11 @@ private:
     size_t m_GpuMemoryUsage;
     mutable float m_GpuSimulationTimeMs;
     mutable float m_CpuGpuTransferTimeMs;
+    
+    // Deformation Recording
+    std::unique_ptr<SoftBodyDeformationRecorder> m_Recorder;
+    bool m_IsPlayingBack;
+    float m_RecordingStartTime;
     
     void AutoTuneParameters();
     

@@ -12,6 +12,7 @@ class TearHistory;
 class TearPreview;
 class VertexPicker;
 class VertexHighlighter;
+class SoftBodyRecordingPanel;
 class Camera;
 struct Mouse;
 
@@ -67,6 +68,7 @@ private:
     std::unique_ptr<TearPreview> m_TearPreview;
     std::unique_ptr<VertexPicker> m_VertexPicker;
     std::unique_ptr<VertexHighlighter> m_VertexHighlighter;
+    std::unique_ptr<SoftBodyRecordingPanel> m_RecordingPanel;
     std::string m_CurrentPreset;
     
     // Tear mode state
@@ -83,6 +85,7 @@ private:
     void RenderStatisticsPanel();
     void RenderPresetPanel();
     void RenderStressVisualizationPanel();
+    void RenderRecordingPanel();
     
     // Input handling
     void HandleMouseInput(const Mouse& mouse, const Camera& camera, int screenWidth, int screenHeight);

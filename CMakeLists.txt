@@ -537,6 +537,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/SoftBodyLODManager.cpp
         src/TetrahedralMeshSimplifier.cpp
         src/SoftBodySerializer.cpp
+        src/SoftBodyDeformationRecorder.cpp
         src/SoftBodyEditor.cpp
         src/StressVisualizer.cpp
         src/SoftBodyPreset.cpp

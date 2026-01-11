@@ -15,6 +15,7 @@
 #include "SoftBodyLOD.h"
 #include "SoftBodyLODManager.h"
 #include "SoftBodySerializer.h"
+#include "SoftBodyDeformationRecorder.h"
 #include "PhysXManager.h"
 #include "GLExtensions.h"
 #include "GpuProfiler.h"
@@ -185,9 +186,12 @@ PhysXSoftBody::PhysXSoftBody(PhysXBackend* backend)
     , m_GpuMemoryUsage(0)
     , m_GpuSimulationTimeMs(0.0f)
     , m_CpuGpuTransferTimeMs(0.0f)
+    , m_IsPlayingBack(false)
+    , m_RecordingStartTime(0.0f)
 {
     m_TearSystem = std::make_unique<SoftBodyTearSystem>();
     m_LODManager = std::make_unique<SoftBodyLODManager>();
+    m_Recorder = std::make_unique<SoftBodyDeformationRecorder>();
 }
 
 PhysXSoftBody::~PhysXSoftBody() {
@@ -416,6 +420,23 @@ void PhysXSoftBody::Update(float deltaTime) {
         return;
     }
     
+    // Handle playback mode
+    if (m_IsPlayingBack && m_Recorder) {
+        std::vector<Vec3> playbackPositions(m_VertexCount);
+        bool stillPlaying = m_Recorder->UpdatePlayback(deltaTime, playbackPositions.data());
+        
+        if (stillPlaying) {
+            // Apply playback positions
+            SetVertexPositions(playbackPositions.data());
+            
+            // Skip physics simulation during playback
+            return;
+        } else {
+            // Playback finished
+            m_IsPlayingBack = false;
+        }
+    }
+    
     // Update LOD system if enabled
     {
         GPU_PROFILE_SCOPE_COLOR("LOD Update", GpuProfiler::COLOR_LOD);
@@ -492,6 +513,23 @@ void PhysXSoftBody::Update(float deltaTime) {
     }
     
     // PhysX soft body simulation is handled automatically by the scene
+    
+    // Handle recording mode
+    if (m_Recorder && m_Recorder->IsRecording()) {
+        m_RecordingStartTime += deltaTime;
+        
+        std::vector<Vec3> positions(m_VertexCount);
+        std::vector<Vec3> velocities(m_VertexCount);
+        
+        GetVertexPositions(positions.data());
+        GetVertexVelocities(velocities.data());
+        
+        m_Recorder->RecordFrame(
+            positions.data(),
+            m_Recorder->HasVelocities() ? velocities.data() : nullptr,
+            m_RecordingStartTime
+        );
+    }
     
     auto endTotal = std::chrono::high_resolution_clock::now();
     m_Stats.updateTimeMs = std::chrono::duration<double, std::milli>(endTotal - startTotal).count();
@@ -2425,6 +2463,100 @@ PhysXSoftBody::GpuMetrics PhysXSoftBody::GetGpuMetrics() const {
     metrics.gpuMemoryUsageBytes = m_GpuMemoryUsage;
     metrics.usingDirectApi = m_UseDirectGpuApi;
     return metrics;
+}
+
+// Deformation Recording API
+
+void PhysXSoftBody::StartRecording(float sampleRate, bool recordVelocities) {
+    if (!m_Recorder) {
+        return;
+    }
+    
+    m_Recorder->StartRecording(m_VertexCount, recordVelocities);
+    m_Recorder->SetSampleRate(sampleRate);
+    m_RecordingStartTime = 0.0f;
+}
+
+void PhysXSoftBody::StopRecording() {
+    if (m_Recorder) {
+        m_Recorder->StopRecording();
+    }
+}
+
+void PhysXSoftBody::PauseRecording() {
+    if (m_Recorder) {
+        m_Recorder->PauseRecording();
+    }
+}
+
+void PhysXSoftBody::ResumeRecording() {
+    if (m_Recorder) {
+        m_Recorder->ResumeRecording();
+    }
+}
+
+bool PhysXSoftBody::IsRecording() const {
+    return m_Recorder && m_Recorder->IsRecording();
+}
+
+void PhysXSoftBody::StartPlayback() {
+    if (!m_Recorder) {
+        return;
+    }
+    
+    m_Recorder->StartPlayback();
+    m_IsPlayingBack = true;
+}
+
+void PhysXSoftBody::StopPlayback() {
+    if (m_Recorder) {
+        m_Recorder->StopPlayback();
+    }
+    m_IsPlayingBack = false;
+}
+
+void PhysXSoftBody::PausePlayback() {
+    if (m_Recorder) {
+        m_Recorder->PausePlayback();
+    }
+}
+
+void PhysXSoftBody::SeekPlayback(float time) {
+    if (m_Recorder) {
+        m_Recorder->SeekPlayback(time);
+    }
+}
+
+bool PhysXSoftBody::IsPlayingBack() const {
+    return m_IsPlayingBack && m_Recorder && m_Recorder->IsPlayingBack();
+}
+
+float PhysXSoftBody::GetRecordingDuration() const {
+    return m_Recorder ? m_Recorder->GetDuration() : 0.0f;
+}
+
+float PhysXSoftBody::GetPlaybackTime() const {
+    return m_Recorder ? m_Recorder->GetPlaybackTime() : 0.0f;
+}
+
+void PhysXSoftBody::SetPlaybackSpeed(float speed) {
+    if (m_Recorder) {
+        m_Recorder->SetPlaybackSpeed(speed);
+    }
+}
+
+void PhysXSoftBody::SetPlaybackLoopMode(LoopMode mode) {
+    if (m_Recorder) {
+        m_Recorder->SetLoopMode(mode);
+    }
+}
+
+bool PhysXSoftBody::SaveRecording(const std::string& filename, bool binary) const {
+    return m_Recorder ? m_Recorder->SaveToFile(filename, binary) : false;
+}
+
+bool PhysXSoftBody::LoadRecording(const std::string& filename) {
+    return m_Recorder ? m_Recorder->LoadFromFile(filename) : false;
 }
 
 #endif // USE_PHYSX
