@@ -47,6 +47,10 @@ PhysXCloth::PhysXCloth(PhysXBackend* backend)
 {
     m_SpatialGrid = std::make_unique<SpatialGrid<int>>(2.0f); // 2 meter grid cells
     m_MeshSynchronizer = std::make_unique<ClothMeshSynchronizer>();
+    
+    if (m_Backend) {
+        m_Backend->RegisterCloth(this);
+    }
 }
 
 PhysXCloth::~PhysXCloth() {
@@ -62,6 +66,10 @@ PhysXCloth::~PhysXCloth() {
     if (m_Fabric) {
         m_Fabric->release();
         m_Fabric = nullptr;
+    }
+    
+    if (m_Backend) {
+        m_Backend->UnregisterCloth(this);
     }
 }
 
@@ -1811,6 +1819,92 @@ void PhysXCloth::UnregisterSoftBodyCollision(PhysXSoftBody* softBody) {
 void PhysXCloth::ClearSoftBodyCollisions() {
     m_RegisteredSoftBodies.clear();
     std::cout << "Cleared all soft body collisions" << std::endl;
+}
+
+// Ray-Triangle Intersection Helper
+static bool IntersectTriangle(const Vec3& orig, const Vec3& dir, float maxDist,
+    const Vec3& v0, const Vec3& v1, const Vec3& v2,
+    float& t, float& u, float& v, Vec3& normal) 
+{
+    const float EPSILON = 0.000001f;
+    Vec3 edge1 = v1 - v0;
+    Vec3 edge2 = v2 - v0;
+    Vec3 pvec = dir.Cross(edge2);
+    float det = edge1.Dot(pvec);
+
+    if (det > -EPSILON && det < EPSILON) return false;    // Ray parallel to triangle
+
+    float invDet = 1.0f / det;
+    Vec3 tvec = orig - v0;
+    u = tvec.Dot(pvec) * invDet;
+    if (u < 0.0f || u > 1.0f) return false;
+
+    Vec3 qvec = tvec.Cross(edge1);
+    v = dir.Dot(qvec) * invDet;
+    if (v < 0.0f || u + v > 1.0f) return false;
+
+    t = edge2.Dot(qvec) * invDet;
+    if (t > EPSILON && t <= maxDist) {
+        // Calculate normal
+        normal = edge1.Cross(edge2);
+        normal.Normalize();
+        return true;
+    }
+    return false;
+}
+
+bool PhysXCloth::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit) {
+    if (!m_Enabled || m_ParticleCount == 0) return false;
+
+    // 1. AABB Check
+    Vec3 minBounds, maxBounds;
+    GetWorldBounds(minBounds, maxBounds);
+    
+    // Quick AABB intersection check
+    Vec3 dir = to - from;
+    float dist = dir.Length();
+    if (dist < 0.0001f) return false;
+    Vec3 dirNorm = dir * (1.0f / dist);
+
+    // TODO: Implement proper AABB ray intersect. For now, rely on broad phase optimization if too slow.
+    // Or just simple check: if ray origin is far outside and pointing away, skip.
+    
+    // 2. Iterate triangles (Brute force for now - optimize with octree/grid later if needed)
+    bool hasHit = false;
+    hit.distance = dist; // Initialize with max distance
+    
+    // Use cached data
+    const Vec3* positions = m_ParticlePositions.data();
+    const int* indices = m_TriangleIndices.data();
+    int triCount = m_TriangleCount;
+    
+    float closestT = dist;
+    Vec3 closestNormal;
+    
+    for (int i = 0; i < triCount; ++i) {
+        int i0 = indices[i * 3 + 0];
+        int i1 = indices[i * 3 + 1];
+        int i2 = indices[i * 3 + 2];
+        
+        float t, u, v;
+        Vec3 normal;
+        if (IntersectTriangle(from, dirNorm, closestT, positions[i0], positions[i1], positions[i2], t, u, v, normal)) {
+            if (t < closestT) {
+                closestT = t;
+                closestNormal = normal;
+                hasHit = true;
+            }
+        }
+    }
+    
+    if (hasHit) {
+        hit.distance = closestT;
+        hit.point = from + dirNorm * closestT;
+        hit.normal = closestNormal;
+        return true;
+    }
+    
+    return false;
 }
 
 #endif // USE_PHYSX

@@ -67,6 +67,7 @@ public:
     void SetSelfCollisionStiffness(float stiffness) override;
     void SetTwoWayCoupling(bool enabled) override;
     void SetCollisionMassScale(float scale) override;
+    bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit) override;
 
     // PhysX specific
     physx::PxCloth* GetPxCloth() const { return m_Cloth; }

@@ -32,6 +32,11 @@ public:
     void Initialize(int screenWidth, int screenHeight);
     
     /**
+     * @brief Set scene depth texture for soft particles
+     */
+    void SetSceneDepthTexture(unsigned int texture) { m_SceneDepthTexture = texture; }
+    
+    /**
      * @brief Shutdown and cleanup
      */
     void Shutdown();
@@ -70,6 +75,16 @@ public:
     float GetParticleSize() const { return m_ParticleSize; }
     float GetSmoothingRadius() const { return m_SmoothingRadius; }
     float GetThicknessScale() const { return m_ThicknessScale; }
+    
+    /**
+     * @brief Foam rendering
+     */
+    void SetRenderFoam(bool render) { m_RenderFoam = render; }
+    bool GetRenderFoam() const { return m_RenderFoam; }
+    void SetFoamSize(float size) { m_FoamSize = size; }
+    float GetFoamSize() const { return m_FoamSize; }
+    void SetUseFoamAnimation(bool use) { m_UseFoamAnimation = use; }
+    bool GetUseFoamAnimation() const { return m_UseFoamAnimation; }
 
 private:
     // Render mode
@@ -86,6 +101,9 @@ private:
     float m_RefractiveIndex;
     Vec3 m_AbsorptionColor;
     float m_FresnelPower;
+    bool m_RenderFoam;
+    float m_FoamSize;
+    bool m_UseFoamAnimation;
     
     // Shaders
     std::unique_ptr<Shader> m_ParticleShader;
@@ -94,10 +112,12 @@ private:
     std::unique_ptr<Shader> m_NormalShader;
     std::unique_ptr<Shader> m_ThicknessShader;
     std::unique_ptr<Shader> m_ShadingShader;
+    std::unique_ptr<Shader> m_FoamShader;
     
     // Framebuffers and textures for screen-space rendering
     unsigned int m_DepthFBO;
     unsigned int m_DepthTexture;
+    unsigned int m_SceneDepthTexture; // External scene depth
     unsigned int m_SmoothedDepthFBO;
     unsigned int m_SmoothedDepthTexture;
     unsigned int m_NormalFBO;
@@ -110,6 +130,17 @@ private:
     unsigned int m_ParticleVBO;
     unsigned int m_ParticleInstanceVBO;
     
+    // Foam rendering
+    unsigned int m_FoamVAO;
+    unsigned int m_FoamVBO;
+    unsigned int m_FoamInstanceVBO;
+    unsigned int m_FoamTexture;
+    bool m_FoamTextureLoaded;
+    unsigned int m_FoamAnimationTexture;
+    bool m_FoamAnimationTextureLoaded;
+    unsigned int m_FoamNormalTexture;
+    bool m_FoamNormalTextureLoaded;
+    
     // Fullscreen quad for post-processing
     unsigned int m_QuadVAO;
     unsigned int m_QuadVBO;
@@ -120,14 +151,19 @@ private:
     
     void RenderDepthPass(const FluidSimulation* simulation, Camera* camera);
     void SmoothDepthPass();
-    void ComputeNormalsPass();
+    void ComputeNormalsPass(Camera* camera);
     void RenderThicknessPass(const FluidSimulation* simulation, Camera* camera);
     void FinalShadingPass(Camera* camera);
     
     void SetupParticleMesh();
+    void SetupFoamMesh();
     void SetupFullscreenQuad();
     void SetupFramebuffers();
     void CleanupFramebuffers();
+    void LoadFoamTexture();
+    void LoadFoamAnimationTexture();
+    void LoadFoamNormalTexture();
     
     void UpdateInstanceData(const FluidSimulation* simulation);
+    void RenderFoamParticles(const FluidSimulation* simulation, Camera* camera);
 };

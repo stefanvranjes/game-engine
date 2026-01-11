@@ -4,6 +4,7 @@
 #include "FluidType.h"
 #include "FluidEmitter.h"
 #include "PBDFluidSolver.h"
+#include "FoamParticleSystem.h"
 #include "Math/Vec3.h"
 #include <vector>
 #include <memory>
@@ -120,6 +121,24 @@ public:
      */
     PBDFluidSolver* GetSolver() { return m_Solver.get(); }
     const PBDFluidSolver* GetSolver() const { return m_Solver.get(); }
+    
+    /**
+     * @brief Foam particle system
+     */
+    FoamParticleSystem* GetFoamSystem() { return m_FoamSystem.get(); }
+    const FoamParticleSystem* GetFoamSystem() const { return m_FoamSystem.get(); }
+    
+    /**
+     * @brief Foam generation parameters
+     */
+    void SetFoamEnabled(bool enabled) { m_FoamEnabled = enabled; }
+    bool IsFoamEnabled() const { return m_FoamEnabled; }
+    void SetFoamVelocityThreshold(float threshold) { m_FoamVelocityThreshold = threshold; }
+    float GetFoamVelocityThreshold() const { return m_FoamVelocityThreshold; }
+    void SetFoamSpawnRate(float rate) { m_FoamSpawnRate = rate; }
+    float GetFoamSpawnRate() const { return m_FoamSpawnRate; }
+    void SetFoamMergeRadius(float radius);
+    void SetFoamAdhesion(float strength);
 
 private:
     // Particles and fluid types
@@ -131,6 +150,12 @@ private:
     
     // Solver
     std::unique_ptr<PBDFluidSolver> m_Solver;
+    
+    // Foam particle system
+    std::unique_ptr<FoamParticleSystem> m_FoamSystem;
+    bool m_FoamEnabled;
+    float m_FoamVelocityThreshold;
+    float m_FoamSpawnRate;
     
     // Simulation parameters
     int m_MaxParticles;

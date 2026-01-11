@@ -21,13 +21,13 @@ class PhysXBackend;
 class PBDFluidSolver {
 public:
     PBDFluidSolver();
-    ~PBDFluidSolver();
+    virtual ~PBDFluidSolver();
     
     /**
      * @brief Initialize the solver
      * @param backend Physics backend for collision queries
      */
-    void Initialize(PhysXBackend* backend);
+    virtual void Initialize(PhysXBackend* backend);
     
     /**
      * @brief Update simulation for one timestep
@@ -35,7 +35,7 @@ public:
      * @param fluidTypes Fluid type definitions
      * @param deltaTime Time step
      */
-    void Update(std::vector<FluidParticle>& particles, 
+    virtual void Update(std::vector<FluidParticle>& particles, 
                 const std::vector<FluidType>& fluidTypes,
                 float deltaTime);
     
@@ -74,7 +74,7 @@ public:
     };
     const Statistics& GetStatistics() const { return m_Stats; }
 
-private:
+protected:
     // Solver parameters
     float m_KernelRadius;
     int m_SolverIterations;

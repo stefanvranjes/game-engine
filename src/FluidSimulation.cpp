@@ -1,16 +1,41 @@
 #include "FluidSimulation.h"
 #include "PhysXBackend.h"
 #include <algorithm>
+#include <iostream>
+
+#ifdef HAS_CUDA_TOOLKIT
+#include "PBDFluidSolverGPU.h"
+#endif
 
 FluidSimulation::FluidSimulation()
     : m_MaxParticles(50000)
     , m_TimeScale(1.0f)
     , m_Substeps(1)
     , m_PhysicsBackend(nullptr)
-    , m_Solver(std::make_unique<PBDFluidSolver>())
+    , m_Solver(nullptr) // Initialized below
+    , m_FoamSystem(std::make_unique<FoamParticleSystem>())
+    , m_FoamEnabled(true)
+    , m_FoamVelocityThreshold(3.0f)
+    , m_FoamSpawnRate(0.05f)
 {
+    // Initialize solver (prefer GPU if available)
+#ifdef HAS_CUDA_TOOLKIT
+    std::cout << "FluidSimulation: Attempting to use GPU solver..." << std::endl;
+    m_Solver = std::make_unique<PBDFluidSolverGPU>();
+#else
+    std::cout << "FluidSimulation: Using CPU solver." << std::endl;
+    m_Solver = std::make_unique<PBDFluidSolver>();
+#endif
+    
+    // Add default water fluid type
     // Add default water fluid type
     m_FluidTypes.push_back(FluidType::Water());
+    
+    // Enable foam merging by default for performance
+    m_FoamSystem->SetMergeRadius(0.01f);
+    
+    // Set default adhesion (sticky enough to not scatter instantly on rocks)
+    m_FoamSystem->SetSurfaceAdhesion(0.5f);
 }
 
 FluidSimulation::~FluidSimulation() {
@@ -41,6 +66,12 @@ void FluidSimulation::Update(float deltaTime) {
     float substepDt = deltaTime / static_cast<float>(m_Substeps);
     for (int i = 0; i < m_Substeps; ++i) {
         m_Solver->Update(m_Particles, m_FluidTypes, substepDt);
+    }
+    
+    // Generate and update foam particles
+    if (m_FoamEnabled) {
+        m_FoamSystem->GenerateFromFluid(m_Particles, m_FluidTypes, m_FoamVelocityThreshold, m_FoamSpawnRate);
+        m_FoamSystem->Update(deltaTime, GetGravity(), m_PhysicsBackend);
     }
 }
 

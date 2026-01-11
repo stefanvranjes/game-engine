@@ -239,4 +239,13 @@ public:
      * @param scale Scale factor for collision impulses
      */
     virtual void SetCollisionMassScale(float scale) = 0;
+
+    /**
+     * @brief Raycast against cloth triangles
+     * @param from Start position
+     * @param to End position
+     * @param hit Hit result (output)
+     * @return True if hit
+     */
+    virtual bool Raycast(const Vec3& from, const Vec3& to, struct RaycastHit& hit) = 0;
 };

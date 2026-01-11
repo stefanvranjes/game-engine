@@ -561,7 +561,13 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/FluidEmitter.cpp
         src/FluidSimulation.cpp
         src/FluidRenderer.cpp
+        src/FoamParticleSystem.cpp
     )
+    
+    if(CUDAToolkit_FOUND)
+        target_sources(GameEngine PRIVATE src/PBDFluidSolverGPU.cu)
+        set_source_files_properties(src/PBDFluidSolverGPU.cu PROPERTIES LANGUAGE CUDA)
+    endif()
 else()
     # Add Bullet backend wrapper
     target_sources(GameEngine PRIVATE

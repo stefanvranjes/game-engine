@@ -1,7 +1,9 @@
 #include "PhysXBackend.h"
 #include "IPhysicsRigidBody.h"
 #include "IPhysicsCharacterController.h"
+#include "IPhysicsCharacterController.h"
 #include "IPhysicsSoftBody.h"
+#include "IPhysicsCloth.h"
 
 #ifdef USE_PHYSX
 
@@ -233,6 +235,13 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
         }
     }
 
+    // Update cloths
+    for (auto* cloth : m_Cloths) {
+        if (cloth && cloth->IsEnabled()) {
+            cloth->Update(deltaTime);
+        }
+    }
+
     // Simulate physics
     m_Scene->simulate(deltaTime);
     m_Scene->fetchResults(true); // Block until simulation completes
@@ -276,10 +285,27 @@ bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, ui
         hit.normal = Vec3(pxHit.normal.x, pxHit.normal.y, pxHit.normal.z);
         hit.distance = pxHit.distance;
         hit.userData = pxHit.actor;
-        return true;
+    } else {
+        // If no physx hit, initialize distance to max
+        hit.distance = distance;
     }
 
-    return false;
+    // Raycast against cloths
+    // Since cloths are not fully in scene raycast (or mesh not updated), check manually
+    for (auto* cloth : m_Cloths) {
+        if (cloth && cloth->IsEnabled()) {
+            RaycastHit clothHit;
+            if (cloth->Raycast(from, to, clothHit)) {
+                if (clothHit.distance < hit.distance) {
+                    hit = clothHit;
+                    hasHit = true;
+                    // hit.userData = cloth->GetNativeCloth(); // Optionally set userData
+                }
+            }
+        }
+    }
+
+    return hasHit;
 }
 
 int PhysXBackend::GetNumRigidBodies() const {
@@ -335,6 +361,19 @@ void PhysXBackend::UnregisterSoftBody(IPhysicsSoftBody* softBody) {
     auto it = std::find(m_SoftBodies.begin(), m_SoftBodies.end(), softBody);
     if (it != m_SoftBodies.end()) {
         m_SoftBodies.erase(it);
+    }
+}
+
+void PhysXBackend::RegisterCloth(IPhysicsCloth* cloth) {
+    if (cloth) {
+        m_Cloths.push_back(cloth);
+    }
+}
+
+void PhysXBackend::UnregisterCloth(IPhysicsCloth* cloth) {
+    auto it = std::find(m_Cloths.begin(), m_Cloths.end(), cloth);
+    if (it != m_Cloths.end()) {
+        m_Cloths.erase(it);
     }
 }
 

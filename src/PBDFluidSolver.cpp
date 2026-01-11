@@ -367,8 +367,58 @@ void PBDFluidSolver::HandleBoundaryCollisions(std::vector<FluidParticle>& partic
 }
 
 void PBDFluidSolver::HandleRigidBodyCollisions(std::vector<FluidParticle>& particles) {
-    // TODO: Implement rigid body collision using PhysX raycasts/overlap queries
-    // For now, this is a placeholder
+    if (!m_PhysicsBackend) return;
+
+    for (auto& p : particles) {
+        if (!p.active) continue;
+
+        Vec3 start = p.position;
+        Vec3 end = p.predictedPosition;
+        Vec3 dir = end - start;
+        float dist = dir.Length();
+
+        if (dist < 0.001f) continue;
+        
+        // Normalize direction
+        dir = dir * (1.0f / dist);
+        
+        // Add a small margin to strict segment to detect very close walls
+        float traceDist = dist + 0.01f; // Margin
+
+        RaycastHit hit;
+        
+        // Raycast against physics scene (Rigid + Soft Bodies)
+        if (m_PhysicsBackend->Raycast(start, start + dir * traceDist, hit)) {
+            // If contact is within the movement step
+            if (hit.distance <= dist) {
+                // 1. Position Projection (Non-penetration)
+                // Move particle to surface + epsilon
+                Vec3 normal = hit.normal;
+                p.predictedPosition = hit.position + normal * 0.001f;
+                
+                // 2. Velocity Response
+                // Split velocity into normal and tangential components
+                float vDotN = p.velocity.Dot(normal);
+                
+                // Only reflect if moving into the wall
+                if (vDotN < 0) {
+                    Vec3 vn = normal * vDotN;
+                    Vec3 vt = p.velocity - vn;
+                    
+                    // Apply friction and restitution
+                    float friction = 0.1f;    // Low friction for fluid
+                    float restitution = 0.0f; // No bounce (inelastic)
+                    
+                    p.velocity = vt * (1.0f - friction) - vn * restitution;
+                }
+            } else {
+                // Moving towards wall but haven't hit it yet in this step?
+                // For PBD, we usually only care if we penetrate or cross.
+                // The raycast covers the path (CCD). 
+                // If hit distance > dist, we didn't reach it yet. Safe.
+            }
+        }
+    }
 }
 
 // SPH Kernel Functions
