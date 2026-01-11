@@ -314,6 +314,20 @@ public:
      */
     void SetCrackRenderSettings(const struct CrackRenderer::RenderSettings& settings);
     
+    /**
+     * @brief Set sound callback for crack pulse synchronization
+     * 
+     * Callback receives: crackIndex, damage level, pulse intensity
+     */
+    void SetCrackSoundCallback(std::function<void(int, float, float)> callback);
+    
+    /**
+     * @brief Set particle spawn callback for crack effects
+     * 
+     * Callback receives: position, normal, velocity, damage, count
+     */
+    void SetCrackParticleCallback(std::function<void(Vec3, Vec3, Vec3, float, int)> callback);
+    
     
     // Cloth Collision
     /**

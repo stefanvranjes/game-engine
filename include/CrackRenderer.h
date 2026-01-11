@@ -43,6 +43,26 @@ public:
         bool enableGrowth;         // Animate crack growth/fade-in
         float growthDuration;      // Growth animation duration in seconds (default: 0.5)
         
+        bool damageAffectsSpeed;   // Damage modulates pulse speed
+        float minPulseSpeed;       // Min speed at 0% damage (default: 1.0 Hz)
+        float maxPulseSpeed;       // Max speed at 100% damage (default: 4.0 Hz)
+        
+        bool enableColorPulsing;   // Pulse color in addition to opacity
+        Vec3 pulseColorMin;        // Color at pulse minimum (default: base color)
+        Vec3 pulseColorMax;        // Color at pulse maximum (default: brighter)
+        
+        bool enablePropagation;    // Animate crack length growth
+        float propagationDuration; // Time to grow from 0% to 100% length (default: 0.3s)
+        bool propagationEasing;    // Use easing for smoother growth (default: true)
+        
+        bool enableSoundSync;      // Enable sound synchronization with pulse
+        float soundSyncThreshold;  // Pulse value to trigger sound (default: 0.9)
+        
+        bool enableParticles;      // Enable particle effects
+        float particleSpawnRate;   // Particles per second per crack (default: 5.0)
+        bool particlesOnPulse;     // Spawn burst on pulse peaks (default: true)
+        int particleBurstCount;    // Particles per pulse burst (default: 3)
+        
         RenderSettings()
             : crackColor(0.2f, 0.0f, 0.0f)
             , baseWidth(0.02f)
@@ -65,6 +85,18 @@ public:
             , damageAffectsSpeed(true)
             , minPulseSpeed(1.0f)
             , maxPulseSpeed(4.0f)
+            , enableColorPulsing(false)
+            , pulseColorMin(0.5f, 0.0f, 0.0f)   // Dark red
+            , pulseColorMax(1.0f, 0.3f, 0.0f)   // Bright orange-red
+            , enablePropagation(true)
+            , propagationDuration(0.3f)
+            , propagationEasing(true)
+            , enableSoundSync(false)
+            , soundSyncThreshold(0.9f)
+            , enableParticles(false)
+            , particleSpawnRate(5.0f)
+            , particlesOnPulse(true)
+            , particleBurstCount(3)
         {}
     };
 
@@ -125,6 +157,20 @@ public:
      * @brief Get current rendering settings
      */
     RenderSettings GetRenderSettings() const { return m_Settings; }
+    
+    /**
+     * @brief Set sound callback for pulse synchronization
+     * 
+     * Callback receives: crackIndex, damage level, pulse intensity
+     */
+    void SetSoundCallback(std::function<void(int, float, float)> callback);
+    
+    /**
+     * @brief Set particle spawn callback
+     * 
+     * Callback receives: position, normal, velocity, damage, count
+     */
+    void SetParticleCallback(std::function<void(Vec3, Vec3, Vec3, float, int)> callback);
 
     /**
      * @brief Initialize OpenGL resources
@@ -151,6 +197,14 @@ private:
     
     // Animation state
     float m_AnimationTime;
+    
+    // Sound synchronization
+    std::function<void(int, float, float)> m_SoundCallback;
+    std::vector<bool> m_LastPulseState;  // Track pulse state per crack for edge detection
+    
+    // Particle effects
+    std::function<void(Vec3, Vec3, Vec3, float, int)> m_ParticleCallback;
+    std::vector<float> m_LastParticleTime;  // Track last particle spawn time per crack
     
     /**
      * @brief Calculate color for crack based on damage
@@ -179,6 +233,14 @@ private:
      * @brief Calculate growth fade-in factor
      */
     float CalculateGrowthFactor(
+        const PartialTearSystem::Crack& crack,
+        float currentTime
+    ) const;
+    
+    /**
+     * @brief Calculate crack propagation factor (length growth)
+     */
+    float CalculatePropagationFactor(
         const PartialTearSystem::Crack& crack,
         float currentTime
     ) const;

@@ -101,7 +101,58 @@ void CreatePartialTearingDemo(PhysXBackend* physxBackend, Scene& scene) {
     crackSettings.minPulseSpeed = 1.0f;     // Slow pulse at low damage
     crackSettings.maxPulseSpeed = 4.0f;     // Fast pulse at high damage
     
+    // Enable color pulsing
+    crackSettings.enableColorPulsing = true;
+    crackSettings.pulseColorMin = Vec3(0.5f, 0.0f, 0.0f);   // Dark red at pulse min
+    crackSettings.pulseColorMax = Vec3(1.0f, 0.4f, 0.0f);   // Bright orange at pulse max
+    
+    // Enable crack propagation animation
+    crackSettings.enablePropagation = true;
+    crackSettings.propagationDuration = 0.3f;  // 0.3 second growth
+    crackSettings.propagationEasing = true;    // Smooth easing
+    
+    // Enable sound synchronization
+    crackSettings.enableSoundSync = true;
+    crackSettings.soundSyncThreshold = 0.9f;   // Trigger at 90% of pulse peak
+    
+    // Enable particle effects
+    crackSettings.enableParticles = true;
+    crackSettings.particleSpawnRate = 5.0f;    // 5 particles/second continuous
+    crackSettings.particlesOnPulse = true;     // Burst on pulse peaks
+    crackSettings.particleBurstCount = 3;      // 3 particles per burst
+    
     softBody->SetCrackRenderSettings(crackSettings);
+    
+    // Set sound callback
+    softBody->SetCrackSoundCallback([](int crackIndex, float damage, float intensity) {
+        // This would trigger audio playback in a real implementation
+        // Volume and pitch could be based on damage and intensity
+        std::cout << "🔊 Sound: Crack " << crackIndex 
+                  << " (damage: " << (damage * 100.0f) << "%, intensity: " << intensity << ")" 
+                  << std::endl;
+        
+        // Example audio integration:
+        // float volume = 0.3f + damage * 0.7f;  // 30% to 100% volume
+        // float pitch = 0.8f + damage * 0.4f;   // Lower to higher pitch
+        // AudioSystem::PlaySound("crack_pulse.wav", volume, pitch);
+    });
+    
+    // Set particle callback
+    softBody->SetCrackParticleCallback([](Vec3 position, Vec3 normal, Vec3 velocity, float damage, int count) {
+        // This would spawn particles in a real implementation
+        std::cout << "✨ Particles: " << count << " at (" 
+                  << position.x << ", " << position.y << ", " << position.z << ") "
+                  << "damage: " << (damage * 100.0f) << "%" << std::endl;
+        
+        // Example particle integration:
+        // for (int i = 0; i < count; ++i) {
+        //     Vec3 randomOffset = RandomInCone(normal, 30.0f);  // 30 degree cone
+        //     Vec3 particleVel = velocity + randomOffset;
+        //     Vec3 color = Vec3(1.0f, 0.5f * (1.0f - damage), 0.0f);  // Orange to red
+        //     float lifetime = 0.5f + damage * 0.5f;  // 0.5-1.0 seconds
+        //     ParticleSystem::Spawn(position, particleVel, color, lifetime);
+        // }
+    });
     
     std::cout << "Partial tearing enabled:" << std::endl;
     std::cout << "  Crack threshold: " << softBody->GetCrackThreshold() << std::endl;
@@ -134,10 +185,14 @@ void CreatePartialTearingDemo(PhysXBackend* physxBackend, Scene& scene) {
     std::cout << "\n=== Demo Ready ===" << std::endl;
     std::cout << "Expected behavior:" << std::endl;
     std::cout << "1. Cracks will form at stressed regions (120% stretch)" << std::endl;
-    std::cout << "2. Cracks progressively damage over time" << std::endl;
-    std::cout << "3. Pulse speed increases with damage (1 Hz → 4 Hz)" << std::endl;
-    std::cout << "4. At 100% damage, cracks convert to full tears" << std::endl;
-    std::cout << "5. Cracks may heal if stress is removed" << std::endl;
+    std::cout << "2. Cracks visually grow along edge over 0.3 seconds" << std::endl;
+    std::cout << "3. Cracks progressively damage over time" << std::endl;
+    std::cout << "4. Pulse speed increases with damage (1 Hz → 4 Hz)" << std::endl;
+    std::cout << "5. Color pulses between dark red and bright orange" << std::endl;
+    std::cout << "6. Sound triggers in sync with pulse peaks" << std::endl;
+    std::cout << "7. Particles spawn continuously and burst on pulses" << std::endl;
+    std::cout << "8. At 100% damage, cracks convert to full tears" << std::endl;
+    std::cout << "9. Cracks may heal if stress is removed" << std::endl;
 }
 
 // Usage in update loop:

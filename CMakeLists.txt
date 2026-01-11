@@ -556,6 +556,11 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/FractureLineToPattern.cpp
         src/TearPatternGizmo.cpp
         src/FractureLinePatternLibrary.cpp
+        # Fluid simulation (PBD)
+        src/PBDFluidSolver.cpp
+        src/FluidEmitter.cpp
+        src/FluidSimulation.cpp
+        src/FluidRenderer.cpp
     )
 else()
     # Add Bullet backend wrapper

@@ -85,9 +85,90 @@ void CrackRenderer::RenderCracks(
     m_CachedVertices.clear();
     m_CachedColors.clear();
 
-    // Generate geometry for all cracks
-    for (const auto& crack : cracks) {
+    // Ensure pulse state tracking matches crack count
+    if (m_LastPulseState.size() != cracks.size()) {
+        m_LastPulseState.resize(cracks.size(), false);
+    }
+    
+    // Ensure particle timing tracking matches crack count
+    if (m_LastParticleTime.size() != cracks.size()) {
+        m_LastParticleTime.resize(cracks.size(), 0.0f);
+    }
+
+    // Generate geometry for all cracks and check for pulse peaks
+    for (size_t i = 0; i < cracks.size(); ++i) {
+        const auto& crack = cracks[i];
         GenerateCrackGeometry(crack, vertices, tetrahedra, m_CachedVertices, m_CachedColors, currentTime);
+        
+        // Calculate crack position and normal for effects
+        const int edgeIndices[6][2] = {
+            {0, 1}, {0, 2}, {0, 3},
+            {1, 2}, {1, 3}, {2, 3}
+        };
+        const int* tet = &tetrahedra[crack.tetrahedronIndex * 4];
+        int edgeIdx = crack.edgeIndex;
+        
+        if (edgeIdx >= 0 && edgeIdx < 6) {
+            int v0 = tet[edgeIndices[edgeIdx][0]];
+            int v1 = tet[edgeIndices[edgeIdx][1]];
+            Vec3 p0 = vertices[v0];
+            Vec3 p1 = vertices[v1];
+            Vec3 crackPos = (p0 + p1) * 0.5f;  // Midpoint
+            Vec3 crackDir = p1 - p0;
+            float length = std::sqrt(crackDir.x * crackDir.x + crackDir.y * crackDir.y + crackDir.z * crackDir.z);
+            if (length > 0.001f) {
+                crackDir.x /= length;
+                crackDir.y /= length;
+                crackDir.z /= length;
+            }
+            // Normal perpendicular to crack
+            Vec3 crackNormal(-crackDir.y, crackDir.x, 0.0f);
+            
+            // Particle effects
+            if (m_Settings.enableParticles && m_ParticleCallback) {
+                // Continuous particle spawning
+                float timeSinceLastParticle = currentTime - m_LastParticleTime[i];
+                float spawnInterval = 1.0f / m_Settings.particleSpawnRate;
+                
+                if (timeSinceLastParticle >= spawnInterval) {
+                    // Spawn continuous particles
+                    Vec3 velocity = crackNormal * (0.5f + crack.damage * 0.5f);  // Faster with more damage
+                    m_ParticleCallback(crackPos, crackNormal, velocity, crack.damage, 1);
+                    m_LastParticleTime[i] = currentTime;
+                }
+            }
+        
+            // Sound synchronization - detect pulse peaks
+            if (m_Settings.enableSoundSync && m_Settings.enablePulsing && m_SoundCallback) {
+                const float PI = 3.14159265359f;
+                
+                // Calculate pulse speed (with damage modulation if enabled)
+                float effectivePulseSpeed = m_Settings.pulseSpeed;
+                if (m_Settings.damageAffectsSpeed) {
+                    float damageT = std::clamp(crack.damage, 0.0f, 1.0f);
+                    effectivePulseSpeed = m_Settings.minPulseSpeed + 
+                                         damageT * (m_Settings.maxPulseSpeed - m_Settings.minPulseSpeed);
+                }
+                
+                // Calculate current pulse value (0.0 to 1.0)
+                float pulse = std::sin(currentTime * effectivePulseSpeed * 2.0f * PI) * 0.5f + 0.5f;
+                
+                // Detect rising edge crossing threshold
+                bool aboveThreshold = pulse >= m_Settings.soundSyncThreshold;
+                if (aboveThreshold && !m_LastPulseState[i]) {
+                    // Pulse peak detected - trigger sound
+                    float intensity = m_Settings.pulseAmplitude * pulse;
+                    m_SoundCallback(static_cast<int>(i), crack.damage, intensity);
+                    
+                    // Spawn particle burst on pulse if enabled
+                    if (m_Settings.enableParticles && m_Settings.particlesOnPulse && m_ParticleCallback) {
+                        Vec3 burstVelocity = crackNormal * (1.0f + crack.damage * 2.0f);  // Stronger burst
+                        m_ParticleCallback(crackPos, crackNormal, burstVelocity, crack.damage, m_Settings.particleBurstCount);
+                    }
+                }
+                m_LastPulseState[i] = aboveThreshold;
+            }
+        }
     }
 
     if (m_CachedVertices.empty()) {
@@ -165,6 +246,31 @@ void CrackRenderer::GenerateCrackGeometry(
     Vec3 color = CalculateCrackColor(crack.damage);
     float opacity = CalculateCrackOpacity(crack.damage);
     
+    // Apply color pulsing if enabled
+    if (m_Settings.enableColorPulsing && m_Settings.enablePulsing) {
+        const float PI = 3.14159265359f;
+        
+        // Calculate pulse speed (with damage modulation if enabled)
+        float effectivePulseSpeed = m_Settings.pulseSpeed;
+        if (m_Settings.damageAffectsSpeed) {
+            float damageT = std::clamp(crack.damage, 0.0f, 1.0f);
+            effectivePulseSpeed = m_Settings.minPulseSpeed + 
+                                 damageT * (m_Settings.maxPulseSpeed - m_Settings.minPulseSpeed);
+        }
+        
+        // Calculate pulse value (0.0 to 1.0)
+        float pulse = std::sin(currentTime * effectivePulseSpeed * 2.0f * PI) * 0.5f + 0.5f;
+        
+        // Interpolate between min and max pulse colors
+        Vec3 pulseColor;
+        pulseColor.x = m_Settings.pulseColorMin.x + pulse * (m_Settings.pulseColorMax.x - m_Settings.pulseColorMin.x);
+        pulseColor.y = m_Settings.pulseColorMin.y + pulse * (m_Settings.pulseColorMax.y - m_Settings.pulseColorMin.y);
+        pulseColor.z = m_Settings.pulseColorMin.z + pulse * (m_Settings.pulseColorMax.z - m_Settings.pulseColorMin.z);
+        
+        // Blend pulse color with base color
+        color = pulseColor;
+    }
+    
     // Apply animation effects
     float animIntensity = CalculateAnimatedIntensity(crack, currentTime);
     opacity *= animIntensity;
@@ -172,19 +278,34 @@ void CrackRenderer::GenerateCrackGeometry(
     // Apply growth fade-in
     float growthFactor = CalculateGrowthFactor(crack, currentTime);
     opacity *= growthFactor;
+    
+    // Apply crack propagation (length growth)
+    float propagationFactor = CalculatePropagationFactor(crack, currentTime);
+    
+    // Interpolate crack endpoints based on propagation
+    Vec3 crackStart = p0;
+    Vec3 crackEnd = p0 + (p1 - p0) * propagationFactor;
 
     // Store color with opacity in RGB (will use red channel as alpha in shader)
     Vec3 colorWithAlpha = color * opacity;
 
-    // Add line segment
-    outVertices.push_back(p0);
-    outVertices.push_back(p1);
+    // Add line segment (may be partial if still propagating)
+    outVertices.push_back(crackStart);
+    outVertices.push_back(crackEnd);
     outColors.push_back(colorWithAlpha);
     outColors.push_back(colorWithAlpha);
 }
 
 void CrackRenderer::SetRenderSettings(const RenderSettings& settings) {
     m_Settings = settings;
+}
+
+void CrackRenderer::SetSoundCallback(std::function<void(int, float, float)> callback) {
+    m_SoundCallback = callback;
+}
+
+void CrackRenderer::SetParticleCallback(std::function<void(Vec3, Vec3, Vec3, float, int)> callback) {
+    m_ParticleCallback = callback;
 }
 
 Vec3 CrackRenderer::CalculateCrackColor(float damage) const {
@@ -267,6 +388,29 @@ float CrackRenderer::CalculateGrowthFactor(
     growth = growth * growth * (3.0f - 2.0f * growth);
     
     return growth;
+}
+
+float CrackRenderer::CalculatePropagationFactor(
+    const PartialTearSystem::Crack& crack,
+    float currentTime) const
+{
+    if (!m_Settings.enablePropagation) {
+        return 1.0f;  // Full length immediately
+    }
+    
+    // Calculate age of crack
+    float age = currentTime - crack.creationTime;
+    
+    // Propagate over propagation duration
+    float propagation = std::clamp(age / m_Settings.propagationDuration, 0.0f, 1.0f);
+    
+    // Apply easing if enabled
+    if (m_Settings.propagationEasing) {
+        // Ease-out cubic for fast start, slow finish
+        propagation = 1.0f - std::pow(1.0f - propagation, 3.0f);
+    }
+    
+    return propagation;
 }
 
 void CrackRenderer::UpdateBuffers() {

@@ -2889,4 +2889,16 @@ void PhysXSoftBody::SetCrackRenderSettings(const CrackRenderer::RenderSettings& 
     }
 }
 
+void PhysXSoftBody::SetCrackSoundCallback(std::function<void(int, float, float)> callback) {
+    if (m_CrackRenderer) {
+        m_CrackRenderer->SetSoundCallback(callback);
+    }
+}
+
+void PhysXSoftBody::SetCrackParticleCallback(std::function<void(Vec3, Vec3, Vec3, float, int)> callback) {
+    if (m_CrackRenderer) {
+        m_CrackRenderer->SetParticleCallback(callback);
+    }
+}
+
 #endif // USE_PHYSX
