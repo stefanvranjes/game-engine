@@ -118,4 +118,58 @@ public:
      * @return Opaque pointer to native controller
      */
     virtual void* GetNativeController() = 0;
+
+    /**
+     * @brief Set the slope limit
+     * @param slopeLimit Slope limit in degrees or cosine (depending on backend implementation)
+     */
+    virtual void SetSlopeLimit(float slopeLimit) = 0;
+
+    /**
+     * @brief Get the slope limit
+     * @return Slope limit
+     */
+    virtual float GetSlopeLimit() const = 0;
+
+    /**
+     * @brief Set the contact offset (skin width)
+     * @param offset Offset in meters
+     */
+    virtual void SetContactOffset(float offset) = 0;
+
+    /**
+     * @brief Get the contact offset
+     * @return Contact offset in meters
+     */
+    virtual float GetContactOffset() const = 0;
+
+    /**
+     * @brief Resize the controller (e.g. for crouching)
+     * @param height New height of the controller
+     */
+    virtual void Resize(float height) = 0;
+
+    /**
+     * @brief Set the up direction for the controller physics
+     * @param up Up vector
+     */
+    virtual void SetUpDirection(const Vec3& up) = 0;
+
+    /**
+     * @brief Get the up direction
+     * @return Up vector
+     */
+    virtual Vec3 GetUpDirection() const = 0;
+
+    /**
+     * @brief Set the force applied to dynamic objects when colliding
+     * @param force Force magnitude
+     */
+    virtual void SetPushForce(float force) = 0;
+
+    /**
+     * @brief Get the push force
+     * @return Force magnitude
+     */
+    virtual float GetPushForce() const = 0;
 };

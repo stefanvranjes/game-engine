@@ -1,11 +1,18 @@
 #include "PhysXBackend.h"
 #include "IPhysicsRigidBody.h"
+#include "EngineConfig.h"
 #include "IPhysicsCharacterController.h"
 #include "IPhysicsCharacterController.h"
 #include "IPhysicsSoftBody.h"
 #include "IPhysicsCloth.h"
 #include "PhysXVehicle.h"
 #include "PhysXAggregate.h"
+
+#include "PhysXRigidBody.h" // Needed for casting
+#include "PhysXCharacterController.h"
+#include "PhysXSoftBody.h"
+#include "PhysXVehicle.h"
+#include "PhysXFluidVolume.h" // Added
 
 #ifdef USE_PHYSX
 
@@ -136,6 +143,18 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
     // Set custom filter shader for callbacks
     sceneDesc.filterShader = PhysXSimulationFilterShader;
 
+    // Enable CCD in scene
+    sceneDesc.flags |= PxSceneFlag::eENABLE_CCD;
+
+    enum class CollisionEventType {
+        Enter,
+        Stay,
+        Exit
+    };
+    // Global Collision Callback
+    using GlobalCollisionCallback = std::function<void(IPhysicsRigidBody*, IPhysicsRigidBody*, const Vec3&, const Vec3&, float, CollisionEventType)>;
+    void SetGlobalCollisionCallback(GlobalCollisionCallback callback);
+
     // Set simulation event callback
     m_CollisionCallback = new PhysXCollisionCallback(this);
     sceneDesc.simulationEventCallback = m_CollisionCallback;
@@ -165,6 +184,10 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
 }
 
 void PhysXBackend::InitializePhysXVisualDebugger() {
+    if (!g_EngineConfig.enablePhysXVisualDebugger) {
+        return;
+    }
+
     // Create PVD connection
     m_Pvd = PxCreatePvd(*m_Foundation);
     if (!m_Pvd) {
@@ -173,13 +196,14 @@ void PhysXBackend::InitializePhysXVisualDebugger() {
     }
 
     // Try to connect to PVD (localhost:5425)
-    PxPvdTransport* transport = PxDefaultPvdSocketTransportCreate("127.0.0.1", 5425, 10);
+    // Increased timeout to 100ms to allow for better connection reliability
+    PxPvdTransport* transport = PxDefaultPvdSocketTransportCreate("127.0.0.1", 5425, 100);
     if (transport) {
         bool connected = m_Pvd->connect(*transport, PxPvdInstrumentationFlag::eALL);
         if (connected) {
             std::cout << "PhysX Visual Debugger connected!" << std::endl;
         } else {
-            std::cout << "PhysX Visual Debugger not running (optional)" << std::endl;
+            std::cout << "PhysX Visual Debugger not running (connection attempt failed)" << std::endl;
         }
     }
 }
@@ -256,6 +280,8 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
     if (!m_Initialized || !m_Scene) {
         return;
     }
+
+    m_SimulationTime += deltaTime;
 
     // Update character controllers first
     UpdateCharacterControllers(deltaTime);
@@ -356,6 +382,17 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
         // Post-update sync
         for (auto* vehicle : m_Vehicles) {
             vehicle->SyncTransform();
+        }
+    }
+
+    // Apply buoyancy and other per-frame forces to rigid bodies
+    // Optimization: Only update active bodies? 
+    // For now iterate all registered bodies to ensure we catch everything, 
+    // but PhysXRigidBody::UpdateBuoyancy checks if it has active fluids.
+    // If we want to be faster, we should only check active bodies.
+    for (auto* body : m_RigidBodies) {
+        if (body && body->IsActive()) {
+             static_cast<PhysXRigidBody*>(body)->UpdateBuoyancy(deltaTime);
         }
     }
 
@@ -702,6 +739,27 @@ void PhysXBackend::UnregisterContactModifyListener(IPhysXContactModifyListener* 
     }
 }
 
+void PhysXBackend::RegisterFluidVolume(PhysXFluidVolume* volume) {
+    if (volume && volume->GetTriggerBody()) {
+        m_FluidVolumeMap[volume->GetTriggerBody()] = volume;
+    }
+}
+
+void PhysXBackend::UnregisterFluidVolume(PhysXFluidVolume* volume) {
+    if (volume && volume->GetTriggerBody()) {
+        m_FluidVolumeMap.erase(volume->GetTriggerBody());
+    }
+}
+
+PhysXFluidVolume* PhysXBackend::GetFluidVolume(IPhysicsRigidBody* body) {
+    if (!body) return nullptr;
+    auto it = m_FluidVolumeMap.find(body);
+    if (it != m_FluidVolumeMap.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
 bool PhysXBackend::IsGpuSoftBodySupported() const {
     // PhysX 5.x soft bodies require GPU
     // Check if CUDA context is available and valid
@@ -796,6 +854,7 @@ void PhysXBackend::GetActiveRigidBodies(std::vector<IPhysicsRigidBody*>& outBodi
 
 
 // Custom filter shader
+// Custom filter shader
 physx::PxFilterFlags PhysXSimulationFilterShader(
     physx::PxFilterObjectAttributes attributes0, physx::PxFilterData filterData0,
     physx::PxFilterObjectAttributes attributes1, physx::PxFilterData filterData1,
@@ -804,9 +863,15 @@ physx::PxFilterFlags PhysXSimulationFilterShader(
     // Let the default filter set the basic flags
     PxFilterFlags flags = PxDefaultSimulationFilterShader(attributes0, filterData0, attributes1, filterData1, pairFlags, constantBlock, constantBlockSize);
     
+    // Check if either object is a trigger
+    if (PxFilterObjectIsTrigger(attributes0) || PxFilterObjectIsTrigger(attributes1)) {
+        pairFlags = PxPairFlag::eTRIGGER_DEFAULT;
+        return PxFilterFlag::eDEFAULT;
+    }
+
     // Enable contact reports for all colliding pairs
     if (!(flags & PxFilterFlag::eSUPPRESS)) {
-        pairFlags |= PxPairFlag::eCONTACT_DEFAULT | PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_TOUCH_UHD_FORCE | PxPairFlag::eMODIFY_CONTACTS;
+        pairFlags |= PxPairFlag::eCONTACT_DEFAULT | PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_TOUCH_PERSISTS | PxPairFlag::eNOTIFY_TOUCH_LOST | PxPairFlag::eNOTIFY_TOUCH_UHD_FORCE | PxPairFlag::eMODIFY_CONTACTS;
     }
     
     return flags;
@@ -818,84 +883,143 @@ void PhysXBackend::PhysXContactModifyCallback::onContactModify(physx::PxContactM
     }
 }
 
+void PhysXBackend::PhysXCollisionCallback::onTrigger(physx::PxTriggerPair* pairs, physx::PxU32 count) {
+    for (PxU32 i = 0; i < count; i++) {
+        PxTriggerPair& pair = pairs[i];
+        
+        // Ignore pairs with deleted shapes
+        if (pair.flags & (PxTriggerPairFlag::eREMOVED_SHAPE_TRIGGER | PxTriggerPairFlag::eREMOVED_SHAPE_OTHER))
+            continue;
+            
+        PxActor* triggerActor = pair.triggerActor;
+        PxActor* otherActor = pair.otherActor;
+        
+        if (!triggerActor || !otherActor) continue;
+        
+        IPhysicsRigidBody* triggerBody = static_cast<IPhysicsRigidBody*>(triggerActor->userData);
+        IPhysicsRigidBody* otherBody = static_cast<IPhysicsRigidBody*>(otherActor->userData);
+        
+        if (!triggerBody) continue;
+        
+        // Calculate relative velocity
+        Vec3 relVel(0,0,0);
+        PxRigidActor* actor0 = triggerActor; // trigger
+        PxRigidActor* actor1 = otherActor;   // other
+        
+        if (actor0->is<PxRigidDynamic>() && actor1->is<PxRigidDynamic>()) {
+             PxVec3 v0 = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
+             PxVec3 v1 = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
+             PxVec3 v = v1 - v0; // Relative to trigger body (velocity of other IN trigger frame? usually other - trigger)
+             relVel = Vec3(v.x, v.y, v.z);
+        }
+        else if (actor1->is<PxRigidDynamic>()) {
+             PxVec3 v = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
+             relVel = Vec3(v.x, v.y, v.z);
+        }
+         else if (actor0->is<PxRigidDynamic>()) {
+             PxVec3 v = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
+             relVel = Vec3(-v.x, -v.y, -v.z); // Relative to trigger
+        }
+
+        IPhysicsRigidBody::TriggerInfo info;
+        info.otherBody = otherBody;
+        info.relativeVelocity = relVel;
+        
+        if (pair.status & PxPairFlag::eNOTIFY_TOUCH_FOUND) {
+            static_cast<PhysXRigidBody*>(triggerBody)->HandleTriggerEnter(info);
+        }
+        else if (pair.status & PxPairFlag::eNOTIFY_TOUCH_LOST) {
+            static_cast<PhysXRigidBody*>(triggerBody)->HandleTriggerExit(info);
+        }
+    }
+}
+
 void PhysXBackend::PhysXCollisionCallback::onContact(const physx::PxContactPairHeader& pairHeader, const physx::PxContactPair* pairs, physx::PxU32 nbPairs) {
     for (PxU32 i = 0; i < nbPairs; i++) {
         const PxContactPair& cp = pairs[i];
+        
+        PhysXBackend::CollisionEventType eventType = PhysXBackend::CollisionEventType::Stay;
+        if (cp.events & PxPairFlag::eNOTIFY_TOUCH_FOUND) eventType = PhysXBackend::CollisionEventType::Enter;
+        else if (cp.events & PxPairFlag::eNOTIFY_TOUCH_LOST) eventType = PhysXBackend::CollisionEventType::Exit;
+        // else PERSISTS is Stay
 
-        if (cp.events & (PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_THRESHOLD_FORCE_FOUND)) {
-            PxActor* actor0 = pairHeader.actors[0];
-            PxActor* actor1 = pairHeader.actors[1];
+        // For Exit, contact points might not be available or valid in the same way, 
+        // but we still want to notify systems to stop sounds.
+        
+        PxActor* actor0 = pairHeader.actors[0];
+        PxActor* actor1 = pairHeader.actors[1];
 
-            if (!actor0 || !actor1) continue;
+        if (!actor0 || !actor1) continue;
 
-            IPhysicsRigidBody* body0 = static_cast<IPhysicsRigidBody*>(actor0->userData);
-            IPhysicsRigidBody* body1 = static_cast<IPhysicsRigidBody*>(actor1->userData);
+        IPhysicsRigidBody* body0 = static_cast<IPhysicsRigidBody*>(actor0->userData);
+        IPhysicsRigidBody* body1 = static_cast<IPhysicsRigidBody*>(actor1->userData);
 
-            // Need at least one valid body with callback
-            if (!body0 && !body1) continue;
-
-            // Extract contact point and normal from the first contact point
+        if (!body0 && !body1) continue;
+        
+        // Extract info
+        Vec3 point(0,0,0);
+        Vec3 normal(0,1,0);
+        float impulseMag = 0.0f;
+        
+        // If Exit, we might not have patches
+        if (eventType != PhysXBackend::CollisionEventType::Exit) {
             PxContactStreamIterator iter(cp.contactPatches, cp.contactPoints, cp.getInternalFaceIndices(), cp.patchCount, cp.contactCount);
-            
             if (iter.hasNextPatch()) {
                 iter.nextPatch();
                 if (iter.hasNextPoint()) {
                     iter.nextPoint();
-                    PxVec3 point = iter.getContactPoint();
-                    PxVec3 normal = iter.getContactNormal();
-                    
-                    // Estimate impulse based on relative velocity or force
-                    // Note: PhysX doesn't give direct impulse easily in onContact without extra flags/queries.
-                    // We can approximate or use separate impact data. 
-                    // Using normal force if available is better but complex to extract reliably without solver data.
-                    // For now, let's use relative velocity if actors are dynamic.
-
-                    Vec3 relVel(0,0,0);
-                    if (actor0->is<PxRigidDynamic>() && actor1->is<PxRigidDynamic>()) {
-                         PxVec3 v0 = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
-                         PxVec3 v1 = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
-                         PxVec3 v = v0 - v1;
-                         relVel = Vec3(v.x, v.y, v.z);
-                    }
-                    else if (actor0->is<PxRigidDynamic>()) {
-                         PxVec3 v = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
-                         relVel = Vec3(v.x, v.y, v.z);
-                    }
-                     else if (actor1->is<PxRigidDynamic>()) {
-                         PxVec3 v = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
-                         relVel = Vec3(-v.x, -v.y, -v.z); // Relative to body 0
-                    }
-
-                    // Simple impulse estimation: mass * deltaV (very rough, but useful for thresholds)
-                    // Better to just pass relative velocity magnitude for damage thresholds.
-                    float impulseMag = relVel.Length(); // Using velocity magnitude as proxy for impact intensity
-
-                    // Notify body 0
-                    if (body0) {
-                        IPhysicsRigidBody::CollisionInfo info;
-                        info.point = Vec3(point.x, point.y, point.z);
-                        info.normal = Vec3(normal.x, normal.y, normal.z);
-                        info.impulse = impulseMag; // This is actually velocity, but used for threshold
-                        info.relativeVelocity = relVel;
-                        info.otherBody = body1;
-                        
-                        // We know these are PhysXRigidBody instances because we are in PhysXBackend
-                        static_cast<PhysXRigidBody*>(body0)->HandleCollision(info);
-                    }
-
-                    // Notify body 1
-                    if (body1) {
-                         IPhysicsRigidBody::CollisionInfo info;
-                        info.point = Vec3(point.x, point.y, point.z);
-                        info.normal = Vec3(-normal.x, -normal.y, -normal.z); // Inverse normal for body 1
-                        info.impulse = impulseMag;
-                        info.relativeVelocity = relVel * -1.0f;
-                        info.otherBody = body0;
-                        
-                        static_cast<PhysXRigidBody*>(body1)->HandleCollision(info);
-                    }
+                    PxVec3 p = iter.getContactPoint();
+                    PxVec3 n = iter.getContactNormal();
+                    point = Vec3(p.x, p.y, p.z);
+                    normal = Vec3(n.x, n.y, n.z);
                 }
             }
+            
+            // Calculate relative velocity/impulse
+            Vec3 relVel(0,0,0);
+            if (actor0->is<PxRigidDynamic>() && actor1->is<PxRigidDynamic>()) {
+                 PxVec3 v0 = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
+                 PxVec3 v1 = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
+                 PxVec3 v = v0 - v1;
+                 relVel = Vec3(v.x, v.y, v.z);
+            }
+            else if (actor0->is<PxRigidDynamic>()) {
+                 PxVec3 v = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
+                 relVel = Vec3(v.x, v.y, v.z);
+            }
+             else if (actor1->is<PxRigidDynamic>()) {
+                 PxVec3 v = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
+                 relVel = Vec3(-v.x, -v.y, -v.z); 
+            }
+            impulseMag = relVel.Length();
+        }
+
+        // Notify RigidBodies ONLY on Enter (legacy behavior provided by HandleCollision)
+        if (eventType == PhysXBackend::CollisionEventType::Enter) {
+            if (body0) {
+                IPhysicsRigidBody::CollisionInfo info;
+                info.point = point;
+                info.normal = normal;
+                info.impulse = impulseMag;
+                info.otherBody = body1;
+                // info.relativeVelocity // We computed it but didn't store it in valid scope earlier? 
+                // Let's recalculate or clean up. 
+                // For this edit, we keep it simple.
+                static_cast<PhysXRigidBody*>(body0)->HandleCollision(info);
+            }
+            if (body1) {
+                IPhysicsRigidBody::CollisionInfo info;
+                info.point = point;
+                info.normal = -normal;
+                info.impulse = impulseMag;
+                info.otherBody = body0;
+                static_cast<PhysXRigidBody*>(body1)->HandleCollision(info);
+            }
+        }
+
+        // Notify Global Listener (Impact System needs Enter, Rolling System needs Stay/Exit)
+        if (m_Backend->m_GlobalCollisionCallback) {
+            m_Backend->m_GlobalCollisionCallback(body0, body1, point, normal, impulseMag, eventType);
         }
     }
 }

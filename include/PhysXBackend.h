@@ -5,6 +5,7 @@
 #include "Math/Quat.h"
 #include <memory>
 #include <vector>
+#include <unordered_map>
 
 // PhysX forward declarations
 namespace physx {
@@ -58,6 +59,9 @@ public:
     void Initialize(const Vec3& gravity) override;
     void Shutdown() override;
     void Update(float deltaTime, int subSteps = 1) override;
+    
+    // Time tracking
+    double GetSimulationTime() const { return m_SimulationTime; }
     void SetGravity(const Vec3& gravity) override;
     Vec3 GetGravity() const override;
     bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter = ~0u) override;
@@ -108,11 +112,23 @@ public:
     void RegisterAggregate(class PhysXAggregate* aggregate);
     void UnregisterAggregate(class PhysXAggregate* aggregate);
 
+    void RegisterFluidVolume(class PhysXFluidVolume* volume);
+    void UnregisterFluidVolume(class PhysXFluidVolume* volume);
+    class PhysXFluidVolume* GetFluidVolume(IPhysicsRigidBody* body);
+
+    // Global Collision Callback
+    using GlobalCollisionCallback = std::function<void(IPhysicsRigidBody*, IPhysicsRigidBody*, const Vec3&, const Vec3&, float)>;
+    void SetGlobalCollisionCallback(GlobalCollisionCallback callback);
+
     // Contact Modification
     void RegisterContactModifyListener(IPhysXContactModifyListener* listener);
     void UnregisterContactModifyListener(IPhysXContactModifyListener* listener);
 
 private:
+    friend class PhysXCollisionCallback; // Allow callback to access member
+    
+    GlobalCollisionCallback m_GlobalCollisionCallback;
+
     // PhysX core objects
     physx::PxFoundation* m_Foundation;
     physx::PxPhysics* m_Physics;
@@ -134,12 +150,14 @@ private:
     std::vector<PhysXVehicle*> m_Vehicles;
     std::vector<class PhysXArticulation*> m_Articulations;
     std::vector<class PhysXAggregate*> m_Aggregates;
+    std::unordered_map<IPhysicsRigidBody*, class PhysXFluidVolume*> m_FluidVolumeMap;
     std::vector<IPhysXContactModifyListener*> m_ContactModifyListeners;
 
     // State
     bool m_Initialized;
     bool m_DebugDrawEnabled;
     Vec3 m_Gravity;
+    double m_SimulationTime = 0.0;
     
     // GPU tracking
     mutable size_t m_GpuMemoryUsageMB;

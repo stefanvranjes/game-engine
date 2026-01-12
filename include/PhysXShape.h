@@ -29,6 +29,9 @@ public:
     void SetLocalScaling(const Vec3& scale) override;
     float GetMargin() const override;
     void SetMargin(float margin) override;
+    void SetMargin(float margin) override;
+    void SetTrigger(bool isTrigger) override;
+    bool IsTrigger() const override;
     void* GetNativeShape() override;
     void AddChildShape(std::shared_ptr<IPhysicsShape> child, const Vec3& position, const Vec3& rotation) override;
 

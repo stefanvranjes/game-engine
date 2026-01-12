@@ -21,6 +21,9 @@ void AudioSystem::SetActiveListener(AudioListener* listener) {
 }
 
 AudioSystem::AudioSystem() {
+    // Initialize defaults
+    m_ListenerUp = Vec3(0,1,0); 
+    m_ListenerForward = Vec3(0,0,-1);
 }
 
 AudioSystem::~AudioSystem() {
@@ -135,9 +138,14 @@ void AudioSystem::SetListenerDirection(const Vec3& forward) {
 }
 
 void AudioSystem::SetListenerVelocity(const Vec3& velocity) {
-    if (!m_initialized) return;
     ma_engine_listener_set_velocity(&m_engine, 0, velocity.x, velocity.y, velocity.z);
 }
+
+// Accessors for Spatializer
+Vec3 AudioSystem::GetListenerPosition() const { return m_ListenerPos; }
+Vec3 AudioSystem::GetListenerForward() const { return m_ListenerForward; }
+Vec3 AudioSystem::GetListenerUp() const { return m_ListenerUp; }
+Vec3 AudioSystem::GetListenerVelocity() const { return m_ListenerVelocity; }
 
 void AudioSystem::SetSFXVolume(float volume) {
     if (!m_initialized) return;
@@ -157,4 +165,31 @@ void AudioSystem::Update(float deltaTime) {
 
     // Note: Spatializer and Occlusion updates are typically called per-frame
     // in the game loop when updating audio source positions
+    
+    // Update active listener if we have a GameObject/Camera tracking
+    if (m_ActiveListener) {
+        // m_ActiveListener is the Component. It updates engine params in its Update().
+        // So we don't need to manually pull unless generic.
+        // Assuming AudioListener::UpdateState calls SetListenerPosition.
+    }
+    
+    // Iterate active sources for occlusion (Expensive! Limit rate or distribute)
+    // For this simple implementation, we assume GameObject or AudioSource calls us,
+    // or we maintain a list of active sources to update.
+    // AudioSource::Update() is better place to trigger this specific source logic.
+}
+
+void AudioSystem::UpdateListener(const Vec3& pos, const Vec3& forward, const Vec3& up, const Vec3& velocity) {
+    if (!m_initialized) return;
+    
+    ma_engine_listener_set_position(&m_engine, 0, pos.x, pos.y, pos.z);
+    ma_engine_listener_set_direction(&m_engine, 0, forward.x, forward.y, forward.z);
+    // Miniaudio uses "World Up" usually, default Y.
+    ma_engine_listener_set_velocity(&m_engine, 0, velocity.x, velocity.y, velocity.z);
+    
+    // Store for spatializer
+    m_ListenerPos = pos;
+    m_ListenerForward = forward;
+    m_ListenerUp = up;
+    m_ListenerVelocity = velocity;
 }

@@ -56,6 +56,18 @@ public:
     virtual void SetMargin(float margin) = 0;
 
     /**
+     * @brief Set if shape is a trigger
+     * @param isTrigger True to make this a trigger volume
+     */
+    virtual void SetTrigger(bool isTrigger) = 0;
+
+    /**
+     * @brief Check if shape is a trigger
+     * @return True if trigger
+     */
+    virtual bool IsTrigger() const = 0;
+
+    /**
      * @brief Get backend-specific shape pointer
      * @return Opaque pointer to native shape
      */

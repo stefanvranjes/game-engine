@@ -68,6 +68,10 @@ public:
     void SetTwoWayCoupling(bool enabled) override;
     void SetCollisionMassScale(float scale) override;
     bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit) override;
+    
+    // Audio Support
+    float GetAverageVelocity() const { return m_AverageVelocity; }
+    float GetDeformationRate() const { return m_DeformationRate; }
 
     // PhysX specific
     physx::PxCloth* GetPxCloth() const { return m_Cloth; }
@@ -441,6 +445,13 @@ private:
     
     // Soft body collision
     std::vector<class PhysXSoftBody*> m_RegisteredSoftBodies;
+
+    // Audio Metrics
+    float m_AverageVelocity = 0.0f;
+    float m_DeformationRate = 0.0f; 
+    std::vector<Vec3> m_PreviousParticlePositions;
+    
+    // Bounds caching
 
     // Bounds caching
     Vec3 m_CachedMinBounds;

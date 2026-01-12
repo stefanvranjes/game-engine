@@ -24,6 +24,12 @@ public:
     void SetListenerPosition(const Vec3& position);
     void SetListenerDirection(const Vec3& forward);
     void SetListenerVelocity(const Vec3& velocity);
+    void UpdateListener(const Vec3& pos, const Vec3& forward, const Vec3& up, const Vec3& velocity);
+    
+    Vec3 GetListenerPosition() const;
+    Vec3 GetListenerForward() const;
+    Vec3 GetListenerUp() const;
+    Vec3 GetListenerVelocity() const;
 
     // Active Listener Management
     void SetActiveListener(class AudioListener* listener);
@@ -59,4 +65,10 @@ private:
     
     bool m_initialized = false;
     class AudioListener* m_ActiveListener = nullptr;
+    
+    // Cache
+    Vec3 m_ListenerPos;
+    Vec3 m_ListenerForward;
+    Vec3 m_ListenerUp;
+    Vec3 m_ListenerVelocity;
 };

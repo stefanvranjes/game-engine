@@ -164,6 +164,9 @@ void PhysXCloth::Initialize(const ClothDesc& desc) {
     if (m_MeshSynchronizer) {
         m_MeshSynchronizer->Initialize(nullptr, m_ParticleCount, m_TriangleIndices);
     }
+    
+    // Initialize audio metrics buffers
+    m_PreviousParticlePositions = m_ParticlePositions;
 
     std::cout << "PhysXCloth initialized with " << m_ParticleCount << " particles and "
               << m_LODConfig.GetLODCount() << " LOD levels" << std::endl;
@@ -455,6 +458,46 @@ void PhysXCloth::UpdateParticleData() {
     
     // Update bounds for culling/raycasting
     UpdateBounds();
+    
+    // Update Audio Metrics (Velocity)
+    // We assume Update is called with regular deltaTime. 
+    // To be precise we should pass deltaTime from Update() to here, or store it.
+    // UpdateParticleData is called from Update(deltaTime), but signature is void.
+    // Let's assume generic 1/60 if unknown or add member.
+    // Actually we can just track displacement magnitude per frame (speed * dt).
+    
+    float totalDisplacement = 0.0f;
+    float maxDisplacement = 0.0f;
+    float totalVar = 0.0f;
+    
+    // Use a subset for performance? sampling every 10th particle?
+    int step = (m_ParticleCount > 100) ? m_ParticleCount / 50 : 1; 
+    int count = 0;
+    
+    for (int i = 0; i < m_ParticleCount; i += step) {
+        float d = (m_ParticlePositions[i] - m_PreviousParticlePositions[i]).Length();
+        totalDisplacement += d;
+        if (d > maxDisplacement) maxDisplacement = d;
+        count++;
+    }
+    
+    float avgDisp = (count > 0) ? totalDisplacement / count : 0.0f;
+    m_AverageVelocity = avgDisp * 60.0f; // Approximate units/sec (assuming 60fps)
+    
+    // Variance/Deformation proxy: Difference between max and avg?
+    // Or just use max velocity to detect violent movement.
+    m_DeformationRate = (maxDisplacement - avgDisp) * 60.0f; // Simple variance proxy
+
+    // Save for next frame
+    // Optimization: Only copy if needed, or swap buffers?
+    // Vectors are member variables, we can swap if they are both maintained.
+    // But m_ParticlePositions is exposed via getter. Swapping might confuse pointers.
+    // Just copy.
+    if (m_ParticleCount == m_PreviousParticlePositions.size()) {
+       std::memcpy(m_PreviousParticlePositions.data(), m_ParticlePositions.data(), m_ParticleCount * sizeof(Vec3));
+    } else {
+       m_PreviousParticlePositions = m_ParticlePositions;
+    }
 }
 
 // Helper to avoid allocations
@@ -889,23 +932,36 @@ void PhysXCloth::DetectTears(float deltaTime) {
 }
 
 void PhysXCloth::ProcessTear(const TearInfo& tear) {
-    // Mark particle as torn
+    // Mark particle as torn (prevent infinite loops)
     m_TornParticles.push_back(tear.particleIndex);
     m_TearCount++;
     
-    // Visual feedback - free the particle temporarily
-    FreeParticle(tear.particleIndex);
-    
-    std::cout << "Cloth tear #" << m_TearCount 
+    std::cout << "Processing cloth tear #" << m_TearCount 
               << " at particle " << tear.particleIndex 
               << " (stretch: " << tear.stretchRatio << "x)" << std::endl;
+              
+    // Perform full mesh splitting
+    std::shared_ptr<PhysXCloth> piece1;
+    std::shared_ptr<PhysXCloth> piece2;
     
-    // Note: Full tearing would require:
-    // 1. Duplicate particle at tear point
-    // 2. Split triangles using torn particle
-    // 3. Update cloth fabric with new topology
-    // 4. Recreate PhysX cloth object
-    // This is a simplified visual-only tear
+    if (SplitAtParticle(tear.particleIndex, piece1, piece2)) {
+        // Tearing successful
+        // The callback has been invoked by SplitAtParticle, providing new pieces to the user.
+        // We should now disable this cloth to avoid duplication.
+        // NOTE: piece1 is essentially "this" cloth with updated topology as a new object.
+        
+        SetEnabled(false);
+        if (m_Cloth) {
+            // Remove from scene immediately to prevent ghost collision/rendering in this frame
+            m_Backend->GetScene()->removeActor(*m_Cloth);
+        }
+        
+        std::cout << "Cloth object disabled after tearing." << std::endl;
+    } else {
+        // Fallback: visual tear only (free particle) if splitting failed
+        std::cout << "Mesh split failed, falling back to visual tear (pin release)." << std::endl;
+        FreeParticle(tear.particleIndex);
+    }
 }
 
 bool PhysXCloth::CanTear() const {
@@ -1005,75 +1061,51 @@ bool PhysXCloth::SplitAtParticle(
     
     // Create two new cloth pieces
     outPiece1 = CreateFromSplit(result.piece1Positions, result.piece1Indices);
-    outPiece2 = CreateFromSplit(result.piece2Positions, result.piece2Indices);
+    if (!result.piece2Indices.empty()) {
+        outPiece2 = CreateFromSplit(result.piece2Positions, result.piece2Indices);
+    }
     
-    if (!outPiece1 || !outPiece2) {
-        std::cerr << "Failed to create cloth pieces" << std::endl;
+    if (!outPiece1) {
+        std::cerr << "Failed to create primary cloth piece" << std::endl;
         return false;
     }
     
     // Copy properties to new pieces
-    outPiece1->SetStretchStiffness(m_StretchStiffness);
-    outPiece1->SetBendStiffness(m_BendStiffness);
-    outPiece1->SetShearStiffness(m_ShearStiffness);
-    outPiece1->SetDamping(m_Damping);
-    outPiece1->SetWindVelocity(m_WindVelocity);
-    outPiece1->SetTearable(m_Tearable);
-    outPiece1->SetMaxStretchRatio(m_MaxStretchRatio);
-    // Copy LOD state
-    outPiece1->m_UpdateFrequency = m_UpdateFrequency;
-    // Copy collision settings
-    outPiece1->m_EnableSceneCollision = m_EnableSceneCollision;
-    outPiece1->m_EnableSelfCollision = m_EnableSelfCollision;
-    outPiece1->m_SelfCollisionDistance = m_SelfCollisionDistance;
-    outPiece1->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
-    outPiece1->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
-    outPiece1->m_CollisionMassScale = m_CollisionMassScale;
-    // Apply collision settings to new piece
-    if (outPiece1->m_Cloth) {
-        if (m_EnableSceneCollision) outPiece1->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
-        if (m_EnableSelfCollision) {
-            outPiece1->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
-            outPiece1->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+    auto copyProps = [this](std::shared_ptr<PhysXCloth> target) {
+        if (!target) return;
+        target->SetStretchStiffness(m_StretchStiffness);
+        target->SetBendStiffness(m_BendStiffness);
+        target->SetShearStiffness(m_ShearStiffness);
+        target->SetDamping(m_Damping);
+        target->SetWindVelocity(m_WindVelocity);
+        target->SetTearable(m_Tearable);
+        target->SetMaxStretchRatio(m_MaxStretchRatio);
+        target->m_UpdateFrequency = m_UpdateFrequency;
+        target->m_EnableSceneCollision = m_EnableSceneCollision;
+        target->m_EnableSelfCollision = m_EnableSelfCollision;
+        target->m_SelfCollisionDistance = m_SelfCollisionDistance;
+        target->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
+        target->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
+        target->m_CollisionMassScale = m_CollisionMassScale;
+        
+        if (target->m_Cloth) {
+            if (m_EnableSceneCollision) target->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
+            if (m_EnableSelfCollision) {
+                target->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
+                target->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
+            }
+            if (m_EnableTwoWayCoupling) {
+                target->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
+            } else {
+                target->m_Cloth->setCollisionMassScale(0.0f);
+            }
         }
-        if (m_EnableTwoWayCoupling) {
-             outPiece1->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
-        } else {
-             outPiece1->m_Cloth->setCollisionMassScale(0.0f);
-        }
-    }
+    };
+
+    copyProps(outPiece1);
+    copyProps(outPiece2);
     
-    outPiece2->SetStretchStiffness(m_StretchStiffness);
-    outPiece2->SetBendStiffness(m_BendStiffness);
-    outPiece2->SetShearStiffness(m_ShearStiffness);
-    outPiece2->SetDamping(m_Damping);
-    outPiece2->SetWindVelocity(m_WindVelocity);
-    outPiece2->SetTearable(m_Tearable);
-    outPiece2->SetMaxStretchRatio(m_MaxStretchRatio);
-    // Copy LOD state
-    outPiece2->m_UpdateFrequency = m_UpdateFrequency;
-    // Copy collision settings
-    outPiece2->m_EnableSceneCollision = m_EnableSceneCollision;
-    outPiece2->m_EnableSelfCollision = m_EnableSelfCollision;
-    outPiece2->m_SelfCollisionDistance = m_SelfCollisionDistance;
-    outPiece2->m_SelfCollisionStiffness = m_SelfCollisionStiffness;
-    outPiece2->m_EnableTwoWayCoupling = m_EnableTwoWayCoupling;
-    outPiece2->m_CollisionMassScale = m_CollisionMassScale;
-    // Apply collision settings to new piece
-    if (outPiece2->m_Cloth) {
-        if (m_EnableSceneCollision) outPiece2->m_Cloth->setClothFlag(PxClothFlag::eSCENE_COLLISION, true);
-        if (m_EnableSelfCollision) {
-            outPiece2->m_Cloth->setSelfCollisionDistance(m_SelfCollisionDistance);
-            outPiece2->m_Cloth->setSelfCollisionStiffness(m_SelfCollisionStiffness);
-        }
-        if (m_EnableTwoWayCoupling) {
-             outPiece2->m_Cloth->setCollisionMassScale(m_CollisionMassScale);
-        } else {
-             outPiece2->m_Cloth->setCollisionMassScale(0.0f);
-        }
-    }
-    
-    std::cout << "Successfully split cloth into 2 pieces" << std::endl;
+    std::cout << "Successfully split cloth. Piece 2 exists: " << (outPiece2 != nullptr) << std::endl;
     
     // Invoke tear callback if set
     if (m_TearCallback) {

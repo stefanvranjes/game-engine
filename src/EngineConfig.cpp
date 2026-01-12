@@ -41,6 +41,13 @@ EngineConfig EngineConfig::LoadFromEnvironment() {
         SPDLOG_INFO("Vulkan validation: {}", config.enableVulkanValidation ? "enabled" : "disabled");
     }
 
+    // PhysX Visual Debugger
+    const char* pvdEnv = std::getenv("GE_PHYSX_PVD");
+    if (pvdEnv) {
+        config.enablePhysXVisualDebugger = (std::string(pvdEnv) == "true" || std::string(pvdEnv) == "1");
+        SPDLOG_INFO("PhysX Visual Debugger: {}", config.enablePhysXVisualDebugger ? "enabled" : "disabled");
+    }
+
     return config;
 }
 

@@ -1,78 +1,27 @@
 #include "AudioOcclusion.h"
-#include "GameObject.h"
+#include "PhysicsSystem.h"
+#include "PhysXBackend.h" // For raycasting
+#include "GameObject.h"   // For finding GameObjects
 #include "AudioSource.h"
-#include "Physics/PhysicsManager.h"
-#include <iostream>
-#include <cmath>
 
 AudioOcclusion& AudioOcclusion::Get() {
     static AudioOcclusion instance;
     return instance;
 }
 
-AudioOcclusion::AudioOcclusion() {
-    // Initialize default material properties
-    m_materialProperties[static_cast<int>(MaterialType::Air)] = {
-        0.0f,  // No occlusion
-        0.0f,  // No damping
-        0.9f   // Highly reflective to sound
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Glass)] = {
-        0.1f,   // Slight occlusion
-        0.05f,  // Minimal damping
-        0.8f
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Drywall)] = {
-        0.4f,
-        0.3f,
-        0.5f
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Brick)] = {
-        0.6f,
-        0.5f,
-        0.4f
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Wood)] = {
-        0.5f,
-        0.35f,
-        0.45f
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Metal)] = {
-        0.7f,   // Heavy occlusion
-        0.15f,  // Low absorption
-        0.9f    // Very reflective
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Concrete)] = {
-        0.75f,
-        0.45f,
-        0.3f
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Stone)] = {
-        0.8f,
-        0.55f,
-        0.25f
-    };
-
-    m_materialProperties[static_cast<int>(MaterialType::Water)] = {
-        0.85f,  // Severe attenuation (sound travels differently in water)
-        0.65f,  // Heavy damping
-        0.2f
-    };
-}
-
-AudioOcclusion::~AudioOcclusion() {
-    Shutdown();
-}
-
 bool AudioOcclusion::Initialize() {
     if (m_initialized) return true;
+    
+    // Default Materials
+    m_materialProperties[static_cast<int>(MaterialType::Air)]      = {0.0f, 0.0f, 0.0f, 0.0f};
+    m_materialProperties[static_cast<int>(MaterialType::Glass)]    = {0.1f, 0.05f, 0.3f, 0.02f};
+    m_materialProperties[static_cast<int>(MaterialType::Drywall)]  = {0.4f, 0.2f, 0.4f, 0.1f};
+    m_materialProperties[static_cast<int>(MaterialType::Wood)]     = {0.5f, 0.3f, 0.4f, 0.15f};
+    m_materialProperties[static_cast<int>(MaterialType::Brick)]    = {0.6f, 0.4f, 0.6f, 0.2f};
+    m_materialProperties[static_cast<int>(MaterialType::Metal)]    = {0.7f, 0.6f, 0.8f, 0.05f};
+    m_materialProperties[static_cast<int>(MaterialType::Concrete)] = {0.75f, 0.7f, 0.7f, 0.3f};
+    m_materialProperties[static_cast<int>(MaterialType::Stone)]    = {0.8f, 0.8f, 0.8f, 0.4f};
+    
     m_initialized = true;
     return true;
 }
@@ -84,145 +33,145 @@ void AudioOcclusion::Shutdown() {
 
 void AudioOcclusion::RegisterObstacle(GameObject* gameObject, MaterialType material) {
     if (!gameObject) return;
-
-    uintptr_t key = reinterpret_cast<uintptr_t>(gameObject);
-    m_obstacles[key] = { gameObject, material };
+    // Store pointer address as key. Note: beware of pointer reuse if not handled carefuly, 
+    // but GameObject usually has persistent identity in this engine.
+    m_obstacles[reinterpret_cast<uintptr_t>(gameObject)] = {gameObject, material};
 }
 
 void AudioOcclusion::UnregisterObstacle(GameObject* gameObject) {
     if (!gameObject) return;
-
-    uintptr_t key = reinterpret_cast<uintptr_t>(gameObject);
-    m_obstacles.erase(key);
+    m_obstacles.erase(reinterpret_cast<uintptr_t>(gameObject));
 }
 
-void AudioOcclusion::UpdateObstacleMaterial(GameObject* gameObject, MaterialType material) {
-    if (!gameObject) return;
-
-    uintptr_t key = reinterpret_cast<uintptr_t>(gameObject);
-    auto it = m_obstacles.find(key);
-    if (it != m_obstacles.end()) {
-        it->second.second = material;
-    }
-}
-
-OcclusionResult AudioOcclusion::ComputeOcclusion(const Vec3& listenerPos, const Vec3& sourcePos,
-                                                 GameObject* sourceObject) {
+AudioOcclusion::OcclusionResult AudioOcclusion::ComputeOcclusion(const Vec3& listenerPos, const Vec3& sourcePos, GameObject* sourceObject) {
     OcclusionResult result;
-    m_lastResult = result;
+    if (!m_enabled) return result;
 
-    if (!m_enabled || m_obstacles.empty()) {
-        return result;
+    Vec3 dir = sourcePos - listenerPos;
+    float dist = dir.Length();
+    
+    if (dist > m_maxOcclusionDistance || dist < 0.001f) {
+        return result; 
     }
+    
+    dir /= dist; // Normalize
 
-    // Check distance
-    Vec3 toSource = sourcePos - listenerPos;
-    float distance = toSource.Length();
+    // Raycast from listener to source
+    RaycastHit hit;
+    
+    // We need to cast multiple rays if sample count > 1, but for now implementing single ray
+    // We want to find ALL hits to accumulate occlusion, but PhysicsSystem usually returns closest.
+    // PhysXBackend might support multi-hit or we can step raycasts.
+    // For a simple implementation: Check if there is ANY hit between Listener and Source.
+    
+    // In a robust system, we raycast: if hit, store occlusion, move ray start to hit.point + epsilon, raycast again until source.
+    
+    Vec3 currentRayStart = listenerPos;
+    float remainingDist = dist;
+    int maxSteps = 5; // Max walls to penetrate
+    
+    // Safety offset to avoid self-intersection
+    const float kEpsilon = 0.05f; 
 
-    if (distance > m_maxOcclusionDistance) {
-        return result; // Too far, no occlusion computation
+    IPhysicsBackend* backend = PhysicsSystem::Get().GetBackend();
+    if (!backend) return result;
+
+    // Filter: Ignore the source object itself if provided
+    // Not easily possible with standard filter bitmask unless we put source in a specific layer.
+    // But we can check hit.userData.
+
+    for (int i = 0; i < maxSteps; ++i) {
+        if (remainingDist <= kEpsilon) break;
+
+        bool hasHit = backend->Raycast(currentRayStart, sourcePos, hit);
+        
+        if (hasHit) {
+            // Check if we hit the source object (destination reached)
+            if (sourceObject && hit.userData == sourceObject) {
+                break; // Reached source
+            }
+            
+            // If hits something else close to source (within epsilon), assume we reached source
+            if (hit.distance >= remainingDist - kEpsilon) {
+                break;
+            }
+
+            // We hit an obstacle!
+            GameObject* hitObj = static_cast<GameObject*>(hit.userData); // Assuming userData is GameObject
+            
+            // Determine material
+            MaterialType matType = MaterialType::Concrete; // Default
+            
+            // Check registered obstacles
+            if (hitObj) {
+                auto it = m_obstacles.find(reinterpret_cast<uintptr_t>(hitObj));
+                if (it != m_obstacles.end()) {
+                    matType = it->second.second;
+                }
+            }
+            
+            const MaterialProperties& props = GetMaterialProperties(matType);
+            
+            result.isOccluded = true;
+            result.occludingObstaclesCount++;
+            
+            // Accumulate occlusion
+            // Simplistic: Occlusion adds up, clamped to 1.0f
+            // Or multiplicative transmission: NewTrans = OldTrans * (1 - occlusion)
+            // Let's use multiplicative for 'clearness' -> 1 - occlusion
+            float transmission = 1.0f - result.occlusionStrength;
+            transmission *= (1.0f - props.occlusionFactor);
+            result.occlusionStrength = 1.0f - transmission;
+
+            result.dampingStrength = std::max(result.dampingStrength, props.dampingFactor);
+            
+            // Step forward through the wall
+            // Ideal: Raycast back from other side or assume thickness.
+            // Simplified: Advance ray by fixed thickness or material property default thickness
+            float thickness = props.defaultThickness;
+            result.distanceThroughMaterial += thickness;
+            
+            currentRayStart = hit.point + (dir * thickness) + (dir * kEpsilon);
+            remainingDist -= (hit.distance + thickness);
+        } else {
+            // No hit, path clear to source
+            break;
+        }
     }
-
-    // Perform raycast
-    RaycastToSource(listenerPos, sourcePos, sourceObject, result);
-
-    // Compute filters based on occlusion
+    
+    // Compute Cutoffs based on occlusion
     ComputeFilters(result.occlusionStrength, result.dampingStrength, result.lpfCutoff, result.hpfCutoff);
-
+    
     m_lastResult = result;
     return result;
 }
 
-void AudioOcclusion::ApplyOcclusionToSource(AudioSource* audioSource, const Vec3& listenerPos, const Vec3& sourcePos) {
-    if (!audioSource) return;
-
-    auto result = ComputeOcclusion(listenerPos, sourcePos);
-    audioSource->SetOcclusion(result.occlusionStrength);
-}
-
-bool AudioOcclusion::RaycastToSource(const Vec3& from, const Vec3& to, GameObject* excludeObject,
-                                     OcclusionResult& outResult) {
-    Vec3 direction = (to - from).Normalized();
-    float totalDistance = (to - from).Length();
-
-    outResult.isOccluded = false;
-    outResult.occlusionStrength = 0.0f;
-    outResult.dampingStrength = 0.0f;
-    outResult.distanceThroughMaterial = 0.0f;
-    outResult.occludingObstaclesCount = 0;
-
-    // Simple raycast: check if any obstacle intersects the line segment
-    for (const auto& pair : m_obstacles) {
-        GameObject* obstacle = pair.second.first;
-        MaterialType materialType = pair.second.second;
-
-        if (obstacle == excludeObject) continue; // Skip source object
-
-        // Basic AABB intersection test (assumes GameObject has bounding box)
-        // For more accurate results, use full physics raycasting
-        
-        // Simplified approach: check if obstacle is roughly in the path
-        Vec3 toObstacle = obstacle->GetTransform().GetPosition() - from;
-        float projectedDistance = toObstacle.Dot(direction);
-
-        if (projectedDistance > 0.0f && projectedDistance < totalDistance) {
-            // Obstacle is roughly in the path
-            float lateralDistance = (toObstacle - direction * projectedDistance).Length();
-            float obstacleRadius = 1.0f; // Assume unit size; could use actual collision bounds
-
-            if (lateralDistance < obstacleRadius) {
-                // Intersection likely
-                const MaterialProperties& props = GetMaterialProperties(materialType);
-                
-                outResult.isOccluded = true;
-                outResult.occludingObstaclesCount++;
-                outResult.occlusionStrength = std::max(outResult.occlusionStrength, props.occlusionFactor);
-                outResult.dampingStrength = std::max(outResult.dampingStrength, props.dampingFactor);
-                outResult.distanceThroughMaterial += props.defaultThickness;
-            }
-        }
+void AudioOcclusion::ComputeFilters(float occlusionStrength, float dampingStrength, float& outLPF, float& outHPF) const {
+    if (occlusionStrength <= 0.001f) {
+        outLPF = 22000.0f; // Open
+        outHPF = 0.0f;
+        return;
     }
-
-    // Accumulate occlusion from multiple obstacles (not purely additive)
-    if (outResult.occludingObstaclesCount > 0) {
-        // Combine occlusion: don't just add them
-        // Use a logarithmic scale for more natural sound behavior
-        outResult.occlusionStrength = std::pow(outResult.occlusionStrength, 0.8f);
+    
+    // LPF: Closed gets lower.
+    // range: 20000 -> 500
+    float lpfLog = std::log(m_lpfMaxFrequency);
+    float lpfMinLog = std::log(m_lpfMinFrequency);
+    
+    // Linear interp in log space sounds better
+    float t = 1.0f - (occlusionStrength * m_lpfOcclusionScale); 
+    if (t < 0) t = 0;
+    
+    outLPF = std::exp(lpfMinLog + t * (lpfLog - lpfMinLog));
+    
+    // Damping affects high freqs additionally?
+    if (dampingStrength > 0) {
+        outLPF *= (1.0f - dampingStrength * 0.5f);
     }
-
-    return outResult.isOccluded;
-}
-
-void AudioOcclusion::ComputeFilters(float occlusionStrength, float dampingStrength,
-                                    float& outLPF, float& outHPF) const {
-    occlusionStrength = std::max(0.0f, std::min(1.0f, occlusionStrength));
-    dampingStrength = std::max(0.0f, std::min(1.0f, dampingStrength));
-
-    if (m_advancedFiltering) {
-        // Advanced filtering: separate damping and occlusion effects
-        
-        // Damping -> LPF (remove high frequencies)
-        float lpfRange = m_lpfMaxFrequency - m_lpfMinFrequency;
-        outLPF = m_lpfMaxFrequency - (lpfRange * dampingStrength * m_lpfOcclusionScale);
-
-        // Occlusion strength -> more damping
-        outLPF -= (lpfRange * occlusionStrength * 0.3f * m_lpfOcclusionScale);
-
-        outLPF = std::max(m_lpfMinFrequency, outLPF);
-
-        // HPF: slightly boost (reduce) with occlusion to avoid muddiness
-        float hpfOffset = (occlusionStrength + dampingStrength) * 50.0f;
-        outHPF = 20.0f + hpfOffset;
-    } else {
-        // Simple filtering: combined effect
-        float combinedOcclusion = (occlusionStrength + dampingStrength) / 2.0f;
-        float lpfRange = m_lpfMaxFrequency - m_lpfMinFrequency;
-
-        outLPF = m_lpfMaxFrequency - (lpfRange * combinedOcclusion * m_lpfOcclusionScale);
-        outLPF = std::max(m_lpfMinFrequency, outLPF);
-
-        outHPF = 20.0f + (combinedOcclusion * 100.0f);
-    }
+    
+    // HPF: Not usually affected much by occlusion unless accurate diffraction modeling.
+    // But distance might affect it (handled in spatializer).
+    outHPF = 0.0f;
 }
 
 const AudioOcclusion::MaterialProperties& AudioOcclusion::GetMaterialProperties(MaterialType material) const {
@@ -230,29 +179,19 @@ const AudioOcclusion::MaterialProperties& AudioOcclusion::GetMaterialProperties(
     if (it != m_materialProperties.end()) {
         return it->second;
     }
-
-    // Return air (transparent) as default
-    return m_materialProperties.at(static_cast<int>(MaterialType::Air));
+    static MaterialProperties defaultProps;
+    return defaultProps;
 }
 
-void AudioOcclusion::SetMaterialProperties(MaterialType material, const MaterialProperties& props) {
-    m_materialProperties[static_cast<int>(material)] = props;
-}
-
-void AudioOcclusion::SetCustomMaterial(const std::string& name, const MaterialProperties& props) {
-    m_customMaterials[name] = props;
-}
-
-void AudioOcclusion::SetRaycastSampleCount(int samples) {
-    m_raycastSampleCount = std::max(1, samples);
-}
-
-void AudioOcclusion::SetMaxOcclusionDistance(float distance) {
-    m_maxOcclusionDistance = std::max(1.0f, distance);
-}
-
-void AudioOcclusion::SetLPFParameters(float minFrequency, float maxFrequency, float occlusionScale) {
-    m_lpfMinFrequency = minFrequency;
-    m_lpfMaxFrequency = maxFrequency;
-    m_lpfOcclusionScale = occlusionScale;
+void AudioOcclusion::ApplyOcclusionToSource(AudioSource* audioSource, const Vec3& listenerPos, const Vec3& sourcePos) {
+    if (!audioSource) return;
+    
+    // Optimization: Don't compute every frame?
+    // Or maybe we do for smoothness.
+    
+    OcclusionResult res = ComputeOcclusion(listenerPos, sourcePos, nullptr); // Need reference to Source GameObject ideally
+    
+    // Apply to source
+    // AudioSource::SetOcclusion maps 0-1 to internal filter
+    audioSource->SetOcclusion(res.occlusionStrength);
 }

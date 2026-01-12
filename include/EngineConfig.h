@@ -45,6 +45,9 @@ struct EngineConfig {
     // Performance monitoring
     bool enableGPUProfiling = true;
     bool enableFrameTimeRecording = false;
+
+    // PhysX Debugging
+    bool enablePhysXVisualDebugger = false;
     
     // Window/display settings
     uint32_t windowWidth = 1920;

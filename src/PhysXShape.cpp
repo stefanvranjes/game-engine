@@ -4,6 +4,7 @@
 
 #include "PhysXBackend.h"
 #include <PxPhysicsAPI.h>
+#include <algorithm>
 
 using namespace physx;
 
@@ -27,9 +28,55 @@ Vec3 PhysXShape::GetLocalScaling() const {
 }
 
 void PhysXShape::SetLocalScaling(const Vec3& scale) {
+    if (!m_Shape) {
+        m_LocalScaling = scale;
+        return;
+    }
+
+    // Calculate ratio relative to current scale
+    // (Avoiding divide by zero)
+    Vec3 ratio(1.0f, 1.0f, 1.0f);
+    if (std::abs(m_LocalScaling.x) > 1e-6f) ratio.x = scale.x / m_LocalScaling.x;
+    if (std::abs(m_LocalScaling.y) > 1e-6f) ratio.y = scale.y / m_LocalScaling.y;
+    if (std::abs(m_LocalScaling.z) > 1e-6f) ratio.z = scale.z / m_LocalScaling.z;
+
+    PxGeometryHolder geom = m_Shape->getGeometry();
+    
+    switch (geom.getType()) {
+        case PxGeometryType::eBOX: {
+            PxBoxGeometry box = geom.box();
+            box.halfExtents.x *= ratio.x;
+            box.halfExtents.y *= ratio.y;
+            box.halfExtents.z *= ratio.z;
+            m_Shape->setGeometry(box);
+            break;
+        }
+        case PxGeometryType::eSPHERE: {
+            PxSphereGeometry sphere = geom.sphere();
+            // Uniform scaling for sphere (use max)
+            float maxScale = std::max(ratio.x, std::max(ratio.y, ratio.z));
+            sphere.radius *= maxScale;
+            m_Shape->setGeometry(sphere);
+            break;
+        }
+        case PxGeometryType::eCAPSULE: {
+            PxCapsuleGeometry capsule = geom.capsule();
+            // Capsule extends along X axis by default in PhysX. 
+            // We assume scaling maps: X -> Height (HalfHeight), Y/Z -> Radius
+            float radiusScale = std::max(ratio.y, ratio.z);
+            capsule.radius *= radiusScale;
+            capsule.halfHeight *= ratio.x;
+            m_Shape->setGeometry(capsule);
+            break;
+        }
+        default:
+            // Other shapes (Convex, Mesh) require more complex handling (re-baking or scale parameter if supported)
+            // PxConvexMeshGeometry/PxTriangleMeshGeometry have a scale parameter.
+            // But modifying it requires accessing the mesh scale structure.
+            break;
+    }
+
     m_LocalScaling = scale;
-    // PhysX handles scaling differently per geometry type
-    // This would need to be implemented per-shape-type
 }
 
 float PhysXShape::GetMargin() const {
@@ -43,6 +90,25 @@ void PhysXShape::SetMargin(float margin) {
     if (m_Shape) {
         m_Shape->setContactOffset(margin);
     }
+}
+
+void PhysXShape::SetTrigger(bool isTrigger) {
+    if (m_Shape) {
+        if (isTrigger) {
+            m_Shape->setFlag(PxShapeFlag::eSIMULATION_SHAPE, false);
+            m_Shape->setFlag(PxShapeFlag::eTRIGGER_SHAPE, true);
+        } else {
+            m_Shape->setFlag(PxShapeFlag::eTRIGGER_SHAPE, false);
+            m_Shape->setFlag(PxShapeFlag::eSIMULATION_SHAPE, true);
+        }
+    }
+}
+
+bool PhysXShape::IsTrigger() const {
+    if (m_Shape) {
+        return (m_Shape->getFlags() & PxShapeFlag::eTRIGGER_SHAPE);
+    }
+    return false;
 }
 
 void* PhysXShape::GetNativeShape() {

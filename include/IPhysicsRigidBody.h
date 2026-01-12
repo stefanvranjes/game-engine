@@ -48,6 +48,51 @@ public:
     virtual void SetOnCollisionCallback(OnCollisionCallback callback) = 0;
 
     /**
+     * @brief Trigger information structure
+     */
+    struct TriggerInfo {
+        IPhysicsRigidBody* otherBody;  // The body that entered/exited
+        IPhysicsShape* triggerShape;   // The trigger shape itself (this body's shape)
+        IPhysicsShape* otherShape;     // The other body's shape
+        float dwellTime;               // Time spent inside trigger (valid on Exit)
+        Vec3 relativeVelocity;         // Relative velocity on Enter/Exit
+
+        TriggerInfo() : otherBody(nullptr), triggerShape(nullptr), otherShape(nullptr), dwellTime(0.0f), relativeVelocity(0,0,0) {}
+    };
+
+    using OnTriggerCallback = std::function<void(const TriggerInfo&)>;
+
+    /**
+     * @brief Set minimum relative velocity required to trigger Enter events
+     * @param threshold Velocity threshold in m/s
+     */
+    virtual void SetTriggerVelocityThreshold(float threshold) = 0;
+
+    /**
+     * @brief Get velocity threshold
+     */
+    virtual float GetTriggerVelocityThreshold() const = 0;
+
+    /**
+     * @brief Get time spent by otherBody inside this trigger
+
+    /**
+     * @brief Get time spent by otherBody inside this trigger
+     * @return Time in seconds, or 0 if not inside
+     */
+    virtual float GetTriggerDwellTime(IPhysicsRigidBody* otherBody) const = 0;
+
+    /**
+     * @brief Set callback for when another body enters this trigger
+     */
+    virtual void SetOnTriggerEnterCallback(OnTriggerCallback callback) = 0;
+
+    /**
+     * @brief Set callback for when another body exits this trigger
+     */
+    virtual void SetOnTriggerExitCallback(OnTriggerCallback callback) = 0;
+
+    /**
      * @brief Initialize the rigid body
      * @param type Body type (Static, Dynamic, Kinematic)
      * @param mass Mass in kilograms (0 for static bodies)
@@ -206,6 +251,18 @@ public:
      * @brief Get user data pointer
      */
     virtual void* GetUserData() const = 0;
+
+    /**
+     * @brief Enable Continuous Collision Detection (CCD)
+     * @param enabled True to enable CCD
+     */
+    virtual void SetCCDEnabled(bool enabled) = 0;
+
+    /**
+     * @brief Check if CCD is enabled
+     * @return True if CCD is enabled
+     */
+    virtual bool IsCCDEnabled() const = 0;
 
     /**
      * @brief Get backend-specific rigid body pointer

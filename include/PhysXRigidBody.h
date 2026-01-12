@@ -4,6 +4,7 @@
 #include "Math/Vec3.h"
 #include "Math/Quat.h"
 #include <memory>
+#include <unordered_map>
 
 #ifdef USE_PHYSX
 
@@ -14,6 +15,7 @@ namespace physx {
     class PxShape;
 }
 
+class PhysXFluidVolume;
 class PhysXBackend;
 
 /**
@@ -50,12 +52,26 @@ public:
     void SyncTransformFromPhysics(Vec3& outPosition, Quat& outRotation) override;
     void SyncTransformToPhysics(const Vec3& position, const Quat& rotation) override;
     void SetOnCollisionCallback(OnCollisionCallback callback) override;
+    void SetOnTriggerEnterCallback(OnTriggerCallback callback) override;
+    void SetOnTriggerExitCallback(OnTriggerCallback callback) override;
     void SetUserData(void* data) override { m_UserData = data; }
     void* GetUserData() const override { return m_UserData; }
+    void SetCCDEnabled(bool enabled) override;
+    bool IsCCDEnabled() const override;
+    void SetTriggerVelocityThreshold(float threshold) override;
+    float GetTriggerVelocityThreshold() const override;
+    float GetTriggerDwellTime(IPhysicsRigidBody* otherBody) const override;
     void* GetNativeBody() override;
 
-    // Internal callback handler
+    // Buoyancy
+    void UpdateBuoyancy(float deltaTime);
+    void AddFluid(PhysXFluidVolume* fluid);
+    void RemoveFluid(PhysXFluidVolume* fluid);
+
+    // Internal callback handlers
     void HandleCollision(const CollisionInfo& info);
+    void HandleTriggerEnter(const TriggerInfo& info);
+    void HandleTriggerExit(const TriggerInfo& info);
 
 private:
     PhysXBackend* m_Backend;
@@ -65,7 +81,14 @@ private:
     float m_Mass;
     bool m_GravityEnabled;
     OnCollisionCallback m_CollisionCallback;
+    OnTriggerCallback m_TriggerEnterCallback;
+    OnTriggerCallback m_TriggerExitCallback;
     void* m_UserData = nullptr;
+    
+    // Tracking
+    std::vector<PhysXFluidVolume*> m_ActiveFluids;
+    mutable std::unordered_map<IPhysicsRigidBody*, double> m_TriggerEntryTimes;
+    float m_TriggerVelocityThreshold = 0.0f;
 };
 
 #endif // USE_PHYSX

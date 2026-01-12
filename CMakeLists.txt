@@ -353,8 +353,11 @@ add_executable(GameEngine
     # src/ProbeBaker.cpp
     # Advanced audio features - DISABLED
     # src/AudioMixer.cpp
-    # src/AudioSpatializer.cpp
-    # src/AudioOcclusion.cpp
+    src/AudioSpatializer.cpp
+    src/AudioOcclusion.cpp
+    src/ImpactAudioSystem.cpp
+    src/ContinuousAudioSystem.cpp
+    src/ClothAudioSystem.cpp
     # Resource streaming and virtual filesystem - DISABLED
     # src/VirtualFileSystem.cpp
     # src/ResourceStreamingManager.cpp
@@ -522,6 +525,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
     target_sources(GameEngine PRIVATE
         src/PhysXBackend.cpp
         src/PhysXRigidBody.cpp
+        src/PhysXFluidVolume.cpp
         src/PhysXShape.cpp
         src/PhysXCharacterController.cpp
         src/PhysXCloth.cpp

@@ -16,7 +16,7 @@ class PhysXBackend;
 /**
  * @brief PhysX implementation of character controller
  */
-class PhysXCharacterController : public IPhysicsCharacterController {
+class PhysXCharacterController : public IPhysicsCharacterController, public physx::PxUserControllerHitReport {
 public:
     PhysXCharacterController(PhysXBackend* backend);
     ~PhysXCharacterController() override;
@@ -40,16 +40,36 @@ public:
     float GetStepHeight() const override;
     void* GetNativeController() override;
 
+    // Enhanced properties
+    void SetSlopeLimit(float slopeLimit) override;
+    float GetSlopeLimit() const override;
+    void SetContactOffset(float offset) override;
+    float GetContactOffset() const override;
+    void Resize(float height) override;
+    void SetUpDirection(const Vec3& up) override;
+    Vec3 GetUpDirection() const override;
+    void SetPushForce(float force) override;
+    float GetPushForce() const override;
+
+    // PxUserControllerHitReport implementation
+    void onShapeHit(const physx::PxControllerShapeHit& hit) override;
+    void onControllerHit(const physx::PxControllersHit& hit) override;
+    void onObstacleHit(const physx::PxControllerObstacleHit& hit) override;
+
 private:
     PhysXBackend* m_Backend;
     physx::PxController* m_Controller;
     physx::PxControllerManager* m_ControllerManager;
     
     Vec3 m_WalkDirection;
+    Vec3 m_UpDirection;
     float m_VerticalVelocity;
     float m_MaxWalkSpeed;
     float m_FallSpeed;
     float m_StepHeight;
+    float m_SlopeLimit;
+    float m_ContactOffset;
+    float m_PushForce;
     bool m_IsGrounded;
 };
 
