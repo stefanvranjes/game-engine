@@ -1,6 +1,5 @@
-// Fault tolerance implementation for DistributedBatchManager
-
-// Add to DistributedBatchManager.cpp
+#include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 
 void DistributedBatchManager::SendHeartbeats() {
     while (m_Impl->running) {
@@ -12,7 +11,7 @@ void DistributedBatchManager::SendHeartbeats() {
         
         // TODO: Add current load info to heartbeat data
         
-        m_Impl->networkManager->SendMessage(0, heartbeat, false);  // Unreliable
+        m_Impl->networkManager->SendMessageToNode(0, heartbeat, false);  // Unreliable
         
         std::this_thread::sleep_for(
             std::chrono::milliseconds(m_Impl->heartbeatIntervalMs));

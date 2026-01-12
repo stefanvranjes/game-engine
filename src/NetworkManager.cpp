@@ -1,4 +1,5 @@
 #include "NetworkManager.h"
+#include "NetworkManagerImpl.h"
 #include <iostream>
 #include <chrono>
 #include <thread>
@@ -24,7 +25,7 @@
         #define INVALID_SOCKET_VALUE INVALID_SOCKET
         #define SOCKET_ERROR_VALUE SOCKET_ERROR
     #else
-        #include <sys/socket.h>
+        #include <sys/socket.h_
         #include <netinet/in.h>
         #include <arpa/inet.h>
         #include <unistd.h>
@@ -36,87 +37,6 @@
     #endif
 #endif
 
-struct NetworkManager::Impl {
-#ifdef HAS_ASIO
-    // ASIO-based implementation
-    asio::io_context ioContext;
-    std::unique_ptr<tcp::acceptor> acceptor;
-    std::thread ioThread;
-    
-    struct Connection {
-        int nodeId;
-        std::shared_ptr<tcp::socket> socket;
-        std::string address;
-        uint16_t port;
-        std::queue<Message> messageQueue;
-        std::mutex queueMutex;
-        uint64_t lastHeartbeat;
-        float currentLoad;
-        size_t gpuCount;
-        uint64_t totalMemoryMB;
-        std::array<uint8_t, 8192> readBuffer;  // Read buffer for async operations
-    };
-    
-#else
-    // Connection state
-    bool isMaster = false;
-    int localNodeId = -1;
-    SocketType serverSocket = INVALID_SOCKET_VALUE;
-    
-    // Node connections
-    struct Connection {
-        int nodeId;
-        SocketType socket;
-        std::string address;
-        uint16_t port;
-        std::queue<Message> messageQueue;
-        std::mutex queueMutex;
-        uint64_t lastHeartbeat;
-        float currentLoad;
-        size_t gpuCount;
-        uint64_t totalMemoryMB;
-    };
-    
-    std::unordered_map<int, Connection> connections;
-    std::mutex connectionsMutex;
-    
-    // Message handling
-    std::function<void(int, const Message&)> messageCallback;
-    std::atomic<uint32_t> nextSequenceNumber{0};
-    
-    // Statistics
-    NetworkStats stats;
-    std::mutex statsMutex;
-    
-    // Worker threads
-    std::atomic<bool> running{false};
-    std::thread acceptThread;
-    std::thread receiveThread;
-    std::thread heartbeatThread;
-    
-    ~Impl() {
-        running = false;
-        
-        if (acceptThread.joinable()) acceptThread.join();
-        if (receiveThread.joinable()) receiveThread.join();
-        if (heartbeatThread.joinable()) heartbeatThread.join();
-        
-        // Close all sockets
-        for (auto& [id, conn] : connections) {
-            if (conn.socket != INVALID_SOCKET_VALUE) {
-                closesocket(conn.socket);
-            }
-        }
-        
-        if (serverSocket != INVALID_SOCKET_VALUE) {
-            closesocket(serverSocket);
-        }
-        
-#ifdef _WIN32
-        WSACleanup();
-#endif
-    }
-};
 
 NetworkManager::NetworkManager() : m_Impl(std::make_unique<Impl>()) {
 #ifdef _WIN32
@@ -154,12 +74,12 @@ bool NetworkManager::ConnectToMaster(const std::string& address, uint16_t port) 
     
     // Add master connection
     std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
-    Impl::Connection conn;
-    conn.nodeId = 0;  // Master is always node 0
-    conn.socket = sock;
-    conn.address = address;
-    conn.port = port;
-    conn.lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+    auto conn = std::make_unique<Impl::Connection>();
+    conn->nodeId = 0;  // Master is always node 0
+    conn->socket = sock;
+    conn->address = address;
+    conn->port = port;
+    conn->lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     
     m_Impl->connections[0] = std::move(conn);
@@ -178,9 +98,10 @@ bool NetworkManager::ConnectToMaster(const std::string& address, uint16_t port) 
     registerMsg.type = MessageType::NODE_REGISTER;
     registerMsg.sourceNode = m_Impl->localNodeId;
     registerMsg.targetNode = 0;
-    SendMessage(0, registerMsg);
+    m_Impl->SendMessageInternal(0, registerMsg);
     
     return true;
+#endif
 }
 
 bool NetworkManager::StartMasterServer(uint16_t port) {
@@ -242,18 +163,18 @@ bool NetworkManager::StartMasterServer(uint16_t port) {
             inet_ntop(AF_INET, &clientAddr.sin_addr, clientIp, INET_ADDRSTRLEN);
             
             std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
-            Impl::Connection conn;
-            conn.nodeId = nextNodeId++;
-            conn.socket = clientSocket;
-            conn.address = clientIp;
-            conn.port = ntohs(clientAddr.sin_port);
-            conn.lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+            auto conn = std::make_unique<Impl::Connection>();
+            conn->nodeId = nextNodeId++;
+            conn->socket = clientSocket;
+            conn->address = clientIp;
+            conn->port = ntohs(clientAddr.sin_port);
+            conn->lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             
-            m_Impl->connections[conn.nodeId] = std::move(conn);
+            m_Impl->connections[conn->nodeId] = std::move(conn);
             
-            std::cout << "Worker node " << conn.nodeId << " connected from " 
-                      << clientIp << ":" << conn.port << std::endl;
+            std::cout << "Worker node " << conn->nodeId << " connected from " 
+                      << clientIp << ":" << conn->port << std::endl;
         }
     });
     
@@ -263,6 +184,7 @@ bool NetworkManager::StartMasterServer(uint16_t port) {
     
     std::cout << "Master server started on port " << port << std::endl;
     return true;
+#endif
 }
 
 void NetworkManager::DisconnectNode(int nodeId) {
@@ -270,7 +192,7 @@ void NetworkManager::DisconnectNode(int nodeId) {
     
     auto it = m_Impl->connections.find(nodeId);
     if (it != m_Impl->connections.end()) {
-        closesocket(it->second.socket);
+        closesocket(it->second->socket);
         m_Impl->connections.erase(it);
         std::cout << "Disconnected from node " << nodeId << std::endl;
     }
@@ -293,18 +215,19 @@ void NetworkManager::Shutdown() {
     // Close all connections
     std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
     for (auto& [id, conn] : m_Impl->connections) {
-        closesocket(conn.socket);
+        if (conn) closesocket(conn->socket);
     }
     m_Impl->connections.clear();
     
     std::cout << "Network manager shutdown complete" << std::endl;
 }
 
-bool NetworkManager::SendMessage(int nodeId, const Message& msg) {
-    std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
+// Renamed to SendMessageInternal and moved to Impl scope
+bool NetworkManager::Impl::SendMessageInternal(int nodeId, const Message& msg) {
+    std::lock_guard<std::mutex> lock(connectionsMutex);
     
-    auto it = m_Impl->connections.find(nodeId);
-    if (it == m_Impl->connections.end()) {
+    auto it = connections.find(nodeId);
+    if (it == connections.end()) {
         return false;
     }
     
@@ -313,16 +236,16 @@ bool NetworkManager::SendMessage(int nodeId, const Message& msg) {
     buffer.push_back(static_cast<uint8_t>(msg.type));
     // TODO: Add full serialization
     
-    int sent = send(it->second.socket, (char*)buffer.data(), buffer.size(), 0);
+    int sent = send(it->second->socket, (char*)buffer.data(), buffer.size(), 0);
     
     if (sent == SOCKET_ERROR_VALUE) {
         std::cerr << "Failed to send message to node " << nodeId << std::endl;
         return false;
     }
     
-    std::lock_guard<std::mutex> statsLock(m_Impl->statsMutex);
-    m_Impl->stats.messagesSent++;
-    m_Impl->stats.bytesSent += sent;
+    std::lock_guard<std::mutex> statsLock(statsMutex);
+    stats.messagesSent++;
+    stats.bytesSent += sent;
     
     return true;
 }
@@ -331,7 +254,7 @@ void NetworkManager::BroadcastMessage(const Message& msg) {
     std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
     
     for (const auto& [nodeId, conn] : m_Impl->connections) {
-        SendMessage(nodeId, msg);
+        m_Impl->SendMessageInternal(nodeId, msg);
     }
 }
 
@@ -346,15 +269,16 @@ std::vector<NetworkManager::NodeInfo> NetworkManager::GetConnectedNodes() const 
     
     std::vector<NodeInfo> nodes;
     for (const auto& [id, conn] : m_Impl->connections) {
+        if (!conn) continue;
         NodeInfo info;
         info.nodeId = id;
-        info.address = conn.address;
-        info.port = conn.port;
+        info.address = conn->address;
+        info.port = conn->port;
         info.isConnected = true;
-        info.lastHeartbeat = conn.lastHeartbeat;
-        info.currentLoad = conn.currentLoad;
-        info.gpuCount = conn.gpuCount;
-        info.totalMemoryMB = conn.totalMemoryMB;
+        info.lastHeartbeat = conn->lastHeartbeat;
+        info.currentLoad = conn->currentLoad;
+        info.gpuCount = conn->gpuCount;
+        info.totalMemoryMB = conn->totalMemoryMB;
         nodes.push_back(info);
     }
     
@@ -389,7 +313,7 @@ void NetworkManager::UpdateHeartbeats() {
             heartbeat.type = MessageType::HEARTBEAT;
             heartbeat.sourceNode = m_Impl->localNodeId;
             heartbeat.targetNode = 0;
-            SendMessage(0, heartbeat);
+            SendMessageToNode(0, heartbeat);
         }
         
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -406,9 +330,9 @@ void NetworkManager::CleanupDeadConnections() {
     std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
     
     for (auto it = m_Impl->connections.begin(); it != m_Impl->connections.end();) {
-        if (now - it->second.lastHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+        if (it->second && (now - it->second->lastHeartbeat > HEARTBEAT_TIMEOUT_MS)) {
             std::cout << "Node " << it->first << " timed out, disconnecting" << std::endl;
-            closesocket(it->second.socket);
+            closesocket(it->second->socket);
             it = m_Impl->connections.erase(it);
         } else {
             ++it;

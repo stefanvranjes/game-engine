@@ -137,8 +137,15 @@ public:
     float GetFoamVelocityThreshold() const { return m_FoamVelocityThreshold; }
     void SetFoamSpawnRate(float rate) { m_FoamSpawnRate = rate; }
     float GetFoamSpawnRate() const { return m_FoamSpawnRate; }
+    void SetFoamSpawnRate(float rate) { m_FoamSpawnRate = rate; }
+    float GetFoamSpawnRate() const { return m_FoamSpawnRate; }
     void SetFoamMergeRadius(float radius);
     void SetFoamAdhesion(float strength);
+    
+    // Advanced Physics Parameters
+    void SetViscosityScale(float scale) { if(m_Solver) m_Solver->SetViscosityScale(scale); }
+    void SetSurfaceTensionScale(float scale) { if(m_Solver) m_Solver->SetSurfaceTensionScale(scale); }
+    void SetVorticityConfinementScale(float scale) { if(m_Solver) m_Solver->SetVorticityConfinementScale(scale); }
 
 private:
     // Particles and fluid types

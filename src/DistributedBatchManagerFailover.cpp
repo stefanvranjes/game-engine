@@ -1,26 +1,6 @@
-// Master Failover Implementation for DistributedBatchManager
-// Implements Raft-inspired leader election
-
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include <random>
-
-// Add to Impl structure
-struct DistributedBatchManager::Impl {
-    // ... existing members ...
-    
-    // Master failover
-    bool masterFailoverEnabled = false;
-    int currentMasterId = 0;
-    ElectionState electionState;
-    std::thread electionThread;
-    std::mt19937 rng;
-    
-    uint32_t GetRandomElectionTimeout() {
-        // Random timeout between 150-300ms (Raft recommendation)
-        std::uniform_int_distribution<uint32_t> dist(150, 300);
-        return dist(rng);
-    }
-};
 
 void DistributedBatchManager::EnableMasterFailover(bool enable) {
     m_Impl->masterFailoverEnabled = enable;
@@ -104,7 +84,7 @@ void DistributedBatchManager::RequestVotes() {
         
         // TODO: Add term and candidate info to message data
         
-        m_Impl->networkManager->SendMessage(nodeId, voteRequest);
+        m_Impl->networkManager->SendMessageToNode(nodeId, voteRequest);
     }
     
     std::cout << "Sent vote requests for term " 
@@ -179,7 +159,7 @@ void DistributedBatchManager::AnnounceLeadership() {
         announcement.sourceNode = localNodeId;
         announcement.targetNode = nodeId;
         
-        m_Impl->networkManager->SendMessage(nodeId, announcement);
+        m_Impl->networkManager->SendMessageToNode(nodeId, announcement);
     }
     
     std::cout << "Announced leadership to all nodes" << std::endl;
@@ -195,7 +175,7 @@ void DistributedBatchManager::ReconstructMasterState() {
         stateRequest.sourceNode = m_Impl->networkManager->GetLocalNodeId();
         stateRequest.targetNode = nodeId;
         
-        m_Impl->networkManager->SendMessage(nodeId, stateRequest);
+        m_Impl->networkManager->SendMessageToNode(nodeId, stateRequest);
     }
     
     // Wait for responses and rebuild batch assignments
@@ -258,7 +238,7 @@ void DistributedBatchManager::HandleVoteRequest(int nodeId, const NetworkManager
     
     // TODO: Add vote granted flag to message data
     
-    m_Impl->networkManager->SendMessage(nodeId, voteResponse);
+    m_Impl->networkManager->SendMessageToNode(nodeId, voteResponse);
 }
 
 void DistributedBatchManager::HandleVoteResponse(int nodeId, const NetworkManager::Message& msg) {

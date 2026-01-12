@@ -1004,7 +1004,7 @@ void GpuBatchManager::BatchCopyData(physx::PxScene* scene) {
     
     auto start = std::chrono::high_resolution_clock::now();
     
-#ifdef HAS_CUDA_TOOLKIT
+
     // Process soft bodies in batches (already sorted by priority)
     size_t totalBatches = (m_Impl->entries.size() + MAX_BATCH_SIZE - 1) / MAX_BATCH_SIZE;
     

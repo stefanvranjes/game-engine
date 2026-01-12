@@ -115,6 +115,7 @@ struct StateSerializer::Impl {
         
         return decompressed;
     }
+#endif
 };
 
 StateSerializer::StateSerializer() : m_Impl(std::make_unique<Impl>()) {}

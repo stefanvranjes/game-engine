@@ -1,21 +1,10 @@
-// GPU-Direct RDMA Integration for DistributedBatchManager
-
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include "RdmaManager.h"
 #include "PhysXSoftBody.h"
 #include <iostream>
 
 #ifdef HAS_RDMA
-
-// Add to Impl structure
-struct DistributedBatchManager::Impl {
-    // ... existing members ...
-    
-    // RDMA support
-    std::unique_ptr<RdmaManager> rdmaManager;
-    bool rdmaEnabled = false;
-    std::unordered_map<PhysXSoftBody*, void*> gpuBuffers;  // Soft body -> GPU buffer mapping
-};
 
 bool DistributedBatchManager::EnableRdma(bool enable) {
     if (enable && !m_Impl->rdmaManager) {

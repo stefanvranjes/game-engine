@@ -188,7 +188,7 @@ public:
      * @param reliable Use reliable delivery (ACKs + retries)
      * @return True if sent successfully
      */
-    bool SendMessage(int nodeId, const Message& msg, bool reliable = true);
+    bool SendMessageToNode(int nodeId, const Message& msg, bool reliable = true);
     
     /**
      * @brief Configure reliability settings
@@ -216,6 +216,29 @@ public:
      */
     void SendMessageAsync(int nodeId, const Message& msg, 
                          std::function<void(bool)> callback);
+                         
+    /**
+     * @brief Send message using batching
+     * @param nodeId Target node ID
+     * @param msg Message to send
+     * @return True if queued successfully
+     */
+    bool SendMessageBatched(int nodeId, const Message& msg);
+    
+    /**
+     * @brief Flush all pending batches
+     */
+    void FlushBatches();
+    
+    /**
+     * @brief Start batch processing thread
+     */
+    void StartBatchProcessing();
+    
+    /**
+     * @brief Stop batch processing thread
+     */
+    void StopBatchProcessing();
     
     /**
      * @brief Receive message from specific node (blocking)
@@ -293,4 +316,11 @@ private:
     void ProcessIncomingMessages();
     void UpdateHeartbeats();
     void CleanupDeadConnections();
+
+    // Reliability helpers (defined in NetworkManagerReliability.cpp)
+    void ProcessReceivedMessage(int nodeId, const Message& msg);
+    
+public: 
+    void StartAckProcessing();
+    void StopAckProcessing();
 };

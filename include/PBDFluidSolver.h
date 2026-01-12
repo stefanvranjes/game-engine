@@ -51,6 +51,7 @@ public:
     void SetRelaxationParameter(float epsilon) { m_RelaxationEpsilon = epsilon; }
     void SetViscosityScale(float scale) { m_ViscosityScale = scale; }
     void SetSurfaceTensionScale(float scale) { m_SurfaceTensionScale = scale; }
+    void SetVorticityConfinementScale(float scale) { m_VorticityEpsilon = scale; }
     
     /**
      * @brief Get solver parameters
@@ -88,6 +89,7 @@ protected:
     float m_RelaxationEpsilon;  // CFM relaxation parameter
     float m_ViscosityScale;
     float m_SurfaceTensionScale;
+    float m_VorticityEpsilon;
     
     // Spatial acceleration
     std::unique_ptr<SpatialHashGrid> m_SpatialGrid;
@@ -120,6 +122,9 @@ protected:
     
     void ApplySurfaceTension(std::vector<FluidParticle>& particles,
                             const std::vector<FluidType>& fluidTypes);
+                            
+    void ApplyVorticityConfinement(std::vector<FluidParticle>& particles,
+                                  const std::vector<FluidType>& fluidTypes);
     
     void HandleBoundaryCollisions(std::vector<FluidParticle>& particles);
     

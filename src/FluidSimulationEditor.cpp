@@ -72,6 +72,24 @@ void FluidSimulationEditor::DrawSolverSettings() {
     if (ImGui::Checkbox("Enable Boundary", &boundaryEnabled)) {
         m_Simulation->SetEnableBoundary(boundaryEnabled);
     }
+    
+    ImGui::Separator();
+    ImGui::Text("Physics Parameters");
+    
+    static float visc = 1.0f;
+    if (ImGui::SliderFloat("Viscosity Scale", &visc, 0.0f, 5.0f)) {
+        m_Simulation->SetViscosityScale(visc);
+    }
+    
+    static float tension = 1.0f;
+    if (ImGui::SliderFloat("Surface Tension", &tension, 0.0f, 5.0f)) {
+        m_Simulation->SetSurfaceTensionScale(tension);
+    }
+    
+    static float vorticity = 0.0f;
+    if (ImGui::SliderFloat("Vorticity Strength", &vorticity, 0.0f, 20.0f)) {
+        m_Simulation->SetVorticityConfinementScale(vorticity);
+    }
 }
 
 void FluidSimulationEditor::DrawFluidProperties() {

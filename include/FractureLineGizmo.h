@@ -2,7 +2,9 @@
 
 #include "Gizmo.h"
 #include "FractureLine.h"
+#include "SoftBodyTearPattern.h"
 #include <vector>
+#include <string>
 #include <memory>
 
 class PhysXSoftBody;

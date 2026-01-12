@@ -1,29 +1,7 @@
-// Batch Result Handling Implementation for DistributedBatchManager
-
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include "PhysXSoftBody.h"
 #include <iostream>
-
-// Batch result structure
-struct BatchResult {
-    uint32_t batchId;
-    int workerNodeId;
-    uint64_t processingTimeMs;
-    uint64_t timestamp;
-    std::vector<uint8_t> serializedStates;  // Serialized soft body states
-    bool success;
-    std::string errorMessage;
-};
-
-// Add to Impl structure
-struct DistributedBatchManager::Impl {
-    // ... existing members ...
-    
-    // Result handling
-    std::unordered_map<uint32_t, BatchResult> pendingResults;
-    std::mutex resultMutex;
-    uint32_t resultTimeoutMs = 5000;  // 5 second timeout for results
-};
 
 // Worker-side: Process assigned batch and send results
 void DistributedBatchManager::ProcessAssignedBatch(uint32_t batchId, float deltaTime) {
@@ -150,7 +128,7 @@ void DistributedBatchManager::SendBatchResults(uint32_t batchId,
     msg.data = packedData;
     
     // Send with reliability
-    m_Impl->networkManager->SendMessage(m_Impl->currentMasterId, msg, true);
+    m_Impl->networkManager->SendMessageToNode(m_Impl->currentMasterId, msg, true);
     
     std::cout << "Sent batch " << batchId << " results to master ("
               << (resultData.size() / 1024) << " KB, "

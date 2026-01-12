@@ -157,7 +157,7 @@ if(NOT assimp_populated)
 endif()
 
 # Physics Backend Selection
-option(PHYSICS_BACKEND "Physics backend to use: BULLET or PHYSX" "BULLET")
+option(PHYSICS_BACKEND "Physics backend to use: BULLET or PHYSX" "PHYSX")
 
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
     message(STATUS "Using PhysX physics backend")
@@ -187,7 +187,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
     FetchContent_Declare(
         physx
         GIT_REPOSITORY https://github.com/NVIDIA-Omniverse/PhysX.git
-        GIT_TAG 5.4.1
+        GIT_TAG 106.0-physx-5.4.1
     )
     FetchContent_GetProperties(physx)
     if(NOT physx_populated)
@@ -201,6 +201,14 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         set(PX_BUILDSAMPLES OFF CACHE BOOL "" FORCE)
         set(PX_GENERATE_STATIC_LIBRARIES ON CACHE BOOL "" FORCE)
         set(PX_GENERATE_GPU_PROJECTS OFF CACHE BOOL "" FORCE)
+
+        set(PX_OUTPUT_LIB_DIR ${CMAKE_BINARY_DIR}/lib CACHE PATH "" FORCE)
+        set(PX_OUTPUT_BIN_DIR ${CMAKE_BINARY_DIR}/bin CACHE PATH "" FORCE)
+        set(PX_OUTPUT_DLL_DIR ${CMAKE_BINARY_DIR}/bin CACHE PATH "" FORCE)
+        set(PX_COPY_EXTERNAL_DLL OFF CACHE BOOL "" FORCE)
+        set(PUBLIC_RELEASE OFF CACHE BOOL "" FORCE)
+        message(STATUS "DEBUG: PX_COPY_EXTERNAL_DLL=${PX_COPY_EXTERNAL_DLL}")
+        message(STATUS "DEBUG: PUBLIC_RELEASE=${PUBLIC_RELEASE}")
         
         # Add PhysX subdirectory
         add_subdirectory(${PHYSX_ROOT_DIR}/compiler/public ${CMAKE_BINARY_DIR}/physx_build)
@@ -415,15 +423,15 @@ add_executable(GameEngine
     src/NetworkManagerASIO.cpp
     src/NetworkManagerReliability.cpp
     src/NetworkManagerBandwidth.cpp
-    src/DistributedBatchManager.cpp
-    src/DistributedBatchManagerFaultTolerance.cpp
-    src/DistributedBatchManagerFailover.cpp
-    src/DistributedBatchManagerSync.cpp
-    src/DistributedBatchManagerResults.cpp
-    src/DistributedBatchManagerRegistration.cpp
-    src/DistributedBatchManagerHierarchical.cpp
+    # src/DistributedBatchManager.cpp
+    # src/DistributedBatchManagerFaultTolerance.cpp
+    # src/DistributedBatchManagerFailover.cpp
+    # src/DistributedBatchManagerSync.cpp
+    # src/DistributedBatchManagerResults.cpp
+    # src/DistributedBatchManagerRegistration.cpp
+    # src/DistributedBatchManagerHierarchical.cpp
     src/CloudProvider.cpp
-    src/StateSerializer.cpp
+    # src/StateSerializer.cpp
     src/ProtobufSerializer.cpp
 )
 
@@ -495,8 +503,16 @@ else()
         set(HAS_ASIO TRUE)
         set(ASIO_STANDALONE FALSE)
     else()
-        message(STATUS "ASIO not found, using basic sockets")
-        set(HAS_ASIO FALSE)
+        message(STATUS "Boost.ASIO not found, fetching standalone ASIO...")
+        FetchContent_Declare(
+            asio
+            GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+            GIT_TAG asio-1-30-2
+        )
+        FetchContent_MakeAvailable(asio)
+        set(ASIO_INCLUDE_DIR ${asio_SOURCE_DIR}/asio/include)
+        set(HAS_ASIO TRUE)
+        set(ASIO_STANDALONE TRUE)
     endif()
 endif()
 
@@ -564,6 +580,15 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/FoamParticleSystem.cpp
         src/FluidSimulationEditor.cpp
         src/FluidDebugGizmo.cpp
+        # Distributed Physics
+        src/DistributedBatchManager.cpp
+        src/DistributedBatchManagerFaultTolerance.cpp
+        src/DistributedBatchManagerFailover.cpp
+        src/DistributedBatchManagerSync.cpp
+        src/DistributedBatchManagerResults.cpp
+        src/DistributedBatchManagerRegistration.cpp
+        src/DistributedBatchManagerHierarchical.cpp
+        src/StateSerializer.cpp
     )
     
     if(CUDAToolkit_FOUND)
@@ -625,6 +650,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         PhysXFoundation
         PhysXExtensions
         PhysXCharacterKinematic
+        PhysXVehicle
     )
     
     # Link CUDA runtime if available

@@ -29,10 +29,7 @@ enum class GizmoAxis {
     XYZ // Uniform scale or view-aligned rotation
 };
 
-struct Ray {
-    Vec3 origin;
-    Vec3 direction;
-};
+#include "Ray.h"
 
 class Gizmo {
 public:

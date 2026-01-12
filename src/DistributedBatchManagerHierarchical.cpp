@@ -1,18 +1,6 @@
-// Hierarchical Distribution Implementation
-
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include <iostream>
-
-// Add to Impl structure
-struct DistributedBatchManager::Impl {
-    // ... existing members ...
-    
-    // Hierarchical distribution
-    HierarchyConfig hierarchyConfig;
-    std::unordered_map<std::string, int> regionalMasters;  // region -> node ID
-    std::unordered_map<std::string, std::vector<int>> regionalWorkers;  // region -> workers
-    std::unordered_map<int, std::string> nodeRegions;  // node ID -> region
-};
 
 // Global Master Initialization
 bool DistributedBatchManager::InitializeAsGlobalMaster(uint16_t port) {
@@ -66,7 +54,7 @@ bool DistributedBatchManager::InitializeAsRegionalMaster(
     
     // TODO: Include region info in message data
     
-    m_Impl->networkManager->SendMessage(0, regMsg);
+    m_Impl->networkManager->SendMessageToNode(0, regMsg);
     
     // Set up message callbacks
     m_Impl->networkManager->SetMessageCallback(
@@ -228,7 +216,7 @@ void DistributedBatchManager::BroadcastToAllRegions(const NetworkManager::Messag
         NetworkManager::Message regionalMsg = msg;
         regionalMsg.targetNode = masterId;
         
-        m_Impl->networkManager->SendMessage(masterId, regionalMsg);
+        m_Impl->networkManager->SendMessageToNode(masterId, regionalMsg);
     }
 }
 
@@ -260,7 +248,7 @@ void DistributedBatchManager::HandleRegionalMasterMessage(int nodeId,
                 NetworkManager::Message forwardMsg = msg;
                 forwardMsg.targetNode = m_Impl->hierarchyConfig.parentNodeId;
                 
-                m_Impl->networkManager->SendMessage(
+                m_Impl->networkManager->SendMessageToNode(
                     m_Impl->hierarchyConfig.parentNodeId, forwardMsg);
             }
             break;

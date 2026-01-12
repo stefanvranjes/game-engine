@@ -902,8 +902,8 @@ void Renderer::BakeProbe(LightProbe* probe) {
     
     unsigned int maxMipLevels = 5;
     for (unsigned int mip = 0; mip < maxMipLevels; ++mip) {
-        unsigned int mipWidth = 128 * std::pow(0.5, mip);
-        unsigned int mipHeight = 128 * std::pow(0.5, mip);
+        unsigned int mipWidth = static_cast<unsigned int>(128 * std::pow(0.5, mip));
+        unsigned int mipHeight = static_cast<unsigned int>(128 * std::pow(0.5, mip));
         
         glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, mipWidth, mipHeight);
@@ -1164,10 +1164,12 @@ void Renderer::Render() {
     // Update scene graph (moved to Update method)
     // Update particles (moved to Update method)
 
+    std::vector<Mat4> lightSpaceMatrices;
+
     // ===== PASS 0: Render point light shadows =====
     {
         SCOPED_PROFILE("PointShadows");
-        SCOPED_GPU_PROFILE("PointShadowPass", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
+        SCOPED_GPU_PROFILE_COLOR("PointShadowPass", glm::vec4(1.0f, 0.5f, 0.0f, 1.0f));
         m_PointShadowShader->Use();
     int shadowIndex = 0;
     for (const auto& light : m_Lights) {
@@ -1198,13 +1200,14 @@ void Renderer::Render() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
+    int spotShadowIndex = 0;
+    std::vector<Mat4> spotLightMatrices;
+
     // ===== PASS 1: Render spot light shadows =====
     {
         SCOPED_PROFILE("SpotShadows");
-        SCOPED_GPU_PROFILE("SpotShadowPass", glm::vec4(0.5f, 1.0f, 0.0f, 1.0f));
+        SCOPED_GPU_PROFILE_COLOR("SpotShadowPass", glm::vec4(0.5f, 1.0f, 0.0f, 1.0f));
         m_DepthShader->Use();
-    int spotShadowIndex = 0;
-    std::vector<Mat4> spotLightMatrices;
     
     for (size_t i = 0; i < m_Lights.size(); ++i) {
         if (m_Lights[i].type == LightType::Spot && m_Lights[i].castsShadows && spotShadowIndex < m_SpotShadows.size()) {
@@ -1235,8 +1238,8 @@ void Renderer::Render() {
     // ===== PASS 2: Calculate light space matrix for shadow mapping (first directional light only) =====
     {
         SCOPED_PROFILE("CascadedShadows");
-        SCOPED_GPU_PROFILE("CascadedShadowPass", glm::vec4(0.0f, 1.0f, 1.0f, 1.0f));
-    std::vector<Mat4> lightSpaceMatrices;
+        SCOPED_GPU_PROFILE_COLOR("CascadedShadowPass", glm::vec4(0.0f, 1.0f, 1.0f, 1.0f));
+    
     if (m_Lights.size() > 0 && m_Lights[0].castsShadows) {
         lightSpaceMatrices = GetLightSpaceMatrices();
         
@@ -1281,6 +1284,7 @@ void Renderer::Render() {
 
     // Restore viewport to window size after shadow passes
     glViewport(0, 0, width, height);
+    }
 
     // ===== PASS 2: Issue Occlusion Queries (BEFORE updating visibility) =====
     {
@@ -1337,6 +1341,7 @@ void Renderer::Render() {
         glDepthMask(GL_TRUE);
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+    }
 
     // ===== PASS 3: Retrieve Query Results and Update Visibility =====
     {
@@ -1379,8 +1384,8 @@ void Renderer::Render() {
     // ===== PASS 4: Geometry Pass - Render to G-Buffer =====
     {
         SCOPED_PROFILE("GeometryPass");
-        SCOPED_GPU_PROFILE("GeometryPass", glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
-    glViewport(0, 0, width, height);
+        SCOPED_GPU_PROFILE_COLOR("GeometryPass", glm::vec4(1.0f, 0.0f, 0.0f, 1.0f));
+    glViewport(0, 0, m_GBuffer->GetWidth(), m_GBuffer->GetHeight());
     m_GBuffer->BindForWriting();
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1437,7 +1442,7 @@ void Renderer::Render() {
     // ===== PASS 4.5: SSAO Pass =====
     if (m_SSAOEnabled) {
         SCOPED_PROFILE("SSAO");
-        SCOPED_GPU_PROFILE("SSAOPass", glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
+        SCOPED_GPU_PROFILE_COLOR("SSAOPass", glm::vec4(0.5f, 0.5f, 1.0f, 1.0f));
         m_SSAO->Render(
             m_GBuffer->GetPositionTexture(),
             m_GBuffer->GetNormalTexture(),
@@ -1445,12 +1450,11 @@ void Renderer::Render() {
             m_Camera->GetViewMatrix().m
         );
     }
-    }
 
     // ===== PASS 4.6: SSR Pass =====
     if (m_SSREnabled) {
         SCOPED_PROFILE("SSR");
-        SCOPED_GPU_PROFILE("SSRPass", glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
+        SCOPED_GPU_PROFILE_COLOR("SSRPass", glm::vec4(1.0f, 1.0f, 0.0f, 1.0f));
         m_SSR->Render(
             m_GBuffer->GetPositionTexture(),
             m_GBuffer->GetNormalTexture(),
@@ -1459,15 +1463,14 @@ void Renderer::Render() {
             m_Camera->GetProjectionMatrix()
         );
     }
-    }
 
     // ===== PASS 4.7: Volumetric Fog Pass =====
     if (m_VolumetricFogEnabled && m_Lights.size() > 0 && lightSpaceMatrices.size() == 3) {
         SCOPED_PROFILE("VolumetricFog");
-        SCOPED_GPU_PROFILE("VolumetricFogPass", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
+        SCOPED_GPU_PROFILE_COLOR("VolumetricFogPass", glm::vec4(0.5f, 0.5f, 0.5f, 1.0f));
         // Flatten matrices for passing
         std::vector<float> flatMatrices;
-        for (const auto& mat : lightSpaceMatrices) {
+        for (const Mat4& mat : lightSpaceMatrices) {
             for(int i=0; i<16; ++i) flatMatrices.push_back(mat.m[i]);
         }
         
@@ -1489,12 +1492,11 @@ void Renderer::Render() {
             m_CascadeSplits.data()
         );
     }
-    }
 
     // ===== PASS 5: Lighting Pass - Render to HDR framebuffer =====
     {
         SCOPED_PROFILE("LightingPass");
-        SCOPED_GPU_PROFILE("LightingPass", glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+        SCOPED_GPU_PROFILE_COLOR("LightingPass", glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
     m_PostProcessing->BeginHDR();
 
     m_LightingShader->Use();
@@ -1521,6 +1523,7 @@ void Renderer::Render() {
 
     // Bind spot shadow maps
     spotShadowIndex = 0;
+    std::vector<Mat4> spotLightMatrices;
     for (size_t i = 0; i < m_Lights.size(); ++i) {
         if (m_Lights[i].type == LightType::Spot && m_Lights[i].castsShadows && spotShadowIndex < m_SpotShadows.size()) {
             m_SpotShadows[spotShadowIndex]->BindForReading(8 + spotShadowIndex);
@@ -3061,7 +3064,8 @@ void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
         // Use a simple shader - typically loaded via Shader Manager
         static Shader* gizmoShader = nullptr;
         if (!gizmoShader) {
-             gizmoShader = new Shader("shaders/gizmo.vert", "shaders/gizmo.frag");
+             gizmoShader = new Shader();
+             gizmoShader->LoadFromFiles("shaders/gizmo.vert", "shaders/gizmo.frag");
         }
         
         gizmoShader->Use();
@@ -3098,7 +3102,7 @@ void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
 }
 
 void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projection) {
-    if (!obj || !obj->GetActive()) return;
+    if (!obj || !obj->IsActive()) return;
     
     // Recursive render for children
     for (auto& child : obj->GetChildren()) {
@@ -3106,12 +3110,12 @@ void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projec
     }
 
     // Check if object has PhysXCloth component
-    auto cloth = obj->GetComponent<PhysXCloth>();
+    auto cloth = std::dynamic_pointer_cast<PhysXCloth>(obj->GetCloth());
     if (!cloth || !cloth->IsEnabled()) return;
     
     // Get mesh from component or object
     // PhysXCloth usually manages mesh updates on the Mesh attached to GameObject
-    auto mesh = obj->GetMesh();
+    std::shared_ptr<Mesh> mesh = obj->GetMesh();
     if (!mesh) return;
     
     // Use cloth shader
@@ -3137,7 +3141,7 @@ void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projec
     m_ClothShader->SetVec3("u_ViewPos", camPos.x, camPos.y, camPos.z);
     
     // Clip plane
-    m_ClothShader->SetInt("u_UseClipPlane", m_PlanarReflectionEnabled && m_PlanarReflection->IsRendering());
+    m_ClothShader->SetInt("u_UseClipPlane", (m_PlanarReflectionEnabled && m_PlanarReflection->IsRendering()) ? 1 : 0);
     if (m_PlanarReflectionEnabled && m_PlanarReflection->IsRendering()) {
         Vec4 plane = m_PlanarReflection->GetClipPlane();
         m_ClothShader->SetVec4("u_ClipPlane", plane.x, plane.y, plane.z, plane.w);
@@ -3205,15 +3209,21 @@ void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projec
         m_ClothShader->SetVec3("material.diffuse", material->GetDiffuse().x, material->GetDiffuse().y, material->GetDiffuse().z);
         m_ClothShader->SetFloat("material.roughness", material->GetRoughness());
         m_ClothShader->SetFloat("material.metallic", material->GetMetallic());
-        m_ClothShader->SetVec3("material.emissiveColor", material->GetEmissive().x, material->GetEmissive().y, material->GetEmissive().z);
+        Vec3 emColor = material->GetEmissiveColor();
+        m_ClothShader->SetVec3("material.emissiveColor", emColor.x, emColor.y, emColor.z);
     }
     
     // Set Cloth Specific Uniforms
-    m_ClothShader->SetInt("u_TwoSidedRendering", cloth->GetTwoSidedRendering() ? 1 : 0);
-    m_ClothShader->SetInt("u_EnableSubsurface", cloth->GetEnableSubsurface() ? 1 : 0);
-    m_ClothShader->SetFloat("u_Translucency", cloth->GetTranslucency());
-    m_ClothShader->SetFloat("u_WrinkleScale", cloth->GetWrinkleScale());
-    m_ClothShader->SetInt("u_EnableWrinkleDetail", cloth->GetEnableWrinkleDetail() ? 1 : 0);
+    int twoSided = cloth->GetTwoSidedRendering() ? 1 : 0;
+    m_ClothShader->SetInt("u_TwoSidedRendering", twoSided);
+    int enableSS = cloth->GetEnableSubsurface() ? 1 : 0;
+    m_ClothShader->SetInt("u_EnableSubsurface", enableSS);
+    float translucency = cloth->GetTranslucency();
+    m_ClothShader->SetFloat("u_Translucency", translucency);
+    float wrinkleScale = cloth->GetWrinkleScale();
+    m_ClothShader->SetFloat("u_WrinkleScale", wrinkleScale);
+    int enableWrinkle = cloth->GetEnableWrinkleDetail() ? 1 : 0;
+    m_ClothShader->SetInt("u_EnableWrinkleDetail", enableWrinkle);
     
     // Wind params
     // TODO: Get from PhysXCloth or global wind system

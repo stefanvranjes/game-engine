@@ -6,6 +6,7 @@
 #include "ScaleGizmo.h"
 #include "FractureLineGizmo.h"
 #include <memory> 
+#include <string>
 
 class GameObject;
 class Camera;
@@ -106,7 +107,7 @@ public:
     /**
      * @brief Save selected fracture line as preset
      */
-    bool SaveFractureLinePreset(const std::string& name, const std::string& description = "");
+    bool SaveFractureLinePreset(const std::string& name, const std::string& desc = "");
     
     /**
      * @brief Load fracture line preset

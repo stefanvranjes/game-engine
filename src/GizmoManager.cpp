@@ -16,7 +16,7 @@ GizmoManager::GizmoManager() {
     m_FractureLineGizmo->SetPatternLibrary(m_PatternLibrary.get());
     
     // Try to load existing library
-    LoadPatternLibrary();
+    LoadPatternLibrary("");
 }
 
 void GizmoManager::SetSelectedObject(std::shared_ptr<GameObject> object) {
@@ -30,7 +30,8 @@ void GizmoManager::SetSelectedObject(std::shared_ptr<GameObject> object) {
          // Bind soft body to fracture line gizmo
          if (m_FractureLineGizmo) {
              auto softBody = m_SelectedObject->GetSoftBody();
-             m_FractureLineGizmo->SetSoftBody(softBody);
+             auto physxSoftBody = std::dynamic_pointer_cast<PhysXSoftBody>(softBody);
+             m_FractureLineGizmo->SetSoftBody(physxSoftBody.get());
          }
     } else {
          m_TranslationGizmo->SetTransform(nullptr);
@@ -194,48 +195,51 @@ void GizmoManager::DeleteSelectedFractureLine() {
 
 // Pattern Library Methods
 
-bool GizmoManager::SaveFractureLinePreset(const std::string& name, const std::string& description) {
+bool GizmoManager::SaveFractureLinePreset(const std::string& name, const std::string& desc) {
     if (!m_FractureLineGizmo) {
         return false;
     }
     
-    bool result = m_FractureLineGizmo->SaveAsPreset(name, description);
+    bool result = m_FractureLineGizmo->SaveAsPreset(name, desc);
     
     // Auto-save library after adding preset
     if (result) {
-        SavePatternLibrary();
+        SavePatternLibrary("");
     }
     
     return result;
 }
 
 bool GizmoManager::LoadFractureLinePreset(const std::string& name) {
-    if (!m_FractureLineGizmo) {
+    auto gizmo = GetFractureLineGizmo();
+    if (!gizmo) {
         return false;
     }
     
-    return m_FractureLineGizmo->LoadPreset(name);
+    return gizmo->LoadPreset(name);
 }
 
 bool GizmoManager::SavePatternLibrary(const std::string& filename) {
-    if (!m_PatternLibrary) {
+    auto library = GetPatternLibrary();
+    if (!library) {
         return false;
     }
     
     std::string path = filename.empty() ? 
         FractureLinePatternLibrary::GetDefaultLibraryPath() : filename;
     
-    return m_PatternLibrary->SaveToFile(path);
+    return library->SaveToFile(path);
 }
 
 bool GizmoManager::LoadPatternLibrary(const std::string& filename) {
-    if (!m_PatternLibrary) {
+    auto library = GetPatternLibrary();
+    if (!library) {
         return false;
     }
     
     std::string path = filename.empty() ? 
         FractureLinePatternLibrary::GetDefaultLibraryPath() : filename;
     
-    return m_PatternLibrary->LoadFromFile(path);
+    return library->LoadFromFile(path);
 }
 

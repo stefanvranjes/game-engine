@@ -1,6 +1,5 @@
-// Worker Registration Implementation for DistributedBatchManager
-
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include <iostream>
 
 #ifdef HAS_CUDA_TOOLKIT
@@ -74,7 +73,7 @@ bool DistributedBatchManager::RegisterWithMaster() {
     msg.data = data;
     
     // Send registration (reliable)
-    m_Impl->networkManager->SendMessage(0, msg, true);
+    m_Impl->networkManager->SendMessageToNode(0, msg, true);
     
     std::cout << "Sent registration to master (GPUs: " << nodeInfo.gpuCount
               << ", Memory: " << nodeInfo.totalMemoryMB << " MB)" << std::endl;
@@ -146,7 +145,7 @@ void DistributedBatchManager::HandleNodeRegistration(int nodeId, const NetworkMa
     ack.sourceNode = m_Impl->networkManager->GetLocalNodeId();
     ack.targetNode = nodeId;
     
-    m_Impl->networkManager->SendMessage(nodeId, ack, true);
+    m_Impl->networkManager->SendMessageToNode(nodeId, ack, true);
 }
 
 // Worker unregistration
@@ -160,7 +159,7 @@ void DistributedBatchManager::UnregisterFromMaster() {
     msg.sourceNode = m_Impl->networkManager->GetLocalNodeId();
     msg.targetNode = 0;  // Master
     
-    m_Impl->networkManager->SendMessage(0, msg, true);
+    m_Impl->networkManager->SendMessageToNode(0, msg, true);
     
     std::cout << "Sent unregistration to master" << std::endl;
 }
@@ -221,7 +220,7 @@ void DistributedBatchManager::SendHeartbeats() {
         
         heartbeat.data = data;
         
-        m_Impl->networkManager->SendMessage(0, heartbeat, false);  // Unreliable
+        m_Impl->networkManager->SendMessageToNode(0, heartbeat, false);  // Unreliable
         
         std::this_thread::sleep_for(
             std::chrono::milliseconds(m_Impl->heartbeatIntervalMs));

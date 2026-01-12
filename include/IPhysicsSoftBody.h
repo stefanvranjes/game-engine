@@ -154,7 +154,7 @@ public:
      * @brief Initialize the soft body simulation
      * @param desc Soft body descriptor with mesh and physics parameters
      */
-    virtual void Initialize(const SoftBodyDesc&amp; desc) = 0;
+    virtual void Initialize(const SoftBodyDesc& desc) = 0;
 
     /**
      * @brief Update soft body simulation
@@ -269,27 +269,27 @@ public:
      * @brief Apply force to all vertices
      * @param force Force vector in Newtons
      */
-    virtual void AddForce(const Vec3&amp; force) = 0;
+    virtual void AddForce(const Vec3& force) = 0;
 
     /**
      * @brief Apply force to a specific vertex
      * @param vertexIndex Index of vertex
      * @param force Force vector in Newtons
      */
-    virtual void AddForceAtVertex(int vertexIndex, const Vec3&amp; force) = 0;
+    virtual void AddForceAtVertex(int vertexIndex, const Vec3& force) = 0;
 
     /**
      * @brief Apply impulse to all vertices
      * @param impulse Impulse vector in Newton-seconds
      */
-    virtual void AddImpulse(const Vec3&amp; impulse) = 0;
+    virtual void AddImpulse(const Vec3& impulse) = 0;
 
     /**
      * @brief Apply impulse to a specific vertex
      * @param vertexIndex Index of vertex
      * @param impulse Impulse vector in Newton-seconds
      */
-    virtual void AddImpulseAtVertex(int vertexIndex, const Vec3&amp; impulse) = 0;
+    virtual void AddImpulseAtVertex(int vertexIndex, const Vec3 impulse) = 0;
 
     // ===== Attachments =====
 
@@ -299,7 +299,7 @@ public:
      * @param rigidBody Rigid body to attach to
      * @param localPos Local position on the rigid body
      */
-    virtual void AttachVertexToRigidBody(int vertexIndex, IPhysicsRigidBody* rigidBody, const Vec3&amp; localPos) = 0;
+    virtual void AttachVertexToRigidBody(int vertexIndex, IPhysicsRigidBody* rigidBody, const Vec3& localPos) = 0;
 
     /**
      * @brief Detach a vertex (make it free)
@@ -312,7 +312,7 @@ public:
      * @param vertexIndex Index of vertex to fix
      * @param worldPos World position to fix at
      */
-    virtual void FixVertex(int vertexIndex, const Vec3&amp; worldPos) = 0;
+    virtual void FixVertex(int vertexIndex, const Vec3& worldPos) = 0;
 
     /**
      * @brief Unfix a vertex (restore normal mass)
@@ -345,7 +345,7 @@ public:
      * @param center Sphere center in local space
      * @param radius Sphere radius
      */
-    virtual void AddCollisionSphere(const Vec3&amp; center, float radius) = 0;
+    virtual void AddCollisionSphere(const Vec3& center, float radius) = 0;
 
     /**
      * @brief Add collision capsule
@@ -353,7 +353,7 @@ public:
      * @param p1 Capsule endpoint 1 in local space
      * @param radius Capsule radius
      */
-    virtual void AddCollisionCapsule(const Vec3&amp; p0, const Vec3&amp; p1, float radius) = 0;
+    virtual void AddCollisionCapsule(const Vec3& p0, const Vec3& p1, float radius) = 0;
 
     // ===== Tearing/Fracture =====
 

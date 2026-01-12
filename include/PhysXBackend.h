@@ -22,7 +22,9 @@ namespace physx {
 class IPhysicsRigidBody;
 class IPhysicsCharacterController;
 class IPhysicsSoftBody;
+class IPhysicsSoftBody;
 class IPhysicsCloth;
+class PhysXVehicle;
 
 /**
  * @brief PhysX implementation of physics backend
@@ -72,6 +74,9 @@ public:
     void RegisterCloth(class IPhysicsCloth* cloth);
     void UnregisterCloth(class IPhysicsCloth* cloth);
 
+    void RegisterVehicle(PhysXVehicle* vehicle);
+    void UnregisterVehicle(PhysXVehicle* vehicle);
+
 private:
     // PhysX core objects
     physx::PxFoundation* m_Foundation;
@@ -91,6 +96,7 @@ private:
     std::vector<IPhysicsCharacterController*> m_CharacterControllers;
     std::vector<IPhysicsSoftBody*> m_SoftBodies;
     std::vector<class IPhysicsCloth*> m_Cloths;
+    std::vector<PhysXVehicle*> m_Vehicles;
 
     // State
     bool m_Initialized;

@@ -1,21 +1,7 @@
-// State Synchronization Implementation for DistributedBatchManager
-
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include "PhysXSoftBody.h"
 #include <iostream>
-
-// Add to Impl structure
-struct DistributedBatchManager::Impl {
-    // ... existing members ...
-    
-    // State synchronization
-    uint32_t syncIntervalMs = 100;           // Sync every 100ms (10 Hz)
-    bool useDeltaSync = true;                // Use delta encoding
-    std::thread syncThread;
-    std::unordered_map<PhysXSoftBody*, StateSerializer::SoftBodyState> lastSyncedStates;
-    std::mutex syncMutex;
-    uint32_t currentFrame = 0;
-};
 
 void DistributedBatchManager::StartStateSynchronization() {
     if (m_Impl->role != NodeRole::WORKER) {
@@ -73,7 +59,7 @@ void DistributedBatchManager::SyncSoftBodyState(PhysXSoftBody* softBody) {
         
         if (!deltaData.empty()) {
             syncMsg.data = deltaData;
-            m_Impl->networkManager->SendMessage(
+            m_Impl->networkManager->SendMessageToNode(
                 m_Impl->currentMasterId, syncMsg, false);  // Unreliable for deltas
             
             // Update last synced state
@@ -90,7 +76,7 @@ void DistributedBatchManager::SyncSoftBodyState(PhysXSoftBody* softBody) {
             softBody, options);
         
         syncMsg.data = fullData;
-        m_Impl->networkManager->SendMessage(
+        m_Impl->networkManager->SendMessageToNode(
             m_Impl->currentMasterId, syncMsg, true);  // Reliable for full state
         
         // Store as last synced state
@@ -168,7 +154,7 @@ void DistributedBatchManager::BroadcastStateUpdate(PhysXSoftBody* softBody) {
         msg.targetNode = nodeId;
         msg.data = stateData;
         
-        m_Impl->networkManager->SendMessage(nodeId, msg, false);  // Unreliable broadcast
+        m_Impl->networkManager->SendMessageToNode(nodeId, msg, false);  // Unreliable broadcast
     }
 }
 

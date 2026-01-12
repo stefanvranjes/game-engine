@@ -39,6 +39,7 @@ public:
     
     // Getters/Setters
     void SetMesh(Mesh&& mesh) { m_Mesh = std::make_shared<Mesh>(std::move(mesh)); }
+    std::shared_ptr<Mesh> GetMesh() const { return m_Mesh; }
     void SetMaterial(std::shared_ptr<Material> material) { m_Material = material; }
     void SetModel(std::shared_ptr<Model> model) { m_Model = model; }
     std::shared_ptr<Model> GetModel() const { return m_Model; }

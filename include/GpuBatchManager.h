@@ -180,6 +180,7 @@ public:
     };
     MultiGpuStats GetMultiGpuStatistics() const;
     
+#ifdef USE_PHYSX
     /**
      * @brief Execute batched GPU data copy operations
      * @param scene PhysX scene containing soft bodies
@@ -197,6 +198,7 @@ public:
      * in batches, reducing synchronization overhead.
      */
     void BatchApplyData(physx::PxScene* scene);
+#endif
     
     /**
      * @brief Synchronize all pending GPU operations
@@ -292,6 +294,7 @@ private:
      */
     void EnablePeerAccess();
     
+#ifdef USE_PHYSX
     /**
      * @brief Process batches on multiple GPUs
      */
@@ -301,6 +304,7 @@ private:
      * @brief Process batches on single GPU
      */
     void ProcessSingleGpuBatches(physx::PxScene* scene);
+#endif
     
     /**
      * @brief Check for load imbalance and perform migration if needed

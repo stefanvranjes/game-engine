@@ -1,6 +1,8 @@
 #include "ScenePartitionManager.h"
 #include "PhysXSoftBody.h"
+#ifdef USE_PHYSX
 #include <PxPhysicsAPI.h>
+#endif
 #include <iostream>
 
 ScenePartitionManager::ScenePartitionManager(WorkStealingThreadPool& threadPool, 

@@ -19,7 +19,9 @@ PBDFluidSolver::PBDFluidSolver()
     , m_EnableBoundary(true)
     , m_RelaxationEpsilon(600.0f)
     , m_ViscosityScale(1.0f)
+    , m_ViscosityScale(1.0f)
     , m_SurfaceTensionScale(1.0f)
+    , m_VorticityEpsilon(0.0f)
     , m_SpatialGrid(std::make_unique<SpatialHashGrid>())
     , m_PhysicsBackend(nullptr)
 {
@@ -78,6 +80,10 @@ void PBDFluidSolver::Update(std::vector<FluidParticle>& particles,
     
     // Step 8: Apply surface tension
     ApplySurfaceTension(particles, fluidTypes);
+    
+    // Step 8.5: Apply Vorticity Confinement
+    ApplyVorticityConfinement(particles, fluidTypes);
+
     auto t4 = std::chrono::high_resolution_clock::now();
     m_Stats.velocityUpdateTimeMs = std::chrono::duration<float, std::milli>(t4 - t3).count();
     
@@ -341,6 +347,98 @@ void PBDFluidSolver::ApplySurfaceTension(std::vector<FluidParticle>& particles,
         
         p.velocity = p.velocity + cohesionForce * m_SurfaceTensionScale * 0.01f;
     }
+}
+
+void PBDFluidSolver::ApplyVorticityConfinement(std::vector<FluidParticle>& particles,
+                                              const std::vector<FluidType>& fluidTypes) {
+    if (m_VorticityEpsilon <= 0.0001f) return;
+
+    // 1. Calculate Vorticity (curl of velocity) and its magnitude location
+    // Since we parallelize, we can store vorticity in deltaPosition temporarily or add a field.
+    // Particle struct doesn't have vorticity field. We can use deltaPosition as a temp buffer 
+    // since it's reset in PredictPositions and used in SolveConstraints, but we are in late update step.
+    // However, ApplyVorticity is usually done BEFORE viscosity/update velocities? 
+    // Standard PBD: Velocity Update -> Viscosity -> Vorticity.
+    // Using deltaPosition is risky if it's used elsewhere, but here it's unused after SolveConstraints.
+    
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
+            
+            Vec3 vorticity(0, 0, 0);
+            
+            for (int neighborIdx : p.neighbors) {
+                const auto& neighbor = particles[neighborIdx];
+                Vec3 r = neighbor.position - p.position; // Vector from p to neighbor
+                Vec3 v_diff = neighbor.velocity - p.velocity;
+                
+                // Curl calculation: sum (v_diff x gradient_kernel)
+                // Gradient points along r (normalized) * derivative.
+                // Re-using SpikyGradient for simple kernel gradient approximation.
+                // Usually Poly6 gradient is used but Spiky is sharper. Let's use SpikyGradient(r, h).
+                // Note: SpikyGradient arguments are (r_vector, h). r_vector is p - neighbor? 
+                // SpikyGradient implementation uses r.Length(). Direction is r.Normalized().
+                // If we pass (neighbor.pos - p.pos), gradient points to neighbor.
+                
+                Vec3 grad = SpikyGradient(r, m_KernelRadius); // Gradient of W(p_i - p_j) with respect to p_i?
+                // Actually \nabla_i W(|r_i - r_j|) = grad W * (r_i - r_j)/|r|.
+                // SpikyGradient returns positive along r?
+                // Let's stick to standard SPH vorticity: omega_i = curl(v)_i
+                
+                vorticity = vorticity + v_diff.Cross(grad);
+            }
+            
+            // Store vorticity in deltaPosition temporarily
+            p.deltaPosition = vorticity;
+        }
+    );
+
+    // 2. Apply Force
+    std::for_each(std::execution::par, particles.begin(), particles.end(),
+        [&](FluidParticle& p) {
+            if (!p.active) return;
+            
+            Vec3 omega = p.deltaPosition; // Retrieved calculated vorticity
+            float omegaLen = omega.Length();
+            
+            if (omegaLen < 0.0001f) return;
+            
+            Vec3 eta(0,0,0);
+            
+            // Calculate gradient of vorticity magnitude |omega|
+            for (int neighborIdx : p.neighbors) {
+                const auto& neighbor = particles[neighborIdx];
+                float neighborOmegaLen = neighbor.deltaPosition.Length();
+                
+                Vec3 r = p.position - neighbor.position; 
+                Vec3 grad = SpikyGradient(r, m_KernelRadius); 
+                
+                eta = eta + grad * (neighborOmegaLen); // Approximate gradient of scalar field |omega|
+            }
+            
+            // Allow self contribution to gradient? Usually ignored or cancels out.
+            
+            float etaLen = eta.Length();
+            if (etaLen < 0.0001f) return;
+            
+            Vec3 N = eta * (1.0f / etaLen);
+            Vec3 force = N.Cross(omega) * m_VorticityEpsilon;
+            
+            // Apply force
+            const FluidType& type = fluidTypes[p.fluidType];
+            
+            // Standard Euler integration for this force step
+            float dt = 0.016f; // HACK: Need dt here. We lost dt in signature. 
+            // Ideally we pass dt to all Apply methods.
+            // But force is usually instantaneous correction or added to p.force?
+            // If we modify velocity directly: v += (F/m) * dt
+            
+            // Let's add scale directly to velocity for visual effect, simpler tuning.
+            // Or assume fixed dt of 0.016 approx or just say 'Epsilon' includes dt factor.
+            
+            p.velocity = p.velocity + force * m_VorticityEpsilon * 0.01f; // Scaled
+        }
+    );
 }
 
 void PBDFluidSolver::HandleBoundaryCollisions(std::vector<FluidParticle>& particles) {

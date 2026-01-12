@@ -4,6 +4,7 @@
 #include "IPhysicsCharacterController.h"
 #include "IPhysicsSoftBody.h"
 #include "IPhysicsCloth.h"
+#include "PhysXVehicle.h"
 
 #ifdef USE_PHYSX
 
@@ -70,6 +71,14 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
 
     // Create default material
     m_DefaultMaterial = m_Physics->createMaterial(0.5f, 0.5f, 0.6f); // friction, friction, restitution
+
+    // Initialize Vehicle SDK
+    if (!PxInitVehicleSDK(*m_Physics)) {
+        std::cerr << "Failed to initialize PhysX Vehicle SDK!" << std::endl;
+        return;
+    }
+    PxVehicleSetBasisVectors(PxVec3(0, 1, 0), PxVec3(0, 0, 1));
+    PxVehicleSetUpdateMode(PxVehicleUpdateMode::eVELOCITY_CHANGE);
 
     // Try to create CUDA context manager
     PxCudaContextManagerDesc cudaCtxtDesc;
@@ -172,6 +181,10 @@ void PhysXBackend::Shutdown() {
     m_RigidBodies.clear();
     m_CharacterControllers.clear();
     m_SoftBodies.clear();
+    m_Vehicles.clear();
+    
+    // Close Vehicle SDK
+    PxCloseVehicleSDK();
 
     // Release PhysX objects in reverse order of creation
     if (m_DefaultMaterial) {
@@ -235,10 +248,95 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
         }
     }
 
-    // Update cloths
     for (auto* cloth : m_Cloths) {
         if (cloth && cloth->IsEnabled()) {
             cloth->Update(deltaTime);
+        }
+    }
+
+    // Update vehicles
+    if (!m_Vehicles.empty()) {
+        // Prepare vehicle update data
+        std::vector<PxVehicleWheels*> vehicles;
+        for (auto* vehicle : m_Vehicles) {
+            if (vehicle && vehicle->GetPxVehicle()) {
+                vehicles.push_back(vehicle->GetPxVehicle());
+            }
+        }
+
+        if(!vehicles.empty()) {
+            // Raycasts for suspension
+            PxRaycastQueryResult* raycastResults = new PxRaycastQueryResult[vehicles.size()];
+            PxVehicleSuspensionRaycasts(
+                m_Scene->getBatchQuery(PxBatchQueryDesc(vehicles.size(), 0, 0)), 
+                vehicles.size(), 
+                vehicles.data(), 
+                vehicles.size(), 
+                raycastResults
+            );
+
+            // Vehicle updates
+            std::vector<PxVehicleWheelQueryResult> vehicleQueryResults(vehicles.size());
+            std::vector<PxVehicleConcurrentUpdateData> concurrentUpdateData(vehicles.size());
+            PxVehicleUpdates(
+                deltaTime, 
+                m_Scene->getGravity(), 
+                m_Scene->getFrictionType(), 
+                vehicles.size(), 
+                vehicles.data(), 
+                NULL, 
+                vehicleQueryResults.data()
+            );
+
+            delete[] raycastResults;
+        }
+        
+        // Post-update sync
+        for (auto* vehicle : m_Vehicles) {
+            vehicle->SyncTransform();
+        }
+    }
+
+    // Update vehicles
+    if (!m_Vehicles.empty()) {
+        // Prepare vehicle update data
+        std::vector<PxVehicleWheels*> vehicles;
+        for (auto* vehicle : m_Vehicles) {
+            if (vehicle && vehicle->GetPxVehicle()) {
+                vehicles.push_back(vehicle->GetPxVehicle());
+            }
+        }
+
+        if(!vehicles.empty()) {
+            // Raycasts for suspension
+            PxRaycastQueryResult* raycastResults = new PxRaycastQueryResult[vehicles.size()];
+            PxVehicleSuspensionRaycasts(
+                m_Scene->getBatchQuery(PxBatchQueryDesc(vehicles.size(), 0, 0)), 
+                vehicles.size(), 
+                vehicles.data(), 
+                vehicles.size(), 
+                raycastResults
+            );
+
+            // Vehicle updates
+            std::vector<PxVehicleWheelQueryResult> vehicleQueryResults(vehicles.size());
+            std::vector<PxVehicleConcurrentUpdateData> concurrentUpdateData(vehicles.size());
+            PxVehicleUpdates(
+                deltaTime, 
+                m_Scene->getGravity(), 
+                m_Scene->getFrictionType(), 
+                vehicles.size(), 
+                vehicles.data(), 
+                NULL, 
+                vehicleQueryResults.data()
+            );
+
+            delete[] raycastResults;
+        }
+        
+        // Post-update sync
+        for (auto* vehicle : m_Vehicles) {
+            vehicle->SyncTransform();
         }
     }
 
@@ -395,6 +493,19 @@ void PhysXBackend::UnregisterCloth(IPhysicsCloth* cloth) {
     auto it = std::find(m_Cloths.begin(), m_Cloths.end(), cloth);
     if (it != m_Cloths.end()) {
         m_Cloths.erase(it);
+    }
+}
+
+void PhysXBackend::RegisterVehicle(PhysXVehicle* vehicle) {
+    if (vehicle) {
+        m_Vehicles.push_back(vehicle);
+    }
+}
+
+void PhysXBackend::UnregisterVehicle(PhysXVehicle* vehicle) {
+    auto it = std::find(m_Vehicles.begin(), m_Vehicles.end(), vehicle);
+    if (it != m_Vehicles.end()) {
+        m_Vehicles.erase(it);
     }
 }
 

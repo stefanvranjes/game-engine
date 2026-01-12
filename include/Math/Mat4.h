@@ -191,6 +191,13 @@ public:
         return Vec3(m[12], m[13], m[14]);
     }
 
+    Vec3 GetScale() const {
+        Vec3 xScale(m[0], m[1], m[2]);
+        Vec3 yScale(m[4], m[5], m[6]);
+        Vec3 zScale(m[8], m[9], m[10]);
+        return Vec3(xScale.Length(), yScale.Length(), zScale.Length());
+    }
+
     // Matrix-Vector multiplication (Vec4)
     Vec4 operator*(const Vec4& v) const {
         float x = m[0] * v.x + m[4] * v.y + m[8] * v.z + m[12] * v.w;

@@ -7,7 +7,7 @@
  * 
  * Used for ray casting and intersection tests.
  */
-class Ray {
+struct Ray {
 public:
     Vec3 origin;
     Vec3 direction;  // Should be normalized

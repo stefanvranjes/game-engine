@@ -54,6 +54,19 @@ public:
      * @return Clip plane as Vec4 (A, B, C, D) where Ax + By + Cz + D = 0
      */
     Vec4 GetClipPlane(const Mat4& view) const;
+    
+    /**
+     * @brief Get the clip plane in world space
+     */
+    Vec4 GetClipPlane() const {
+        return Vec4(m_PlaneNormal.x, m_PlaneNormal.y, m_PlaneNormal.z, -m_PlaneNormal.Dot(m_PlanePoint));
+    }
+
+    /**
+     * @brief Check if reflection is currently rendering
+     */
+    bool IsRendering() const { return m_IsRendering; }
+    void SetRendering(bool rendering) { m_IsRendering = rendering; }
 
     /**
      * @brief Bind the reflection FBO for rendering
@@ -106,4 +119,5 @@ private:
     int m_Width = 0;
     int m_Height = 0;
     bool m_Initialized = false;
+    bool m_IsRendering = false;
 };

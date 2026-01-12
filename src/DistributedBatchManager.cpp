@@ -1,98 +1,10 @@
 #include "DistributedBatchManager.h"
+#include "DistributedBatchManagerImpl.h"
 #include "PhysXSoftBody.h"
 #include <iostream>
 #include <algorithm>
 #include <chrono>
 #include <thread>
-
-struct DistributedBatchManager::Impl {
-    NodeRole role = NodeRole::STANDALONE;
-    LoadBalancingStrategy loadBalancingStrategy = LoadBalancingStrategy::LEAST_LOADED;
-    
-    // Networking
-    std::unique_ptr<NetworkManager> networkManager;
-    std::unique_ptr<StateSerializer> stateSerializer;
-    
-    // Master state
-    std::unordered_map<int, WorkerNode> workers;
-    std::unordered_map<uint32_t, BatchAssignment> batchAssignments;
-    std::unordered_map<PhysXSoftBody*, uint32_t> softBodyToBatch;
-    uint32_t nextBatchId = 1;
-    
-    // Worker state
-    std::unique_ptr<GpuBatchManager> localBatchManager;
-    std::unordered_map<uint32_t, std::vector<PhysXSoftBody*>> assignedBatches;
-    
-    // Load balancing
-    bool autoLoadBalancing = false;
-    uint32_t loadBalanceInterval = 1000;
-    float loadImbalanceThreshold = 0.2f;  // 20% imbalance triggers rebalancing
-    std::thread loadBalanceThread;
-    std::atomic<bool> running{false};
-    
-    // Load monitoring
-    struct LoadHistory {
-        std::vector<float> samples;
-        size_t maxSamples = 60;  // Keep 60 samples
-        
-        void AddSample(float load) {
-            samples.push_back(load);
-            if (samples.size() > maxSamples) {
-                samples.erase(samples.begin());
-            }
-        }
-        
-        float GetAverage() const {
-            if (samples.empty()) return 0.0f;
-            float sum = 0.0f;
-            for (float s : samples) sum += s;
-            return sum / samples.size();
-        }
-        
-        float GetTrend() const {
-            if (samples.size() < 2) return 0.0f;
-            // Simple linear trend: (last - first) / samples
-            return (samples.back() - samples.front()) / samples.size();
-        }
-    };
-    
-    std::unordered_map<int, LoadHistory> loadHistory;
-    
-    // Migration tracking
-    struct MigrationRecord {
-        uint32_t batchId;
-        int sourceNode;
-        int targetNode;
-        uint64_t startTime;
-        bool completed;
-    };
-    
-    std::vector<MigrationRecord> activeMigrations;
-    std::mutex migrationMutex;
-    
-    // Fault tolerance
-    uint32_t heartbeatIntervalMs = 1000;     // Send heartbeat every 1 second
-    uint32_t heartbeatTimeoutMs = 5000;      // Timeout after 5 seconds
-    std::thread heartbeatThread;
-    std::thread monitorThread;
-    
-    // Statistics
-    DistributedStats stats;
-    std::mutex statsMutex;
-    
-    ~Impl() {
-        running = false;
-        if (loadBalanceThread.joinable()) {
-            loadBalanceThread.join();
-        }
-        if (heartbeatThread.joinable()) {
-            heartbeatThread.join();
-        }
-        if (monitorThread.joinable()) {
-            monitorThread.join();
-        }
-    }
-};
 
 DistributedBatchManager::DistributedBatchManager() 
     : m_Impl(std::make_unique<Impl>()) {
@@ -376,7 +288,7 @@ void DistributedBatchManager::AssignBatchToNode(uint32_t batchId, int nodeId) {
     // TODO: Serialize soft body data
     // msg.data = SerializeBatch(assignment.softBodies);
     
-    m_Impl->networkManager->SendMessage(nodeId, msg);
+    m_Impl->networkManager->SendMessageToNode(nodeId, msg);
     
     std::lock_guard<std::mutex> lock(m_Impl->statsMutex);
     m_Impl->stats.batchesAssigned++;
@@ -523,7 +435,7 @@ void DistributedBatchManager::PerformBatchMigration(uint32_t batchId,
     stopMsg.targetNode = sourceNode;
     // TODO: Add batch ID to message data
     
-    m_Impl->networkManager->SendMessage(sourceNode, stopMsg);
+    m_Impl->networkManager->SendMessageToNode(sourceNode, stopMsg);
     
     // Send migration message to target node (to start processing)
     NetworkManager::Message startMsg;
@@ -531,7 +443,7 @@ void DistributedBatchManager::PerformBatchMigration(uint32_t batchId,
     startMsg.targetNode = targetNode;
     // TODO: Serialize soft body state and add to message data
     
-    m_Impl->networkManager->SendMessage(targetNode, startMsg);
+    m_Impl->networkManager->SendMessageToNode(targetNode, startMsg);
     
     // Update assignment
     assignment.assignedNode = targetNode;

@@ -7,6 +7,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <mutex>
 
 class PhysXSoftBody;
 
@@ -94,6 +95,19 @@ public:
         float avgNetworkLatencyMs;
         size_t totalMigrations;
         size_t failedNodes;
+    };
+    
+    /**
+     * @brief Hierarchy configuration
+     */
+    struct HierarchyConfig {
+        NodeRole role;
+        int tier;
+        int parentNodeId;
+        std::string region;
+        std::vector<int> childNodes;
+        
+        HierarchyConfig() : role(NodeRole::STANDALONE), tier(0), parentNodeId(-1) {}
     };
     
     DistributedBatchManager();
@@ -397,8 +411,8 @@ private:
     
     // Load balancing helpers
     void UpdateWorkerLoad(int nodeId, float load);
-    float PredictNodeLoad(int nodeId) const;
-    void MigrateBatchesForBalance();
+    float PredictNodeLoad(int nodeId, size_t additionalBatches);
+    void MigrateBatchesForBalance(int sourceNode, int targetNode);
     void PerformBatchMigration(uint32_t batchId, int fromNode, int toNode);
     float CalculateLoadImbalance() const;
 };

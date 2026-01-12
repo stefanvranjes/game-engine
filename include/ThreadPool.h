@@ -58,7 +58,7 @@ private:
     std::vector<std::thread> m_Workers;
     std::queue<std::function<void()>> m_Jobs;
     
-    std::mutex m_QueueMutex;
+    mutable std::mutex m_QueueMutex;
     std::condition_variable m_Condition;
     std::condition_variable m_CompletionCondition;
     

@@ -2,7 +2,6 @@
 #include "Frustum.h"
 #include "GLExtensions.h"
 #include "Animator.h"
-#include "Animator.h"
 #include "ScriptComponent.h"
 #include "AudioSource.h"
 #include "AudioListener.h"

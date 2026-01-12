@@ -4,7 +4,7 @@
 #include "Math/Vec2.h"
 #include "Math/Mat4.h"
 
-class Ray;
+struct Ray;
 struct GLFWwindow;
 
 class Camera {
