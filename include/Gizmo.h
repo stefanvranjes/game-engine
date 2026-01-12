@@ -56,6 +56,9 @@ public:
         m_SnapValue = value;
     }
 
+    static void DrawLine(Shader* shader, const Vec3& from, const Vec3& to, const Vec3& color);
+
+
 protected:
     // Helper to calculate screen scale to keep gizmo size constant
     float GetScreenScale(const Vec3& position, const Camera& camera);

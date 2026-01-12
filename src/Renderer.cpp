@@ -600,6 +600,14 @@ bool Renderer::Init() {
         m_SpotShadows.push_back(std::move(shadow));
     }
 
+    // Initialize Gizmo Shader
+    m_GizmoShader = std::make_unique<Shader>();
+    if (!m_GizmoShader->LoadFromFiles("shaders/gizmo.vert", "shaders/gizmo.frag")) {
+        std::cerr << "Failed to load gizmo shaders" << std::endl;
+        return false;
+    }
+
+
     // Initialize GBuffer for deferred rendering
     int width, height;
     glfwGetFramebufferSize(glfwGetCurrentContext(), &width, &height);
@@ -3074,22 +3082,15 @@ void Renderer::RenderVegetation(const Mat4& view, const Mat4& projection, float 
 #include "Shader.h"
 
 void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
-    if (m_GizmoManager) {
-        // Use a simple shader - typically loaded via Shader Manager
-        static Shader* gizmoShader = nullptr;
-        if (!gizmoShader) {
-             gizmoShader = new Shader();
-             gizmoShader->LoadFromFiles("shaders/gizmo.vert", "shaders/gizmo.frag");
-        }
-        
-        gizmoShader->Use();
-        gizmoShader->SetMat4("view", view.m);
-        gizmoShader->SetMat4("projection", projection.m);
+    if (m_GizmoManager && m_GizmoShader) {
+        m_GizmoShader->Use();
+        m_GizmoShader->SetMat4("view", view.m);
+        m_GizmoShader->SetMat4("projection", projection.m);
         
         // Clear depth to draw on top
         glClear(GL_DEPTH_BUFFER_BIT); 
         
-        m_GizmoManager->Render(gizmoShader, *m_Camera);
+        m_GizmoManager->Render(m_GizmoShader.get(), *m_Camera);
 
         // Debug Render Soft Bodies
         if (m_Root) {
@@ -3104,7 +3105,7 @@ void Renderer::RenderGizmos(const Mat4& view, const Mat4& projection) {
                     // PhysX soft bodies are usually simulated in world space.
                     // My implementation in PhysXSoftBody::DebugRender sets model to identity.
                     // So we just call it.
-                    obj->GetSoftBody()->DebugRender(gizmoShader);
+                    obj->GetSoftBody()->DebugRender(m_GizmoShader.get());
                 }
 
                 for (auto& child : obj->GetChildren()) {

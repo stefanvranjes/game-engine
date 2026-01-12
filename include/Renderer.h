@@ -251,6 +251,10 @@ private:
     float m_ShadowFadeStart;
     float m_ShadowFadeEnd;
 
+    std::unique_ptr<Shader> m_GizmoShader;
+    Shader* GetGizmoShader() const { return m_GizmoShader.get(); }
+
+
     // CSM Helpers
     std::vector<float> m_CascadeSplits;
     std::vector<Mat4> GetLightSpaceMatrices();

@@ -132,14 +132,14 @@ public:
     void SetPhysXAggregate(std::shared_ptr<class PhysXAggregate> aggregate) { m_PhysXAggregate = aggregate; }
     std::shared_ptr<class PhysXAggregate> GetPhysXAggregate() const { return m_PhysXAggregate; }
 
-    // PhysX Character Controller
-    void SetPhysicsCharacterController(std::shared_ptr<IPhysicsCharacterController> controller) { m_PhysicsCharacterController = controller; }
-    std::shared_ptr<IPhysicsCharacterController> GetPhysicsCharacterController() const { return m_PhysicsCharacterController; }
-
     // PhysX Vehicle
     void SetPhysXVehicle(std::shared_ptr<PhysXVehicle> vehicle) { m_PhysXVehicle = vehicle; }
     std::shared_ptr<PhysXVehicle> GetPhysXVehicle() const { return m_PhysXVehicle; }
 #endif
+
+    // Character Controller (Generic)
+    void SetPhysicsCharacterController(std::shared_ptr<IPhysicsCharacterController> controller) { m_PhysicsCharacterController = controller; }
+    std::shared_ptr<IPhysicsCharacterController> GetPhysicsCharacterController() const { return m_PhysicsCharacterController; }
 
     // Scripting
     void SetScriptComponent(std::shared_ptr<class ScriptComponent> script) { m_ScriptComponent = script; }
@@ -251,9 +251,9 @@ private:
     std::shared_ptr<IPhysicsRigidBody> m_PhysicsRigidBody;
     std::shared_ptr<KinematicController> m_KinematicController;
 #ifdef USE_PHYSX
-    std::shared_ptr<IPhysicsCharacterController> m_PhysicsCharacterController;
     std::shared_ptr<PhysXVehicle> m_PhysXVehicle;
 #endif
+    std::shared_ptr<IPhysicsCharacterController> m_PhysicsCharacterController;
 
     // Audio
     std::vector<std::shared_ptr<class AudioSource>> m_AudioSources;

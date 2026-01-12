@@ -86,6 +86,12 @@ public:
      * @return True if debug drawing is enabled
      */
     virtual bool IsDebugDrawEnabled() const = 0;
+    
+    /**
+     * @brief Perform debug drawing of physics objects
+     * @param renderer The renderer to use for drawing
+     */
+    virtual void DebugDraw(class Renderer* renderer) {} // Optional override
 
     /**
      * @brief Get backend name (e.g., "Bullet3D", "PhysX")
@@ -139,4 +145,17 @@ public:
      * @return Number of overlapping bodies found
      */
     virtual int OverlapCapsule(const Vec3& center, float radius, float halfHeight, const Quat& rotation, std::vector<void*>& results, uint32_t filter = ~0u) = 0;
+
+    /**
+     * @brief Create a joint between two rigid bodies
+     * @param def Joint definition descriptor
+     * @return Pointer to created joint, or nullptr if failed/unsupported
+     */
+    virtual class IPhysicsJoint* CreateJoint(const struct JointDef& def) { return nullptr; }
+
+    /**
+     * @brief Destroy a joint
+     * @param joint Joint to destroy
+     */
+    virtual void DestroyJoint(class IPhysicsJoint* joint) {}
 };

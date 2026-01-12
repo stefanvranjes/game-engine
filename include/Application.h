@@ -33,6 +33,10 @@ public:
 #ifdef USE_PHYSX
     void LoadGpuTestScene(); // GPU Rigid Body test scene
 #endif
+#ifdef USE_BOX2D
+    void LoadBox2DJointTest();
+    void LoadBox2DCharacterTest();
+#endif
 
 private:
     void Update(float deltaTime);

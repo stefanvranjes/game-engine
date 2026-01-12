@@ -338,3 +338,34 @@ void Gizmo::DrawCircle(Shader* shader, const Vec3& center, const Vec3& normal, f
     glDrawArrays(GL_LINE_LOOP, 0, 64); // 64 segments
     glBindVertexArray(0);
 }
+
+void Gizmo::DrawLine(Shader* shader, const Vec3& from, const Vec3& to, const Vec3& color) {
+    if (!s_Initialized) { InitGizmoResources(); s_Initialized = true; }
+    
+    Vec3 dir = to - from;
+    float len = dir.Length();
+    if (len < 0.0001f) return;
+    
+    // We reuse the Arrow VAO which has a line from (0,0,0) to (0,1,0) at indices 0-1
+    Vec3 up(0, 1, 0);
+    Vec3 axis = up.Cross(dir.Normalized());
+    float angle = std::acos(up.Dot(dir.Normalized()));
+    
+    if (axis.LengthSquared() < 0.0001f) {
+        if (up.Dot(dir) < 0) axis = Vec3(1, 0, 0);
+        else axis = Vec3(0, 0, 1);
+    }
+    
+    Mat4 rotation = Mat4::RotationAxis(axis, angle);
+    Mat4 translation = Mat4::Translate(from);
+    Mat4 scaling = Mat4::Scale(Vec3(1, len, 1));
+    
+    Mat4 model = translation * rotation * scaling;
+    
+    shader->SetMat4("model", model.m);
+    shader->SetVec3("color", color.x, color.y, color.z);
+    
+    glBindVertexArray(s_ArrowVAO);
+    glDrawArrays(GL_LINES, 0, 2);
+    glBindVertexArray(0);
+}

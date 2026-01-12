@@ -729,7 +729,6 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
             target_compile_definitions(GameEngine PRIVATE _WIN32_WINNT=0x0601)  # Windows 7+
         endif()
     endif()
-    endif()
 elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
     target_link_libraries(GameEngine PRIVATE 
         glfw 

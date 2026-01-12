@@ -26,18 +26,29 @@ void Box2DRigidBody::Initialize(BodyType type, float mass, std::shared_ptr<IPhys
     if (!m_Backend) return;
     
     b2BodyDef bodyDef;
-    if (type == BodyType::Static) bodyDef.type = b2_staticBody;
-    else if (type == BodyType::Dynamic) bodyDef.type = b2_dynamicBody;
-    else bodyDef.type = b2_kinematicBody;
+    bodyDef.type = (type == BodyType::Dynamic) ? b2_dynamicBody : ((type == BodyType::Kinematic) ? b2_kinematicBody : b2_staticBody);
+    bodyDef.position = m_Backend->ToBox2D(m_InitialPosition);
+    bodyDef.angle = 0.0f; // Rotation 2D? Box2D has float angle.
+    // If we map to XY, angle is around Z. If XZ, angle around Y.
+    // Extract angle from Quat?
+    // Quat to Euler Z.
+    // Vec3 euler = m_InitialRotation.ToEuler();
+    // bodyDef.angle = (m_Backend->GetPlane() == Box2DBackend::Plane2D::XZ) ? euler.y : euler.z;
+    // For now assuming zero or handling SyncTransform handles it?
+    // Initialize usually called with position/rotation? No, Initialize has no rotation arg in Interface?
+    // Wait, IPhysicsRigidBody::Initialize(type, mass, shape). Position set by GameObject Sync?
+    // Actually GameObject sets position on body after creation usually via SetPosition.
+    // But bodyDef needs position.
     
-    // Initial position 0,0 (Transform sync will move it)
-    bodyDef.position.Set(0.0f, 0.0f);
+    // m_InitialRotation is not stored? 
+    // RigidBody doesn't store intial transform usually?
+    // Let's check SetPosition/SetRotation.
+    
+    m_Body = m_Backend->GetWorld()->CreateBody(&bodyDef);
     
     if (m_UserData) {
         bodyDef.userData.pointer = reinterpret_cast<uintptr_t>(m_UserData);
     }
-    
-    m_Body = m_Backend->GetWorld()->CreateBody(&bodyDef);
     
     // Create fixture from shape
     Box2DShape* box2DShape = static_cast<Box2DShape*>(shape.get());
@@ -67,38 +78,58 @@ void Box2DRigidBody::Initialize(BodyType type, float mass, std::shared_ptr<IPhys
 }
 
 void Box2DRigidBody::SetLinearVelocity(const Vec3& velocity) {
-    if (m_Body) m_Body->SetLinearVelocity(Box2DBackend::ToBox2D(velocity));
+    if (m_Body) {
+        m_Body->SetLinearVelocity(m_Backend->ToBox2D(velocity));
+    }
 }
 
 Vec3 Box2DRigidBody::GetLinearVelocity() const {
-    if (m_Body) return Box2DBackend::ToVec3(m_Body->GetLinearVelocity());
-    return Vec3(0,0,0);
+    if (m_Body) {
+        return m_Backend->ToVec3(m_Body->GetLinearVelocity());
+    }
+    return Vec3(0);
 }
 
 void Box2DRigidBody::SetAngularVelocity(const Vec3& velocity) {
-    // 2D only has Z angular velocity
-    if (m_Body) m_Body->SetAngularVelocity(velocity.z); 
+    if (m_Body) {
+        // Project to relevant axis
+        float angularVel = (m_Backend->GetPlane() == Box2DBackend::Plane2D::XZ) ? velocity.y : velocity.z;
+        m_Body->SetAngularVelocity(angularVel);
+    }
 }
 
 Vec3 Box2DRigidBody::GetAngularVelocity() const {
-    if (m_Body) return Vec3(0, 0, m_Body->GetAngularVelocity());
-    return Vec3(0,0,0);
+    if (m_Body) {
+        float av = m_Body->GetAngularVelocity();
+        if (m_Backend->GetPlane() == Box2DBackend::Plane2D::XZ) {
+            return Vec3(0, av, 0);
+        }
+        return Vec3(0, 0, av);
+    }
+    return Vec3(0);
 }
 
-void Box2DRigidBody::ApplyForce(const Vec3& force) {
-    if (m_Body) m_Body->ApplyForceToCenter(Box2DBackend::ToBox2D(force), true);
+void Box2DRigidBody::AddForce(const Vec3& force) {
+    if (m_Body) {
+        m_Body->ApplyForceToCenter(m_Backend->ToBox2D(force), true);
+    }
 }
 
+void Box2DRigidBody::AddNativeForce(const Vec3& force, const Vec3& mode) {
+     if (m_Body) {
+        m_Body->ApplyForceToCenter(m_Backend->ToBox2D(force), true);
+    }
+}
 void Box2DRigidBody::ApplyImpulse(const Vec3& impulse) {
-    if (m_Body) m_Body->ApplyLinearImpulseToCenter(Box2DBackend::ToBox2D(impulse), true);
+    if (m_Body) m_Body->ApplyLinearImpulseToCenter(m_Backend->ToBox2D(impulse), true);
 }
 
 void Box2DRigidBody::ApplyForceAtPoint(const Vec3& force, const Vec3& point) {
-    if (m_Body) m_Body->ApplyForce(Box2DBackend::ToBox2D(force), Box2DBackend::ToBox2D(point), true);
+    if (m_Body) m_Body->ApplyForce(m_Backend->ToBox2D(force), m_Backend->ToBox2D(point), true);
 }
 
 void Box2DRigidBody::ApplyImpulseAtPoint(const Vec3& impulse, const Vec3& point) {
-    if (m_Body) m_Body->ApplyLinearImpulse(Box2DBackend::ToBox2D(impulse), Box2DBackend::ToBox2D(point), true);
+    if (m_Body) m_Body->ApplyLinearImpulse(m_Backend->ToBox2D(impulse), m_Backend->ToBox2D(point), true);
 }
 
 void Box2DRigidBody::ApplyTorque(const Vec3& torque) {
@@ -120,6 +151,45 @@ void Box2DRigidBody::SetMass(float mass) {
 float Box2DRigidBody::GetMass() const {
     if (m_Body) return m_Body->GetMass();
     return m_Mass;
+}
+
+void Box2DRigidBody::SetPosition(const Vec3& position) {
+    if (m_Body) {
+        m_Body->SetTransform(m_Backend->ToBox2D(position), m_Body->GetAngle());
+        m_Body->SetAwake(true);
+    }
+    else {
+        m_InitialPosition = position;
+    }
+}
+
+Vec3 Box2DRigidBody::GetPosition() const {
+    if (m_Body) {
+        return m_Backend->ToVec3(m_Body->GetPosition());
+    }
+    return m_InitialPosition;
+}
+
+void Box2DRigidBody::SetRotation(const Quat& rotation) {
+    if (m_Body) {
+        // Extract relevant angle
+        Vec3 euler = rotation.ToEulerAngles();
+        float angle = (m_Backend->GetPlane() == Box2DBackend::Plane2D::XZ) ? euler.y : euler.z;
+        m_Body->SetTransform(m_Body->GetPosition(), angle);
+        m_Body->SetAwake(true);
+    }
+    // m_InitialRotation?
+}
+
+Quat Box2DRigidBody::GetRotation() const {
+    if (m_Body) {
+        float angle = m_Body->GetAngle();
+        if (m_Backend->GetPlane() == Box2DBackend::Plane2D::XZ) {
+             return Quat::FromEulerAngles(0, angle, 0);
+        }
+        return Quat::FromEulerAngles(0, 0, angle);
+    }
+    return Quat::Identity();
 }
 
 void Box2DRigidBody::SetFriction(float friction) {

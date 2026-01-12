@@ -521,6 +521,11 @@ void Application::Render() {
         // Render Gizmos on top of scene
         if (m_Renderer && m_Camera) {
              m_Renderer->RenderGizmos(m_Camera->GetViewMatrix(), m_Camera->GetProjectionMatrix());
+#ifdef USE_BOX2D
+             if (m_Box2DBackend && m_Box2DBackend->IsDebugDrawEnabled()) {
+                 m_Box2DBackend->DebugDraw(m_Renderer.get());
+             }
+#endif
         }
     }
 
@@ -1354,6 +1359,36 @@ void Application::RenderEditorUI() {
         LoadGpuTestScene();
     }
 #endif
+
+#ifdef USE_BOX2D
+    ImGui::Separator();
+    if (m_Box2DBackend) {
+        bool debugDraw = m_Box2DBackend->IsDebugDrawEnabled();
+        if (ImGui::Checkbox("Box2D Debug Draw", &debugDraw)) {
+            m_Box2DBackend->SetDebugDrawEnabled(debugDraw);
+        }
+        if (ImGui::Button("Run Joint Test (Pendulum)")) {
+            LoadBox2DJointTest();
+        }
+        if (ImGui::Button("Run Character Test")) {
+            LoadBox2DCharacterTest();
+        }
+
+        // Plane Selector
+        const char* planes[] = { "XY (Side-Scroller)", "XZ (Top-Down)" };
+        int currentPlane = (int)m_Box2DBackend->GetPlane();
+        if (ImGui::Combo("Simulation Plane", &currentPlane, planes, IM_ARRAYSIZE(planes))) {
+            m_Box2DBackend->SetPlane((Box2DBackend::Plane2D)currentPlane);
+            
+            // Auto-set gravity based on plane for convenience?
+            if (currentPlane == (int)Box2DBackend::Plane2D::XY) {
+                m_Box2DBackend->SetGravity(Vec3(0, -9.81f, 0));
+            } else {
+                m_Box2DBackend->SetGravity(Vec3(0, 0, 0)); // Top down usually no gravity
+            }
+        }
+    }
+#endif
     
     ImGui::End();
 }
@@ -1433,5 +1468,121 @@ void Application::LoadGpuTestScene() {
     }
     
     std::cout << "Loaded GPU Rigid Body Test Scene with " << (gridSize*gridSize*5) << " cubes." << std::endl;
+}
+#endif
+
+#ifdef USE_BOX2D
+void Application::LoadBox2DJointTest() {
+    if (!m_Box2DBackend || !m_Renderer) return;
+
+    // Clear scene
+    auto root = m_Renderer->GetRoot();
+    root->GetChildren().clear();
+    m_SelectedObjectIndex = -1;
+
+    // 1. Static Anchor (Ceiling)
+    auto ceiling = std::make_shared<GameObject>("CeilingAnchor");
+    ceiling->GetTransform().position = Vec3(0, 10, 0); // High up
+    ceiling->GetTransform().scale = Vec3(2, 0.5f, 2);
+    ceiling->SetMesh(Mesh::CreateCube());
+    
+    auto mat = std::make_shared<Material>();
+    mat->SetDiffuse(Vec3(0.5f, 0.5f, 0.5f));
+    ceiling->SetMaterial(mat);
+
+    auto rbCeiling = std::make_shared<Box2DRigidBody>(m_Box2DBackend.get());
+    auto shapeCeiling = Box2DShape::CreateBox(m_Box2DBackend.get(), Vec3(1, 0.25f, 1));
+    if (shapeCeiling) {
+        rbCeiling->Initialize(BodyType::Static, 0.0f, shapeCeiling);
+        ceiling->SetPhysicsRigidBody(rbCeiling);
+    }
+    root->AddChild(ceiling);
+
+    // 2. Dynamic Pendulum Body
+    auto bob = std::make_shared<GameObject>("PendulumBob");
+    bob->GetTransform().position = Vec3(5, 10, 0); // To the right, same height (start horizontal)
+    bob->GetTransform().scale = Vec3(1, 1, 1);
+    bob->SetMesh(Mesh::CreateCube());
+    
+    auto matRed = std::make_shared<Material>();
+    matRed->SetDiffuse(Vec3(1.0f, 0.0f, 0.0f));
+    bob->SetMaterial(matRed);
+
+    auto rbBob = std::make_shared<Box2DRigidBody>(m_Box2DBackend.get());
+    auto shapeBob = Box2DShape::CreateBox(m_Box2DBackend.get(), Vec3(0.5f, 0.5f, 0.5f));
+    if (shapeBob) {
+        rbBob->Initialize(BodyType::Dynamic, 10.0f, shapeBob);
+        bob->SetPhysicsRigidBody(rbBob);
+    }
+    root->AddChild(bob);
+
+    // 3. Create Joint (Revolute)
+    JointDef jDef;
+    jDef.type = JointType::Revolute;
+    jDef.bodyA = rbCeiling.get();
+    jDef.bodyB = rbBob.get();
+    jDef.anchorA = Vec3(0, 10, 0); // Pivot at ceiling center
+    jDef.collideConnected = false;
+    
+    // Optional: Motor
+    // jDef.enableMotor = true;
+    // jDef.motorSpeed = 1.0f;
+    // jDef.maxMotorTorque = 1000.0f;
+
+    m_Box2DBackend->CreateJoint(jDef);
+    
+    std::cout << "Created Box2D Joint Test (Pendulum)" << std::endl;
+}
+
+void Application::LoadBox2DCharacterTest() {
+    if (!m_Box2DBackend || !m_Renderer) return;
+
+    // Clear scene
+    auto root = m_Renderer->GetRoot();
+    root->GetChildren().clear();
+    m_SelectedObjectIndex = -1;
+
+    // 1. Static Floor
+    auto floor = std::make_shared<GameObject>("Floor");
+    floor->GetTransform().position = Vec3(0, -2, 0);
+    floor->GetTransform().scale = Vec3(20, 1, 20);
+    floor->SetMesh(Mesh::CreateCube());
+    
+    auto mat = std::make_shared<Material>();
+    mat->SetDiffuse(Vec3(0.5f, 0.5f, 0.5f));
+    floor->SetMaterial(mat);
+
+    auto rbFloor = std::make_shared<Box2DRigidBody>(m_Box2DBackend.get());
+    auto shapeFloor = Box2DShape::CreateBox(m_Box2DBackend.get(), Vec3(10, 0.5f, 10)); // Half extents
+    if (shapeFloor) {
+        rbFloor->Initialize(BodyType::Static, 0.0f, shapeFloor);
+        floor->SetPhysicsRigidBody(rbFloor);
+    }
+    root->AddChild(floor);
+
+    // 2. Character
+    auto charObj = std::make_shared<GameObject>("Character");
+    charObj->GetTransform().position = Vec3(0, 5, 0); // Drop from height
+    charObj->GetTransform().scale = Vec3(0.5f, 1.0f, 0.5f); // 1x2x1 approx
+    charObj->SetMesh(Mesh::CreateCube());
+    
+    auto matChar = std::make_shared<Material>();
+    matChar->SetDiffuse(Vec3(0.0f, 0.8f, 0.2f)); // Green
+    charObj->SetMaterial(matChar);
+
+    // Create CCT
+    auto cct = m_Box2DBackend->CreateCharacterController();
+    if (cct) {
+        cct->Initialize(nullptr, 60.0f, 0.5f); // Default shape (box), 60kg
+        cct->SetPosition(charObj->GetTransform().position);
+        charObj->SetPhysicsCharacterController(cct);
+        
+        // Give it some initial push? No, let user control?
+        // We don't have input hooked up to selected object easily here without modifying Update.
+        // It will just fall and land.
+    }
+    root->AddChild(charObj);
+    
+    std::cout << "Created Box2D Character Test" << std::endl;
 }
 #endif
