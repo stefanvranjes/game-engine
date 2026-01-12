@@ -77,7 +77,12 @@ public:
     std::shared_ptr<RigidBody> GetRigidBody() const { return m_RigidBody; }
 
     // Physics - Rigid Bodies (PhysX Interface)
-    void SetPhysicsRigidBody(std::shared_ptr<IPhysicsRigidBody> body) { m_PhysicsRigidBody = body; }
+    void SetPhysicsRigidBody(std::shared_ptr<IPhysicsRigidBody> body) { 
+        m_PhysicsRigidBody = body; 
+        if (m_PhysicsRigidBody) {
+            m_PhysicsRigidBody->SetUserData(this);
+        }
+    }
     std::shared_ptr<IPhysicsRigidBody> GetPhysicsRigidBody() const { return m_PhysicsRigidBody; }
     
     // Physics - Kinematic Controllers
@@ -200,6 +205,17 @@ private:
     // Physics/Audio
     Vec3 m_Velocity;
     Vec3 m_LastPosition;
+
+    // Physics Interpolation
+    Vec3 m_PhysicsPosition;
+    Quat m_PhysicsRotation;
+    Vec3 m_PreviousPhysicsPosition;
+    Quat m_PreviousPhysicsRotation;
+
+public:
+    void UpdatePhysicsState(const Vec3& pos, const Quat& rot);
+    void InterpolatePhysicsState(float alpha);
+private:
 
     // Articulation (Must be declared before m_Children to ensure correct destruction order)
     std::shared_ptr<class PhysXArticulation> m_Articulation;

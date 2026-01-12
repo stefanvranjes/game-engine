@@ -50,6 +50,8 @@ public:
     void SyncTransformFromPhysics(Vec3& outPosition, Quat& outRotation) override;
     void SyncTransformToPhysics(const Vec3& position, const Quat& rotation) override;
     void SetOnCollisionCallback(OnCollisionCallback callback) override;
+    void SetUserData(void* data) override { m_UserData = data; }
+    void* GetUserData() const override { return m_UserData; }
     void* GetNativeBody() override;
 
     // Internal callback handler
@@ -63,6 +65,7 @@ private:
     float m_Mass;
     bool m_GravityEnabled;
     OnCollisionCallback m_CollisionCallback;
+    void* m_UserData = nullptr;
 };
 
 #endif // USE_PHYSX

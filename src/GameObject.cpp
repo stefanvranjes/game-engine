@@ -28,6 +28,10 @@ GameObject::GameObject(const std::string& name)
     , m_FramesSinceLastQuery(0)
     , m_UVOffset(0.0f, 0.0f)
     , m_UVScale(1.0f, 1.0f)
+    , m_PhysicsPosition(0.0f)
+    , m_PhysicsRotation(0,0,0,1)
+    , m_PreviousPhysicsPosition(0.0f)
+    , m_PreviousPhysicsRotation(0,0,0,1)
 {
 }
 
@@ -667,3 +671,26 @@ AABB GameObject::GetWorldAABB() const {
 }
 
 
+// Physics Interpolation
+void GameObject::UpdatePhysicsState(const Vec3& pos, const Quat& rot) {
+    m_PreviousPhysicsPosition = m_PhysicsPosition;
+    m_PreviousPhysicsRotation = m_PhysicsRotation;
+    
+    m_PhysicsPosition = pos;
+    m_PhysicsRotation = rot;
+    
+    // First time initialization or reset
+    if (m_PreviousPhysicsPosition == Vec3(0,0,0) && m_PreviousPhysicsRotation == Quat(0,0,0,1) && 
+        pos != Vec3(0,0,0)) {
+        m_PreviousPhysicsPosition = pos;
+        m_PreviousPhysicsRotation = rot;
+    }
+}
+
+void GameObject::InterpolatePhysicsState(float alpha) {
+    // Linear interpolation for position
+    m_Transform.position = Vec3::Lerp(m_PreviousPhysicsPosition, m_PhysicsPosition, alpha);
+    
+    // Slerp for rotation
+    m_Transform.rotation = Quat::Slerp(m_PreviousPhysicsRotation, m_PhysicsRotation, alpha).ToEulerAngles();
+}

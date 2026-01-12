@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <GLFW/glfw3.h>
 #include "imgui/imgui.h"
+#include "PhysXRigidBody.h"
+#include "PhysXShape.h"
 
 Application::Application()
     : m_LastFrameTime(0.0f)
@@ -312,14 +314,117 @@ void Application::Update(float deltaTime) {
         }
     }
 
-    // Update physics simulation
+    // Update physics simulation (Double-Buffered Fixed Timestep)
     {
         SCOPED_PROFILE("Physics::Update");
-        if (m_PhysicsSystem) {
-            m_PhysicsSystem->Update(deltaTime);
+        
+        m_PhysicsAccumulator += deltaTime;
+        
+        // Safety clamp to prevent spiral of death
+        if (m_PhysicsAccumulator > 0.25f) m_PhysicsAccumulator = 0.25f;
+
+        while (m_PhysicsAccumulator >= m_PhysicsStepSize) {
+            
+            // 1. Step Bullet Physics
+            if (m_PhysicsSystem) {
+                m_PhysicsSystem->Update(m_PhysicsStepSize);
+            }
+            
+            // 2. Step PhysX
+            if (m_PhysXBackend) {
+                m_PhysXBackend->Update(m_PhysicsStepSize);
+                
+                // 3. Sync Transforms
+                // Get active bodies that moved this step
+                static std::vector<IPhysicsRigidBody*> activeBodies;
+                m_PhysXBackend->GetActiveRigidBodies(activeBodies);
+                
+                for (IPhysicsRigidBody* body : activeBodies) {
+                    if (!body) continue;
+                    
+                    GameObject* owner = static_cast<GameObject*>(body->GetUserData());
+                    if (owner) {
+                         Vec3 pos;
+                         Quat rot;
+                         body->SyncTransformFromPhysics(pos, rot);
+                         
+                         // Update Physics Buffer (Prev = Cur, Cur = New)
+                         owner->UpdatePhysicsState(pos, rot);
+                    }
+                }
+            }
+            
+            m_PhysicsAccumulator -= m_PhysicsStepSize;
         }
-        if (m_PhysXBackend) {
-            m_PhysXBackend->Update(deltaTime);
+        
+        // 4. Interpolate for Rendering
+        float alpha = m_PhysicsAccumulator / m_PhysicsStepSize;
+        
+        // Ideally we only interpolate active objects.
+        // But for now, let's iterate root children or active list?
+        // Issue: activeBodies is local to the loop.
+        // We need to iterate ALL objects that *might* have physics.
+        // Or better: The Scene Graph update relies on m_Transform.
+        // We need to make sure m_Transform is set to the interpolated value.
+        
+        // Optimization: Create a list of "PhysicsActiveGameObjects"? 
+        // For strict correctness, we should traverse the scene.
+        // But if we only care about PhysX objects:
+        // We can't use activeBodies here because that's only for the *last* step.
+        // Objects that are sleeping don't need interpolation (Prev == Cur).
+        // So actually, iterating active objects from the LAST step is "okay" IF we assume sleeping objects don't move between frames.
+        // But let's be safe: The scene graph Update (line 311) propagates transforms.
+        // We should update transforms BEFORE that.
+        
+        // Let's iterate all PhysX bodies known to backend?
+        // PhysXBackend doesn't expose all bodies easily.
+        // Let's iterate scene graph? Slow.
+        
+        // COMPROMISE:
+        // For the visual test (Active Rigid Body count is high), we rely on activeBodies.
+        // But we need to update *every frame* for interpolation, not just on physics steps.
+        // Use a persistent list of "ActivePhysicsObjects"?
+        
+        // Let's rely on the fact that if an object is sleeping, Prev == Cur, so Lerp(Prev, Cur, alpha) == Cur.
+        // So we just need to touch objects that *are* moving or *were* moving.
+        // Implementing a "RegisteredPhysicsObjects" list in Application or Renderer would be best.
+        // For now, let's just stick to the specific test case needs or basic iteration?
+        // Actually, let's assume we can get ALL rigid bodies from backend if needed.
+        // But iterating 1000s of static bodies is bad.
+        
+        // Correct approach: 
+        // Iterate only *interpolatable* objects.
+        // Since we don't have that list, and we want "Active Rigid Body" optimization...
+        // We might be missing the interpolation if we don't track them.
+        
+        // Hack for now: Repopulate activeBodies list for interpolation? No that's physics state.
+        
+        // Let's use `m_PhysXBackend->GetActiveRigidBodies` again? 
+        // No, that returns PxScene::getActiveActors which resets after fetchResults.
+        // Since we are outside the loop, we might not get valid actors if 0 steps ran this frame.
+        
+        // OK, critical logic:
+        // If 0 physics steps ran this frame (high FPS), we still need to interpolate.
+        // We need the data from the LAST rigid body update.
+        // So we need to store `std::vector<GameObject*> m_InterpolatedObjects`?
+        // Let's add that to Application later if needed. 
+        // For now, let's iterate the Root's children as a heuristic (since test scene is flat).
+        
+        if (m_Renderer) {
+             auto root = m_Renderer->GetRoot();
+             if (root) {
+                 // Recursive function to interpolate
+                 std::function<void(std::shared_ptr<GameObject>)> interpolateRecursive = 
+                    [&](std::shared_ptr<GameObject> obj) {
+                        if (obj->GetPhysicsRigidBody()) {
+                            obj->InterpolatePhysicsState(alpha);
+                        }
+                        for (auto& child : obj->GetChildren()) {
+                            interpolateRecursive(child);
+                        }
+                    };
+                 interpolateRecursive(root);
+             }
         }
     }
 
@@ -1182,5 +1287,86 @@ void Application::RenderEditorUI() {
                           "Edit files and they will reload automatically in the editor.");
     }
     
+    ImGui::Separator();
+    if (ImGui::Button("Run GPU Rigid Body Test")) {
+        LoadGpuTestScene();
+    }
+    
     ImGui::End();
+}
+
+void Application::LoadGpuTestScene() {
+    if (!m_PhysXBackend || !m_Renderer) return;
+
+    // Clear existing scene
+    auto root = m_Renderer->GetRoot();
+    root->GetChildren().clear();
+    m_SelectedObjectIndex = -1;
+    
+    // Create Floor
+    {
+        auto floor = std::make_shared<GameObject>("Floor");
+        floor->GetTransform().position = Vec3(0, -1, 0);
+        floor->GetTransform().scale = Vec3(50, 1, 50);
+        floor->SetMesh(Mesh::CreateCube());
+        
+        auto mat = std::make_shared<Material>();
+        mat->SetDiffuse(Vec3(0.5f, 0.5f, 0.5f));
+        floor->SetMaterial(mat);
+        
+        // PhysX Static Body
+        auto body = std::make_shared<PhysXRigidBody>(m_PhysXBackend.get());
+        auto shape = PhysXShape::CreateBox(m_PhysXBackend.get(), Vec3(25, 0.5f, 25)); // Half-extents
+        
+        if (shape) {
+            body->Initialize(BodyType::Static, 0.0f, shape); 
+            floor->SetPhysicsRigidBody(body);
+        }
+        root->AddChild(floor);
+    }
+    
+    // Spawn Dynamic Cubes
+    int gridSize = 10;
+    float spacing = 1.2f;
+    float startHeight = 10.0f;
+    
+    auto cubeMesh = Mesh::CreateCube();
+    auto cubeMat = std::make_shared<Material>();
+    cubeMat->SetDiffuse(Vec3(1.0f, 0.2f, 0.2f)); // Red
+    
+    // Shared shape for optimization? 
+    // PhysX shapes can be shared between rigid bodies if attached to multiple? 
+    // Actually PxShape can be shared if we use PxRigidActor::attachShape.
+    // But PhysXRigidBody::Initialize creates its own actor and attaches the shape.
+    // PhysXShape wrapper holds a unique PxShape? Let's check PhysXShape.cpp later. 
+    // Assuming we create new wrappers for now to be safe.
+    
+    for (int x = 0; x < gridSize; ++x) {
+        for (int z = 0; z < gridSize; ++z) {
+            for (int y = 0; y < 5; ++y) {
+                 auto cube = std::make_shared<GameObject>("GpuCube");
+                 
+                 float px = (x - gridSize/2.0f) * spacing;
+                 float py = startHeight + y * spacing;
+                 float pz = (z - gridSize/2.0f) * spacing;
+                 
+                 cube->GetTransform().position = Vec3(px, py, pz);
+                 cube->SetMesh(cubeMesh); // Share mesh
+                 cube->SetMaterial(cubeMat); // Share material
+                 
+                 // Create Rigid Body
+                 auto body = std::make_shared<PhysXRigidBody>(m_PhysXBackend.get());
+                 auto shape = PhysXShape::CreateBox(m_PhysXBackend.get(), Vec3(0.5f, 0.5f, 0.5f));
+                 
+                 if (shape) {
+                     body->Initialize(BodyType::Dynamic, 1.0f, shape);
+                     cube->SetPhysicsRigidBody(body); // This sets userData to 'cube'
+                 }
+                 
+                 root->AddChild(cube);
+            }
+        }
+    }
+    
+    std::cout << "Loaded GPU Rigid Body Test Scene with " << (gridSize*gridSize*5) << " cubes." << std::endl;
 }

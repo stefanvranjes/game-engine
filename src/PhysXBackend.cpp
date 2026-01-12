@@ -27,6 +27,8 @@ PhysXBackend::PhysXBackend()
     , m_DefaultMaterial(nullptr)
     , m_Allocator(nullptr)
     , m_ErrorCallback(nullptr)
+    , m_CollisionCallback(nullptr)
+    , m_ContactModifyCallback(nullptr)
     , m_Initialized(false)
     , m_DebugDrawEnabled(false)
     , m_Gravity(0, -9.81f, 0)
@@ -120,6 +122,7 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
         sceneDesc.cudaContextManager = m_CudaContextManager;
         sceneDesc.flags |= PxSceneFlag::eENABLE_GPU_DYNAMICS;
         sceneDesc.flags |= PxSceneFlag::eENABLE_PCM; // Persistent Contact Manifold (usually good for GPU)
+        sceneDesc.flags |= PxSceneFlag::eENABLE_STABILIZATION; // Improve stability for GPU rigid bodies
         sceneDesc.broadPhaseType = PxBroadPhaseType::eGPU;
         sceneDesc.gpuMaxNumPartitions = 8;
     } else {
@@ -136,6 +139,10 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
     // Set simulation event callback
     m_CollisionCallback = new PhysXCollisionCallback(this);
     sceneDesc.simulationEventCallback = m_CollisionCallback;
+
+    // Set contact modify callback
+    m_ContactModifyCallback = new PhysXContactModifyCallback(this);
+    sceneDesc.contactModifyCallback = m_ContactModifyCallback;
 
     m_Scene = m_Physics->createScene(sceneDesc);
     if (!m_Scene) {
@@ -236,6 +243,8 @@ void PhysXBackend::Shutdown() {
         m_Foundation = nullptr;
     }
 
+    delete m_CollisionCallback;
+    delete m_ContactModifyCallback;
     delete m_ErrorCallback;
     delete m_Allocator;
 
@@ -673,10 +682,23 @@ void PhysXBackend::RegisterAggregate(PhysXAggregate* aggregate) {
     }
 }
 
-void PhysXBackend::UnregisterAggregate(PhysXAggregate* aggregate) {
+    void PhysXBackend::UnregisterAggregate(PhysXAggregate* aggregate) {
     auto it = std::find(m_Aggregates.begin(), m_Aggregates.end(), aggregate);
     if (it != m_Aggregates.end()) {
         m_Aggregates.erase(it);
+    }
+}
+
+void PhysXBackend::RegisterContactModifyListener(IPhysXContactModifyListener* listener) {
+    if (listener) {
+        m_ContactModifyListeners.push_back(listener);
+    }
+}
+
+void PhysXBackend::UnregisterContactModifyListener(IPhysXContactModifyListener* listener) {
+    auto it = std::find(m_ContactModifyListeners.begin(), m_ContactModifyListeners.end(), listener);
+    if (it != m_ContactModifyListeners.end()) {
+        m_ContactModifyListeners.erase(it);
     }
 }
 
@@ -749,6 +771,29 @@ size_t PhysXBackend::GetGpuMemoryUsageMB() const {
     return m_GpuMemoryUsageMB;
 }
 
+bool PhysXBackend::IsGpuRigidBodySupported() const {
+    return m_CudaContextManager && m_CudaContextManager->contextIsValid();
+}
+
+void PhysXBackend::GetActiveRigidBodies(std::vector<IPhysicsRigidBody*>& outBodies) {
+    if (!m_Scene) return;
+    
+    outBodies.clear();
+    
+    physx::PxU32 nbActiveActors = 0;
+    physx::PxActor** activeActors = m_Scene->getActiveActors(nbActiveActors);
+    
+    if (nbActiveActors > 0) {
+        outBodies.reserve(nbActiveActors);
+        for (physx::PxU32 i = 0; i < nbActiveActors; i++) {
+            if (activeActors[i]->userData) {
+                // Ensure it's a rigid body (could verify type if needed, but userData convention holds)
+                outBodies.push_back(static_cast<IPhysicsRigidBody*>(activeActors[i]->userData));
+            }
+        }
+    }
+}
+
 
 // Custom filter shader
 physx::PxFilterFlags PhysXSimulationFilterShader(
@@ -761,10 +806,16 @@ physx::PxFilterFlags PhysXSimulationFilterShader(
     
     // Enable contact reports for all colliding pairs
     if (!(flags & PxFilterFlag::eSUPPRESS)) {
-        pairFlags |= PxPairFlag::eCONTACT_DEFAULT | PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_TOUCH_UHD_FORCE;
+        pairFlags |= PxPairFlag::eCONTACT_DEFAULT | PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_TOUCH_UHD_FORCE | PxPairFlag::eMODIFY_CONTACTS;
     }
     
     return flags;
+}
+
+void PhysXBackend::PhysXContactModifyCallback::onContactModify(physx::PxContactModifyPair* const pairs, physx::PxU32 count) {
+    for (auto* listener : m_Backend->m_ContactModifyListeners) {
+        listener->OnContactModify(pairs, count);
+    }
 }
 
 void PhysXBackend::PhysXCollisionCallback::onContact(const physx::PxContactPairHeader& pairHeader, const physx::PxContactPair* pairs, physx::PxU32 nbPairs) {

@@ -198,6 +198,16 @@ public:
     virtual void SyncTransformToPhysics(const Vec3& position, const Quat& rotation) = 0;
 
     /**
+     * @brief Set user data pointer (e.g. to GameObject)
+     */
+    virtual void SetUserData(void* data) = 0;
+
+    /**
+     * @brief Get user data pointer
+     */
+    virtual void* GetUserData() const = 0;
+
+    /**
      * @brief Get backend-specific rigid body pointer
      * @return Opaque pointer to native rigid body
      */

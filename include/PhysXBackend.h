@@ -17,6 +17,8 @@ namespace physx {
     class PxDefaultAllocator;
     class PxDefaultErrorCallback;
     class PxCudaContextManager;
+    class PxContactModifyCallback;
+    class PxContactModifyPair;
 }
 
 class IPhysicsRigidBody;
@@ -25,6 +27,21 @@ class IPhysicsSoftBody;
 class IPhysicsSoftBody;
 class IPhysicsCloth;
 class PhysXVehicle;
+
+/**
+ * @brief Interface for listening to contact modification events
+ */
+class IPhysXContactModifyListener {
+public:
+    virtual ~IPhysXContactModifyListener() = default;
+    
+    /**
+     * @brief Called when contacts are being modified
+     * @param pairs Array of contact pairs to modify
+     * @param count Number of pairs
+     */
+    virtual void OnContactModify(physx::PxContactModifyPair* const pairs, physx::PxU32 count) = 0;
+};
 
 /**
  * @brief PhysX implementation of physics backend
@@ -67,6 +84,10 @@ public:
     bool IsGpuSoftBodySupported() const;
     void GetGpuDeviceProperties(int& computeCapability, size_t& totalMemoryMB, size_t& freeMemoryMB) const;
     size_t GetGpuMemoryUsageMB() const;
+    
+    // Rigid body optimization
+    bool IsGpuRigidBodySupported() const;
+    void GetActiveRigidBodies(std::vector<IPhysicsRigidBody*>& outBodies);
 
     // Registration methods (called by physics components)
     void RegisterRigidBody(IPhysicsRigidBody* body);
@@ -86,6 +107,10 @@ public:
 
     void RegisterAggregate(class PhysXAggregate* aggregate);
     void UnregisterAggregate(class PhysXAggregate* aggregate);
+
+    // Contact Modification
+    void RegisterContactModifyListener(IPhysXContactModifyListener* listener);
+    void UnregisterContactModifyListener(IPhysXContactModifyListener* listener);
 
 private:
     // PhysX core objects
@@ -109,6 +134,7 @@ private:
     std::vector<PhysXVehicle*> m_Vehicles;
     std::vector<class PhysXArticulation*> m_Articulations;
     std::vector<class PhysXAggregate*> m_Aggregates;
+    std::vector<IPhysXContactModifyListener*> m_ContactModifyListeners;
 
     // State
     bool m_Initialized;
@@ -137,6 +163,17 @@ private:
     };
 
     PhysXCollisionCallback* m_CollisionCallback;
+
+    // Contact Modification Callback
+    class PhysXContactModifyCallback : public physx::PxContactModifyCallback {
+    public:
+        PhysXContactModifyCallback(PhysXBackend* backend) : m_Backend(backend) {}
+        void onContactModify(physx::PxContactModifyPair* const pairs, physx::PxU32 count) override;
+    private:
+        PhysXBackend* m_Backend;
+    };
+
+    PhysXContactModifyCallback* m_ContactModifyCallback;
 };
 
 // Custom filter shader to enable simulation callbacks

@@ -24,6 +24,7 @@ public:
     void Run();
     void Shutdown();
     void LoadCornellBox(); // Test scene
+    void LoadGpuTestScene(); // GPU Rigid Body test scene
 
 private:
     void Update(float deltaTime);
@@ -57,5 +58,9 @@ private:
     
     // Audio Listener
     Vec3 m_LastCameraPosition;
+
+    // Physics Interpolation
+    float m_PhysicsAccumulator = 0.0f;
+    const float m_PhysicsStepSize = 1.0f / 60.0f;
 };
 
