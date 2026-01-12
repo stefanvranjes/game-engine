@@ -43,8 +43,11 @@ public:
         bool prettyPrintJSON = true;  // Only for JSON format
     };
 
-    SceneSerializer() = default;
+    SceneSerializer() : m_PhysXBackend(nullptr), m_PrefabManager(nullptr) {}
     ~SceneSerializer() = default;
+
+    void SetPhysXBackend(class PhysXBackend* backend) { m_PhysXBackend = backend; }
+    void SetPrefabManager(class PrefabManager* manager) { m_PrefabManager = manager; }
 
     // ===== Scene Serialization =====
     /**
@@ -92,7 +95,7 @@ public:
      * @param data JSON object
      * @return Reconstructed GameObject
      */
-    std::shared_ptr<GameObject> DeserializeGameObjectFromJson(const json& data);
+    std::shared_ptr<GameObject> DeserializeGameObjectFromJson(const json& data, std::shared_ptr<GameObject> parent = nullptr);
 
     /**
      * @brief Serialize single GameObject to binary
@@ -178,6 +181,21 @@ private:
     json SerializeLODLevels(const std::shared_ptr<GameObject>& obj);
     void DeserializeLODLevels(std::shared_ptr<GameObject>& obj, const json& data);
 
+    json SerializePhysXRigidBody(std::shared_ptr<class IPhysicsRigidBody> rigidbody);
+    std::shared_ptr<class IPhysicsRigidBody> DeserializePhysXRigidBody(const json& data);
+
+    json SerializeDestructible(std::shared_ptr<class PhysXDestructible> destructible);
+    std::shared_ptr<class PhysXDestructible> DeserializeDestructible(const json& data);
+
+    json SerializeArticulation(std::shared_ptr<class PhysXArticulation> articulation);
+    std::shared_ptr<class PhysXArticulation> DeserializeArticulation(const json& data);
+
+    json SerializeArticulationLink(std::shared_ptr<class PhysXArticulationLink> link);
+    std::shared_ptr<class PhysXArticulationLink> DeserializeArticulationLink(const json& data, std::shared_ptr<GameObject> parent, std::shared_ptr<GameObject> current);
+
+    json SerializeAggregate(std::shared_ptr<class PhysXAggregate> aggregate);
+    std::shared_ptr<class PhysXAggregate> DeserializeAggregate(const json& data);
+
     // ===== Binary Serialization Helpers =====
     void WriteBinaryString(std::vector<uint8_t>& buffer, const std::string& str);
     std::string ReadBinaryString(const std::vector<uint8_t>& buffer, size_t& offset);
@@ -205,4 +223,7 @@ private:
     // ===== Constants =====
     static constexpr uint32_t BINARY_FORMAT_VERSION = 1;
     static constexpr uint32_t BINARY_MAGIC = 0x53434E45;  // "SCNE" in hex
+
+    class PhysXBackend* m_PhysXBackend;
+    class PrefabManager* m_PrefabManager;
 };

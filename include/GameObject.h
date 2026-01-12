@@ -19,6 +19,9 @@ class Terrain;
 class ScriptComponent;
 class IPhysicsCloth;
 class IPhysicsSoftBody;
+class PhysXArticulation;
+class PhysXArticulationLink;
+class PhysXAggregate;
 
 class GameObject : public std::enable_shared_from_this<GameObject> {
 public:
@@ -36,6 +39,7 @@ public:
 
     void AddChild(std::shared_ptr<GameObject> child);
     void RemoveChild(std::shared_ptr<GameObject> child);
+    std::shared_ptr<GameObject> GetParent() const { return m_Parent.lock(); }
     
     // Getters/Setters
     void SetMesh(Mesh&& mesh) { m_Mesh = std::make_shared<Mesh>(std::move(mesh)); }
@@ -68,9 +72,13 @@ public:
     void SetAnimator(std::shared_ptr<class Animator> animator) { m_Animator = animator; }
     std::shared_ptr<class Animator> GetAnimator() const { return m_Animator; }
     
-    // Physics - Rigid Bodies
+    // Physics - Rigid Bodies (Bullet)
     void SetRigidBody(std::shared_ptr<RigidBody> rigidBody) { m_RigidBody = rigidBody; }
     std::shared_ptr<RigidBody> GetRigidBody() const { return m_RigidBody; }
+
+    // Physics - Rigid Bodies (PhysX Interface)
+    void SetPhysicsRigidBody(std::shared_ptr<IPhysicsRigidBody> body) { m_PhysicsRigidBody = body; }
+    std::shared_ptr<IPhysicsRigidBody> GetPhysicsRigidBody() const { return m_PhysicsRigidBody; }
     
     // Physics - Kinematic Controllers
     void SetKinematicController(std::shared_ptr<KinematicController> controller) { m_KinematicController = controller; }
@@ -95,6 +103,22 @@ public:
     // Soft Body
     void SetSoftBody(std::shared_ptr<IPhysicsSoftBody> softBody) { m_SoftBody = softBody; }
     std::shared_ptr<IPhysicsSoftBody> GetSoftBody() const { return m_SoftBody; }
+    
+    // Destructible
+    void SetDestructible(std::shared_ptr<class PhysXDestructible> destructible) { m_Destructible = destructible; }
+    std::shared_ptr<class PhysXDestructible> GetDestructible() const { return m_Destructible; }
+
+    // Articulation
+    void SetArticulation(std::shared_ptr<class PhysXArticulation> articulation) { m_Articulation = articulation; }
+    std::shared_ptr<class PhysXArticulation> GetArticulation() const { return m_Articulation; }
+    
+    void SetArticulationLink(std::shared_ptr<class PhysXArticulationLink> link) { m_ArticulationLink = link; }
+    void SetArticulationLink(std::shared_ptr<class PhysXArticulationLink> link) { m_ArticulationLink = link; }
+    std::shared_ptr<class PhysXArticulationLink> GetArticulationLink() const { return m_ArticulationLink; }
+
+    // Aggregate
+    void SetPhysXAggregate(std::shared_ptr<class PhysXAggregate> aggregate) { m_PhysXAggregate = aggregate; }
+    std::shared_ptr<class PhysXAggregate> GetPhysXAggregate() const { return m_PhysXAggregate; }
 
     // Scripting
     void SetScriptComponent(std::shared_ptr<class ScriptComponent> script) { m_ScriptComponent = script; }
@@ -177,6 +201,11 @@ private:
     Vec3 m_Velocity;
     Vec3 m_LastPosition;
 
+    // Articulation (Must be declared before m_Children to ensure correct destruction order)
+    std::shared_ptr<class PhysXArticulation> m_Articulation;
+    std::shared_ptr<class PhysXArticulationLink> m_ArticulationLink;
+    std::shared_ptr<class PhysXAggregate> m_PhysXAggregate;
+
     std::vector<std::shared_ptr<GameObject>> m_Children;
     std::weak_ptr<GameObject> m_Parent;
     
@@ -185,6 +214,7 @@ private:
 
     // Physics components
     std::shared_ptr<RigidBody> m_RigidBody;
+    std::shared_ptr<IPhysicsRigidBody> m_PhysicsRigidBody;
     std::shared_ptr<KinematicController> m_KinematicController;
 
     // Audio
@@ -205,6 +235,9 @@ private:
 
     // Soft Body
     std::shared_ptr<IPhysicsSoftBody> m_SoftBody;
+
+    // Destructible
+    std::shared_ptr<class PhysXDestructible> m_Destructible;
 
     // Scripting
     std::shared_ptr<class ScriptComponent> m_ScriptComponent;

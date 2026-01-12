@@ -514,6 +514,16 @@ void Renderer::SetupScene() {
     AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 3.0f)); // Red point light
 }
 
+void Renderer::SetPhysXBackend(PhysXBackend* backend) {
+    m_PhysXBackend = backend;
+    if (m_SceneSerializer) {
+        m_SceneSerializer->SetPhysXBackend(backend);
+    }
+    if (m_PrefabManager) {
+        m_PrefabManager->SetPhysXBackend(backend);
+    }
+}
+
 bool Renderer::Init() {
     // Create and load shader
     m_Shader = std::make_unique<Shader>();

@@ -68,6 +68,7 @@ void PhysXRigidBody::Initialize(BodyType type, float mass, std::shared_ptr<IPhys
     }
 
     // Add to scene
+    m_Actor->userData = this;
     scene->addActor(*m_Actor);
 
     // Register with backend
@@ -267,6 +268,16 @@ void PhysXRigidBody::SyncTransformToPhysics(const Vec3& position, const Quat& ro
 
 void* PhysXRigidBody::GetNativeBody() {
     return m_Actor;
+}
+
+void PhysXRigidBody::SetOnCollisionCallback(OnCollisionCallback callback) {
+    m_CollisionCallback = callback;
+}
+
+void PhysXRigidBody::HandleCollision(const CollisionInfo& info) {
+    if (m_CollisionCallback) {
+        m_CollisionCallback(info);
+    }
 }
 
 #endif // USE_PHYSX

@@ -148,6 +148,9 @@ void PhysXCloth::Initialize(const ClothDesc& desc) {
     // Calculate initial normals
     RecalculateNormals();
     
+    // Calculate initial bounds
+    UpdateBounds();
+    
     // Generate LOD meshes if LOD config is set
     if (m_LODConfig.GetLODCount() == 0) {
         // Create default LOD config
@@ -283,29 +286,36 @@ void PhysXCloth::Update(float deltaTime) {
 }
 
 void PhysXCloth::GetWorldBounds(Vec3& outMin, Vec3& outMax) const {
+    outMin = m_CachedMinBounds;
+    outMax = m_CachedMaxBounds;
+}
+
+void PhysXCloth::UpdateBounds() {
+    SCOPED_PROFILE("PhysXCloth::UpdateBounds");
     if (m_ParticleCount == 0) {
-        outMin = Vec3(0, 0, 0);
-        outMax = Vec3(0, 0, 0);
+        m_CachedMinBounds = Vec3(0, 0, 0);
+        m_CachedMaxBounds = Vec3(0, 0, 0);
         return;
     }
 
-    outMin = Vec3(std::numeric_limits<float>::max(), std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
-    outMax = Vec3(std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest());
+    // Optimization: Use SIMD or simple loop
+    // Initialize with first particle
+    Vec3 minB = m_ParticlePositions[0];
+    Vec3 maxB = m_ParticlePositions[0];
 
-    // Iterate particles (using local cache or PhysX read data? Local cache is updated every frame in UpdateParticleData, 
-    // but GetWorldBounds is called BEFORE UpdateParticleData in this flow? 
-    // Actually, UpdateCollisionShapes is called before UpdateParticleData, so m_ParticlePositions depends on LAST frame.
-    // That is fine for broadphase culling.
-    for (int i = 0; i < m_ParticleCount; ++i) {
+    for (int i = 1; i < m_ParticleCount; ++i) {
         const Vec3& p = m_ParticlePositions[i];
-        if (p.x < outMin.x) outMin.x = p.x;
-        if (p.y < outMin.y) outMin.y = p.y;
-        if (p.z < outMin.z) outMin.z = p.z;
+        if (p.x < minB.x) minB.x = p.x;
+        if (p.y < minB.y) minB.y = p.y;
+        if (p.z < minB.z) minB.z = p.z;
         
-        if (p.x > outMax.x) outMax.x = p.x;
-        if (p.y > outMax.y) outMax.y = p.y;
-        if (p.z > outMax.z) outMax.z = p.z;
+        if (p.x > maxB.x) maxB.x = p.x;
+        if (p.y > maxB.y) maxB.y = p.y;
+        if (p.z > maxB.z) maxB.z = p.z;
     }
+    
+    m_CachedMinBounds = minB;
+    m_CachedMaxBounds = maxB;
 }
 
 void PhysXCloth::UpdateCollisionShapes() {
@@ -442,6 +452,9 @@ void PhysXCloth::UpdateParticleData() {
 
     // Recalculate normals for rendering
     RecalculateNormals();
+    
+    // Update bounds for culling/raycasting
+    UpdateBounds();
 }
 
 // Helper to avoid allocations
@@ -1866,8 +1879,31 @@ bool PhysXCloth::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit) {
     if (dist < 0.0001f) return false;
     Vec3 dirNorm = dir * (1.0f / dist);
 
-    // TODO: Implement proper AABB ray intersect. For now, rely on broad phase optimization if too slow.
-    // Or just simple check: if ray origin is far outside and pointing away, skip.
+    // Optimized Slab AABB Intersection
+    Vec3 dirInv(1.0f / dirNorm.x, 1.0f / dirNorm.y, 1.0f / dirNorm.z);
+    
+    float tx1 = (minBounds.x - from.x) * dirInv.x;
+    float tx2 = (maxBounds.x - from.x) * dirInv.x;
+    
+    float tmin = std::min(tx1, tx2);
+    float tmax = std::max(tx1, tx2);
+    
+    float ty1 = (minBounds.y - from.y) * dirInv.y;
+    float ty2 = (maxBounds.y - from.y) * dirInv.y;
+    
+    tmin = std::max(tmin, std::min(ty1, ty2));
+    tmax = std::min(tmax, std::max(ty1, ty2));
+    
+    float tz1 = (minBounds.z - from.z) * dirInv.z;
+    float tz2 = (maxBounds.z - from.z) * dirInv.z;
+    
+    tmin = std::max(tmin, std::min(tz1, tz2));
+    tmax = std::min(tmax, std::max(tz1, tz2));
+    
+    // Check if intersection is valid and within ray distance
+    if (tmax < tmin || tmax < 0 || tmin > dist) {
+        return false;
+    }
     
     // 2. Iterate triangles (Brute force for now - optimize with octree/grid later if needed)
     bool hasHit = false;

@@ -10,6 +10,7 @@
 #include "Profiler.h"
 #include "TelemetryServer.h"
 #include "PhysicsSystem.h"
+#include "PhysXBackend.h" // Added
 #include "ECS.h"
 #include "AssetHotReloadManager.h"
 #include <memory>
@@ -36,6 +37,7 @@ private:
     std::unique_ptr<ImGuiManager> m_ImGui;
     std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
     std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
+    std::unique_ptr<class PhysXBackend> m_PhysXBackend;
     
     // Asset Hot-Reload
     std::unique_ptr<AssetHotReloadManager> m_HotReloadManager;

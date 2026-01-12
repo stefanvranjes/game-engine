@@ -5,6 +5,7 @@
 #include "IPhysicsSoftBody.h"
 #include "IPhysicsCloth.h"
 #include "PhysXVehicle.h"
+#include "PhysXAggregate.h"
 
 #ifdef USE_PHYSX
 
@@ -128,7 +129,13 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
     // Create CPU dispatcher (Always needed for API callbacks and non-GPU tasks)
     m_Dispatcher = PxDefaultCpuDispatcherCreate(2); // 2 worker threads
     sceneDesc.cpuDispatcher = m_Dispatcher;
-    sceneDesc.filterShader = PxDefaultSimulationFilterShader;
+    
+    // Set custom filter shader for callbacks
+    sceneDesc.filterShader = PhysXSimulationFilterShader;
+
+    // Set simulation event callback
+    m_CollisionCallback = new PhysXCollisionCallback(this);
+    sceneDesc.simulationEventCallback = m_CollisionCallback;
 
     m_Scene = m_Physics->createScene(sceneDesc);
     if (!m_Scene) {
@@ -181,7 +188,10 @@ void PhysXBackend::Shutdown() {
     m_RigidBodies.clear();
     m_CharacterControllers.clear();
     m_SoftBodies.clear();
+    m_SoftBodies.clear();
     m_Vehicles.clear();
+    m_Articulations.clear();
+    m_Aggregates.clear();
     
     // Close Vehicle SDK
     PxCloseVehicleSDK();
@@ -374,15 +384,19 @@ bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, ui
     float distance = direction.magnitude();
     direction.normalize();
 
+    PxQueryFilterData filterData;
+    filterData.data.word0 = filter;
+    filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER;
+
     PxRaycastBuffer hitBuffer;
-    bool hasHit = m_Scene->raycast(origin, direction, distance, hitBuffer);
+    bool hasHit = m_Scene->raycast(origin, direction, distance, hitBuffer, PxHitFlag::eDEFAULT, filterData);
 
     if (hasHit && hitBuffer.hasBlock) {
         const PxRaycastHit& pxHit = hitBuffer.block;
         hit.point = Vec3(pxHit.position.x, pxHit.position.y, pxHit.position.z);
         hit.normal = Vec3(pxHit.normal.x, pxHit.normal.y, pxHit.normal.z);
         hit.distance = pxHit.distance;
-        hit.userData = pxHit.actor;
+        hit.userData = pxHit.actor ? pxHit.actor->userData : nullptr;
     } else {
         // If no physx hit, initialize distance to max
         hit.distance = distance;
@@ -390,20 +404,151 @@ bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, ui
 
     // Raycast against cloths
     // Since cloths are not fully in scene raycast (or mesh not updated), check manually
+    // Optimization: Check AABB first
     for (auto* cloth : m_Cloths) {
-        if (cloth && cloth->IsEnabled()) {
-            RaycastHit clothHit;
-            if (cloth->Raycast(from, to, clothHit)) {
-                if (clothHit.distance < hit.distance) {
-                    hit = clothHit;
-                    hasHit = true;
-                    // hit.userData = cloth->GetNativeCloth(); // Optionally set userData
-                }
+        if (!cloth || !cloth->IsEnabled()) continue;
+
+        // Get bounds
+        Vec3 minBounds, maxBounds;
+        cloth->GetWorldBounds(minBounds, maxBounds);
+        
+        // Simple Ray-AABB intersection check
+        // slabs method
+        float tmin = 0.0f; 
+        float tmax = hit.distance; // Don't check further than current closest hit
+        
+        Vec3 dirInv(1.0f / direction.x, 1.0f / direction.y, 1.0f / direction.z);
+        
+        float tx1 = (minBounds.x - origin.x) * dirInv.x;
+        float tx2 = (maxBounds.x - origin.x) * dirInv.x;
+        
+        float tmin_x = std::min(tx1, tx2);
+        float tmax_x = std::max(tx1, tx2);
+        
+        float ty1 = (minBounds.y - origin.y) * dirInv.y;
+        float ty2 = (maxBounds.y - origin.y) * dirInv.y;
+        
+        float tmin_y = std::min(ty1, ty2);
+        float tmax_y = std::max(ty1, ty2);
+        
+        float tz1 = (minBounds.z - origin.z) * dirInv.z;
+        float tz2 = (maxBounds.z - origin.z) * dirInv.z;
+        
+        float tmin_z = std::min(tz1, tz2);
+        float tmax_z = std::max(tz1, tz2);
+        
+        float t_enter = std::max(std::max(tmin_x, tmin_y), tmin_z);
+        float t_exit = std::min(std::min(tmax_x, tmax_y), tmax_z);
+        
+        // If no intersection or intersection is larger than current hit distance
+        if (t_enter > t_exit || t_exit < 0 || t_enter > hit.distance) {
+            continue;
+        }
+
+        RaycastHit clothHit;
+        if (cloth->Raycast(from, to, clothHit)) {
+            if (clothHit.distance < hit.distance) {
+                hit = clothHit;
+                hasHit = true;
+                // hit.userData = cloth->GetNativeCloth(); // Optionally set userData
             }
         }
     }
 
     return hasHit;
+}
+
+int PhysXBackend::OverlapSphere(const Vec3& center, float radius, std::vector<void*>& results, uint32_t filter) {
+    if (!m_Scene) return 0;
+
+    PxSphereGeometry sphereGeom(radius);
+    PxTransform pose(PxVec3(center.x, center.y, center.z));
+    
+    // Max overlaps to retrieve
+    const PxU32 bufferSize = 256;
+    PxOverlapHit hitBuffer[bufferSize];
+    PxOverlapBuffer buf(hitBuffer, bufferSize);
+    
+    PxQueryFilterData filterData;
+    filterData.data.word0 = filter;
+    filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK;
+
+    if (m_Scene->overlap(sphereGeom, pose, buf, filterData)) {
+        for (PxU32 i = 0; i < buf.nbTouches; i++) {
+            if (buf.touches[i].actor && buf.touches[i].actor->userData) {
+                results.push_back(buf.touches[i].actor->userData);
+            }
+        }
+        return static_cast<int>(buf.nbTouches);
+    }
+    
+    return 0;
+}
+
+int PhysXBackend::OverlapBox(const Vec3& center, const Vec3& halfExtents, const Quat& rotation, std::vector<void*>& results, uint32_t filter) {
+    if (!m_Scene) return 0;
+
+    PxBoxGeometry boxGeom(halfExtents.x, halfExtents.y, halfExtents.z);
+    PxTransform pose(
+        PxVec3(center.x, center.y, center.z),
+        PxQuat(rotation.x, rotation.y, rotation.z, rotation.w)
+    );
+    
+    const PxU32 bufferSize = 256;
+    PxOverlapHit hitBuffer[bufferSize];
+    PxOverlapBuffer buf(hitBuffer, bufferSize);
+    
+    PxQueryFilterData filterData;
+    filterData.data.word0 = filter;
+    filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK;
+
+    if (m_Scene->overlap(boxGeom, pose, buf, filterData)) {
+        for (PxU32 i = 0; i < buf.nbTouches; i++) {
+            if (buf.touches[i].actor && buf.touches[i].actor->userData) {
+                results.push_back(buf.touches[i].actor->userData);
+            }
+        }
+        return static_cast<int>(buf.nbTouches);
+    }
+    
+    return 0;
+}
+
+int PhysXBackend::OverlapCapsule(const Vec3& center, float radius, float halfHeight, const Quat& rotation, std::vector<void*>& results, uint32_t filter) {
+    if (!m_Scene) return 0;
+
+    // PhysX capsule is defined along X axis by default geometry constructor in previous versions?
+    // Actually PxCapsuleGeometry: "The capsule is centered at the origin, extending along the x-axis" is FALSE.
+    // Documentation says: "The capsule data is centered at the origin, extending along the x-axis." - Wait, let me check.
+    // Standard PhysX capsule aligns with X axis. PxCapsuleGeometry(radius, halfHeight).
+    // Our engine likely expects Y or Z alignment if not specified, but rotation handles it.
+    // Generally capsules are local X-axis in PhysX. If the user passes a rotation that assumes Y-axis capsule (like Unity/Unreal defaults often do), we might need to pre-rotate.
+    // Let's assume the user passes a rotation that correctly orients the capsule.
+    
+    PxCapsuleGeometry capsuleGeom(radius, halfHeight);
+    PxTransform pose(
+        PxVec3(center.x, center.y, center.z),
+        PxQuat(rotation.x, rotation.y, rotation.z, rotation.w)
+    );
+    
+    const PxU32 bufferSize = 256;
+    PxOverlapHit hitBuffer[bufferSize];
+    PxOverlapBuffer buf(hitBuffer, bufferSize);
+    
+    PxQueryFilterData filterData;
+    filterData.data.word0 = filter;
+    filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK;
+
+    if (m_Scene->overlap(capsuleGeom, pose, buf, filterData)) {
+        for (PxU32 i = 0; i < buf.nbTouches; i++) {
+            if (buf.touches[i].actor && buf.touches[i].actor->userData) {
+                results.push_back(buf.touches[i].actor->userData);
+            }
+        }
+        return static_cast<int>(buf.nbTouches);
+    }
+    
+    return 0;
 }
 
 int PhysXBackend::GetNumRigidBodies() const {
@@ -509,6 +654,32 @@ void PhysXBackend::UnregisterVehicle(PhysXVehicle* vehicle) {
     }
 }
 
+void PhysXBackend::RegisterArticulation(PhysXArticulation* articulation) {
+    if (articulation) {
+        m_Articulations.push_back(articulation);
+    }
+}
+
+void PhysXBackend::UnregisterArticulation(PhysXArticulation* articulation) {
+    auto it = std::find(m_Articulations.begin(), m_Articulations.end(), articulation);
+    if (it != m_Articulations.end()) {
+        m_Articulations.erase(it);
+    }
+}
+
+void PhysXBackend::RegisterAggregate(PhysXAggregate* aggregate) {
+    if (aggregate) {
+        m_Aggregates.push_back(aggregate);
+    }
+}
+
+void PhysXBackend::UnregisterAggregate(PhysXAggregate* aggregate) {
+    auto it = std::find(m_Aggregates.begin(), m_Aggregates.end(), aggregate);
+    if (it != m_Aggregates.end()) {
+        m_Aggregates.erase(it);
+    }
+}
+
 bool PhysXBackend::IsGpuSoftBodySupported() const {
     // PhysX 5.x soft bodies require GPU
     // Check if CUDA context is available and valid
@@ -578,4 +749,104 @@ size_t PhysXBackend::GetGpuMemoryUsageMB() const {
     return m_GpuMemoryUsageMB;
 }
 
+
+// Custom filter shader
+physx::PxFilterFlags PhysXSimulationFilterShader(
+    physx::PxFilterObjectAttributes attributes0, physx::PxFilterData filterData0,
+    physx::PxFilterObjectAttributes attributes1, physx::PxFilterData filterData1,
+    physx::PxPairFlags& pairFlags, const void* constantBlock, physx::PxU32 constantBlockSize)
+{
+    // Let the default filter set the basic flags
+    PxFilterFlags flags = PxDefaultSimulationFilterShader(attributes0, filterData0, attributes1, filterData1, pairFlags, constantBlock, constantBlockSize);
+    
+    // Enable contact reports for all colliding pairs
+    if (!(flags & PxFilterFlag::eSUPPRESS)) {
+        pairFlags |= PxPairFlag::eCONTACT_DEFAULT | PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_TOUCH_UHD_FORCE;
+    }
+    
+    return flags;
+}
+
+void PhysXBackend::PhysXCollisionCallback::onContact(const physx::PxContactPairHeader& pairHeader, const physx::PxContactPair* pairs, physx::PxU32 nbPairs) {
+    for (PxU32 i = 0; i < nbPairs; i++) {
+        const PxContactPair& cp = pairs[i];
+
+        if (cp.events & (PxPairFlag::eNOTIFY_TOUCH_FOUND | PxPairFlag::eNOTIFY_THRESHOLD_FORCE_FOUND)) {
+            PxActor* actor0 = pairHeader.actors[0];
+            PxActor* actor1 = pairHeader.actors[1];
+
+            if (!actor0 || !actor1) continue;
+
+            IPhysicsRigidBody* body0 = static_cast<IPhysicsRigidBody*>(actor0->userData);
+            IPhysicsRigidBody* body1 = static_cast<IPhysicsRigidBody*>(actor1->userData);
+
+            // Need at least one valid body with callback
+            if (!body0 && !body1) continue;
+
+            // Extract contact point and normal from the first contact point
+            PxContactStreamIterator iter(cp.contactPatches, cp.contactPoints, cp.getInternalFaceIndices(), cp.patchCount, cp.contactCount);
+            
+            if (iter.hasNextPatch()) {
+                iter.nextPatch();
+                if (iter.hasNextPoint()) {
+                    iter.nextPoint();
+                    PxVec3 point = iter.getContactPoint();
+                    PxVec3 normal = iter.getContactNormal();
+                    
+                    // Estimate impulse based on relative velocity or force
+                    // Note: PhysX doesn't give direct impulse easily in onContact without extra flags/queries.
+                    // We can approximate or use separate impact data. 
+                    // Using normal force if available is better but complex to extract reliably without solver data.
+                    // For now, let's use relative velocity if actors are dynamic.
+
+                    Vec3 relVel(0,0,0);
+                    if (actor0->is<PxRigidDynamic>() && actor1->is<PxRigidDynamic>()) {
+                         PxVec3 v0 = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
+                         PxVec3 v1 = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
+                         PxVec3 v = v0 - v1;
+                         relVel = Vec3(v.x, v.y, v.z);
+                    }
+                    else if (actor0->is<PxRigidDynamic>()) {
+                         PxVec3 v = static_cast<PxRigidDynamic*>(actor0)->getLinearVelocity();
+                         relVel = Vec3(v.x, v.y, v.z);
+                    }
+                     else if (actor1->is<PxRigidDynamic>()) {
+                         PxVec3 v = static_cast<PxRigidDynamic*>(actor1)->getLinearVelocity();
+                         relVel = Vec3(-v.x, -v.y, -v.z); // Relative to body 0
+                    }
+
+                    // Simple impulse estimation: mass * deltaV (very rough, but useful for thresholds)
+                    // Better to just pass relative velocity magnitude for damage thresholds.
+                    float impulseMag = relVel.Length(); // Using velocity magnitude as proxy for impact intensity
+
+                    // Notify body 0
+                    if (body0) {
+                        IPhysicsRigidBody::CollisionInfo info;
+                        info.point = Vec3(point.x, point.y, point.z);
+                        info.normal = Vec3(normal.x, normal.y, normal.z);
+                        info.impulse = impulseMag; // This is actually velocity, but used for threshold
+                        info.relativeVelocity = relVel;
+                        info.otherBody = body1;
+                        
+                        // We know these are PhysXRigidBody instances because we are in PhysXBackend
+                        static_cast<PhysXRigidBody*>(body0)->HandleCollision(info);
+                    }
+
+                    // Notify body 1
+                    if (body1) {
+                         IPhysicsRigidBody::CollisionInfo info;
+                        info.point = Vec3(point.x, point.y, point.z);
+                        info.normal = Vec3(-normal.x, -normal.y, -normal.z); // Inverse normal for body 1
+                        info.impulse = impulseMag;
+                        info.relativeVelocity = relVel * -1.0f;
+                        info.otherBody = body0;
+                        
+                        static_cast<PhysXRigidBody*>(body1)->HandleCollision(info);
+                    }
+                }
+            }
+        }
+    }
+}
 #endif // USE_PHYSX
+

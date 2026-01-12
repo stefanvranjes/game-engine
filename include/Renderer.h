@@ -56,6 +56,8 @@ public:
     void SaveScene(const std::string& filename, SceneSerializer::SerializationFormat format = SceneSerializer::SerializationFormat::JSON);
     void LoadScene(const std::string& filename);
 
+    void SetPhysXBackend(class PhysXBackend* backend);
+
     // Prefab management
     std::shared_ptr<Prefab> CreatePrefab(const std::string& prefabName, std::shared_ptr<GameObject> sourceObject = nullptr);
     std::shared_ptr<Prefab> GetPrefab(const std::string& prefabName);
@@ -229,6 +231,7 @@ private:
     // Scene serialization and prefabs
     std::unique_ptr<SceneSerializer> m_SceneSerializer;
     std::unique_ptr<PrefabManager> m_PrefabManager;
+    class PhysXBackend* m_PhysXBackend;
     
     void BakeProbe(LightProbe* probe);
     void CaptureProbe(ReflectionProbe* probe);

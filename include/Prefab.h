@@ -270,6 +270,8 @@ public:
      */
     const std::string& GetLastError() const { return m_LastError; }
 
+    void SetPhysXBackend(class PhysXBackend* backend);
+
 private:
     std::string m_PrefabDirectory;
     std::map<std::string, std::shared_ptr<Prefab>> m_Prefabs; // Registry of loaded prefabs

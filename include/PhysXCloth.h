@@ -441,6 +441,11 @@ private:
     
     // Soft body collision
     std::vector<class PhysXSoftBody*> m_RegisteredSoftBodies;
+
+    // Bounds caching
+    Vec3 m_CachedMinBounds;
+    Vec3 m_CachedMaxBounds;
+    void UpdateBounds();
     
     // Tearing methods
     void DetectTears(float deltaTime);

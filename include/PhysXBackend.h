@@ -51,6 +51,10 @@ public:
     const char* GetBackendName() const override { return "PhysX 5.x"; }
     void* GetNativeWorld() override;
     void ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) override;
+    
+    int OverlapSphere(const Vec3& center, float radius, std::vector<void*>& results, uint32_t filter = ~0u) override;
+    int OverlapBox(const Vec3& center, const Vec3& halfExtents, const Quat& rotation, std::vector<void*>& results, uint32_t filter = ~0u) override;
+    int OverlapCapsule(const Vec3& center, float radius, float halfHeight, const Quat& rotation, std::vector<void*>& results, uint32_t filter = ~0u) override;
 
     // PhysX-specific methods
     physx::PxPhysics* GetPhysics() const { return m_Physics; }
@@ -77,6 +81,12 @@ public:
     void RegisterVehicle(PhysXVehicle* vehicle);
     void UnregisterVehicle(PhysXVehicle* vehicle);
 
+    void RegisterArticulation(class PhysXArticulation* articulation);
+    void UnregisterArticulation(class PhysXArticulation* articulation);
+
+    void RegisterAggregate(class PhysXAggregate* aggregate);
+    void UnregisterAggregate(class PhysXAggregate* aggregate);
+
 private:
     // PhysX core objects
     physx::PxFoundation* m_Foundation;
@@ -97,6 +107,8 @@ private:
     std::vector<IPhysicsSoftBody*> m_SoftBodies;
     std::vector<class IPhysicsCloth*> m_Cloths;
     std::vector<PhysXVehicle*> m_Vehicles;
+    std::vector<class PhysXArticulation*> m_Articulations;
+    std::vector<class PhysXAggregate*> m_Aggregates;
 
     // State
     bool m_Initialized;
@@ -109,4 +121,26 @@ private:
     // Helper methods
     void InitializePhysXVisualDebugger();
     void UpdateCharacterControllers(float deltaTime);
+
+    // Collision Callback
+    class PhysXCollisionCallback : public physx::PxSimulationEventCallback {
+    public:
+        PhysXCollisionCallback(PhysXBackend* backend) : m_Backend(backend) {}
+        void onConstraintBreak(physx::PxConstraintInfo* constraints, physx::PxU32 count) override {}
+        void onWake(physx::PxActor** actors, physx::PxU32 count) override {}
+        void onSleep(physx::PxActor** actors, physx::PxU32 count) override {}
+        void onContact(const physx::PxContactPairHeader& pairHeader, const physx::PxContactPair* pairs, physx::PxU32 nbPairs) override;
+        void onTrigger(physx::PxTriggerPair* pairs, physx::PxU32 count) override {}
+        void onAdvance(const physx::PxRigidBody* const* bodyBuffer, const physx::PxTransform* poseBuffer, const physx::PxU32 count) override {}
+    private:
+        PhysXBackend* m_Backend;
+    };
+
+    PhysXCollisionCallback* m_CollisionCallback;
 };
+
+// Custom filter shader to enable simulation callbacks
+physx::PxFilterFlags PhysXSimulationFilterShader(
+    physx::PxFilterObjectAttributes attributes0, physx::PxFilterData filterData0,
+    physx::PxFilterObjectAttributes attributes1, physx::PxFilterData filterData1,
+    physx::PxPairFlags& pairFlags, const void* constantBlock, physx::PxU32 constantBlockSize);

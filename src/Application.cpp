@@ -26,6 +26,9 @@ Application::~Application() {
     if (m_PhysicsSystem) {
         m_PhysicsSystem->Shutdown();
     }
+    if (m_PhysXBackend) {
+        m_PhysXBackend->Shutdown();
+    }
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
     // ScriptSystem::GetInstance().Shutdown();
@@ -113,6 +116,14 @@ bool Application::Init() {
     m_PhysicsSystem = std::make_unique<PhysicsSystem>();
     m_PhysicsSystem->Initialize(Vec3(0, -9.81f, 0)); // Standard Earth gravity
     std::cout << "Physics System initialized with Bullet3D" << std::endl;
+
+    // Initialize PhysX Backend
+    m_PhysXBackend = std::make_unique<PhysXBackend>();
+    m_PhysXBackend->Initialize(Vec3(0, -9.81f, 0));
+    std::cout << "PhysX Backend initialized" << std::endl;
+    
+    // Pass PhysX Backend to Renderer (for serialization)
+    m_Renderer->SetPhysXBackend(m_PhysXBackend.get());
 
     // Initialize ECS Manager
     m_EntityManager = std::make_unique<EntityManager>();
@@ -306,13 +317,9 @@ void Application::Update(float deltaTime) {
         SCOPED_PROFILE("Physics::Update");
         if (m_PhysicsSystem) {
             m_PhysicsSystem->Update(deltaTime);
-            
-            // Sync rigid bodies to GameObjects
-            // Sync rigid bodies to GameObjects
-            /* if (m_Renderer) {
-                // auto& gameObjects = m_Renderer->GetGameObjects();
-                // for (auto& obj : gameObjects) ...
-            } */
+        }
+        if (m_PhysXBackend) {
+            m_PhysXBackend->Update(deltaTime);
         }
     }
 

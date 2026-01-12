@@ -494,6 +494,10 @@ void PrefabManager::SetError(const std::string& error)
     std::cerr << "[PrefabManager] " << error << std::endl;
 }
 
+void PrefabManager::SetPhysXBackend(PhysXBackend* backend) {
+    m_Serializer.SetPhysXBackend(backend);
+}
+
 std::string PrefabManager::BuildPrefabPath(const std::string& filename, const std::string& ext)
 {
     std::string path = m_PrefabDirectory + "/" + filename;

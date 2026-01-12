@@ -106,4 +106,37 @@ public:
      * @param point Point of application in world space
      */
     virtual void ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) = 0;
+
+    /**
+     * @brief Find rigid bodies overlapping a sphere
+     * @param center Center of the sphere
+     * @param radius Radius of the sphere
+     * @param results Output vector of backend-specific rigid body pointers
+     * @param filter Collision filter mask
+     * @return Number of overlapping bodies found
+     */
+    virtual int OverlapSphere(const Vec3& center, float radius, std::vector<void*>& results, uint32_t filter = ~0u) = 0;
+
+    /**
+     * @brief Find rigid bodies overlapping a box
+     * @param center Center of the box
+     * @param halfExtents Half-dimensions of the box
+     * @param rotation Rotation of the box
+     * @param results Output vector of backend-specific rigid body pointers
+     * @param filter Collision filter mask
+     * @return Number of overlapping bodies found
+     */
+    virtual int OverlapBox(const Vec3& center, const Vec3& halfExtents, const Quat& rotation, std::vector<void*>& results, uint32_t filter = ~0u) = 0;
+
+    /**
+     * @brief Find rigid bodies overlapping a capsule
+     * @param center Center of the capsule
+     * @param radius Radius of the capsule
+     * @param halfHeight Half-height of the capsule (from center to center of hemispheres)
+     * @param rotation Rotation of the capsule
+     * @param results Output vector of backend-specific rigid body pointers
+     * @param filter Collision filter mask
+     * @return Number of overlapping bodies found
+     */
+    virtual int OverlapCapsule(const Vec3& center, float radius, float halfHeight, const Quat& rotation, std::vector<void*>& results, uint32_t filter = ~0u) = 0;
 };

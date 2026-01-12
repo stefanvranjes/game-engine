@@ -1,28 +1,21 @@
 #pragma once
 
 #include "IPhysicsRigidBody.h"
-#include "Math/Vec3.h"
-#include "Math/Quat.h"
-#include <memory>
+#include "PhysXArticulationJoint.h"
+#include <vector>
 
 #ifdef USE_PHYSX
-
 namespace physx {
-    class PxRigidActor;
-    class PxRigidDynamic;
-    class PxRigidStatic;
+    class PxArticulationLink;
     class PxShape;
 }
 
-class PhysXBackend;
+class PhysXArticulation;
 
-/**
- * @brief PhysX implementation of rigid body physics
- */
-class PhysXRigidBody : public IPhysicsRigidBody {
+class PhysXArticulationLink : public IPhysicsRigidBody {
 public:
-    PhysXRigidBody(PhysXBackend* backend);
-    ~PhysXRigidBody() override;
+    PhysXArticulationLink(physx::PxArticulationLink* link, PhysXArticulation* articulation);
+    ~PhysXArticulationLink() override;
 
     // IPhysicsRigidBody implementation
     void Initialize(BodyType type, float mass, std::shared_ptr<IPhysicsShape> shape) override;
@@ -52,17 +45,21 @@ public:
     void SetOnCollisionCallback(OnCollisionCallback callback) override;
     void* GetNativeBody() override;
 
-    // Internal callback handler
+    // Articulation-specific
+    PhysXArticulationJoint* GetInboundJoint() const;
+    std::vector<PhysXArticulationLink*> GetChildren() const;
+    PhysXArticulation* GetArticulation() const { return m_Articulation; }
+
+    // Helper for collision callbacks
     void HandleCollision(const CollisionInfo& info);
 
 private:
-    PhysXBackend* m_Backend;
-    physx::PxRigidActor* m_Actor;
-    physx::PxRigidDynamic* m_DynamicActor; // Non-null for dynamic bodies
-    BodyType m_BodyType;
-    float m_Mass;
-    bool m_GravityEnabled;
+    physx::PxArticulationLink* m_Link;
+    PhysXArticulation* m_Articulation;
+    PhysXArticulationJoint* m_InboundJoint;
+    mutable std::vector<PhysXArticulationLink*> m_ChildrenCached; // Cache children if needed, or query dynamically
+    
     OnCollisionCallback m_CollisionCallback;
+    BodyType m_BodyType;
 };
-
 #endif // USE_PHYSX

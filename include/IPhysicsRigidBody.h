@@ -24,6 +24,30 @@ public:
     virtual ~IPhysicsRigidBody() = default;
 
     /**
+     * @brief Collision information structure
+     */
+    struct CollisionInfo {
+        Vec3 point;             // World position of contact
+        Vec3 normal;            // Contact normal (pointing towards this body)
+        float impulse;          // Magnitude of impulse applied
+        Vec3 relativeVelocity;  // Relative velocity at contact point
+        IPhysicsRigidBody* otherBody; // The other body involved (can be null)
+
+        CollisionInfo() : impulse(0.0f), otherBody(nullptr) {}
+    };
+
+    /**
+     * @brief Callback function type for collision events
+     */
+    using OnCollisionCallback = std::function<void(const CollisionInfo&)>;
+
+    /**
+     * @brief Set the collision callback
+     * @param callback Function to call when a collision occurs
+     */
+    virtual void SetOnCollisionCallback(OnCollisionCallback callback) = 0;
+
+    /**
      * @brief Initialize the rigid body
      * @param type Body type (Static, Dynamic, Kinematic)
      * @param mass Mass in kilograms (0 for static bodies)
