@@ -19,8 +19,10 @@
 #include "Camera.h"
 #include "GameObject.h"
 #include "GBuffer.h"
+#ifdef USE_PHYSX
 #include "PhysXCloth.h"
 #include "IPhysicsSoftBody.h"
+#endif
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
@@ -514,6 +516,7 @@ void Renderer::SetupScene() {
     AddLight(Light(Vec3(-5, 5, -5), Vec3(1, 0, 0), 3.0f)); // Red point light
 }
 
+#ifdef USE_PHYSX
 void Renderer::SetPhysXBackend(PhysXBackend* backend) {
     m_PhysXBackend = backend;
     if (m_SceneSerializer) {
@@ -523,6 +526,7 @@ void Renderer::SetPhysXBackend(PhysXBackend* backend) {
         m_PrefabManager->SetPhysXBackend(backend);
     }
 }
+#endif
 
 bool Renderer::Init() {
     // Create and load shader

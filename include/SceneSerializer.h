@@ -23,6 +23,8 @@ using json = nlohmann::json;
  * - LOD levels and impostors
  * - Custom properties via JSON extensions
  * 
+ * - Custom properties via JSON extensions
+ * 
  * JSON format is human-readable and suitable for editing.
  * Binary format is compact and efficient for production.
  */
@@ -46,7 +48,9 @@ public:
     SceneSerializer() : m_PhysXBackend(nullptr), m_PrefabManager(nullptr) {}
     ~SceneSerializer() = default;
 
+#ifdef USE_PHYSX
     void SetPhysXBackend(class PhysXBackend* backend) { m_PhysXBackend = backend; }
+#endif
     void SetPrefabManager(class PrefabManager* manager) { m_PrefabManager = manager; }
 
     // ===== Scene Serialization =====
@@ -181,6 +185,7 @@ private:
     json SerializeLODLevels(const std::shared_ptr<GameObject>& obj);
     void DeserializeLODLevels(std::shared_ptr<GameObject>& obj, const json& data);
 
+#ifdef USE_PHYSX
     json SerializePhysXRigidBody(std::shared_ptr<class IPhysicsRigidBody> rigidbody);
     std::shared_ptr<class IPhysicsRigidBody> DeserializePhysXRigidBody(const json& data);
 
@@ -195,6 +200,19 @@ private:
 
     json SerializeAggregate(std::shared_ptr<class PhysXAggregate> aggregate);
     std::shared_ptr<class PhysXAggregate> DeserializeAggregate(const json& data);
+
+    json SerializePhysXCharacterController(std::shared_ptr<class IPhysicsCharacterController> controller);
+    std::shared_ptr<class IPhysicsCharacterController> DeserializePhysXCharacterController(const json& data);
+
+    json SerializePhysXVehicle(std::shared_ptr<class PhysXVehicle> vehicle);
+    std::shared_ptr<class PhysXVehicle> DeserializePhysXVehicle(const json& data);
+
+    json SerializePhysXSoftBody(std::shared_ptr<class IPhysicsSoftBody> softBody);
+    std::shared_ptr<class IPhysicsSoftBody> DeserializePhysXSoftBody(const json& data);
+
+    json SerializePhysXCloth(std::shared_ptr<class IPhysicsCloth> cloth);
+    std::shared_ptr<class IPhysicsCloth> DeserializePhysXCloth(const json& data);
+#endif
 
     // ===== Binary Serialization Helpers =====
     void WriteBinaryString(std::vector<uint8_t>& buffer, const std::string& str);
@@ -224,6 +242,8 @@ private:
     static constexpr uint32_t BINARY_FORMAT_VERSION = 1;
     static constexpr uint32_t BINARY_MAGIC = 0x53434E45;  // "SCNE" in hex
 
+#ifdef USE_PHYSX
     class PhysXBackend* m_PhysXBackend;
+#endif
     class PrefabManager* m_PrefabManager;
 };

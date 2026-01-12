@@ -27,7 +27,11 @@ using namespace physx;
 PhysXBackend::PhysXBackend()
     : m_Foundation(nullptr)
     , m_Physics(nullptr)
-    , m_Scene(nullptr)
+    : m_Foundation(nullptr)
+    , m_Physics(nullptr)
+    , m_ActiveScene(nullptr)
+    , m_Dispatcher(nullptr)
+    , m_Pvd(nullptr)
     , m_Dispatcher(nullptr)
     , m_Pvd(nullptr)
     , m_CudaContextManager(nullptr)
@@ -119,8 +123,18 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
         std::cout << "WARNING: Soft bodies require GPU and will not be available!" << std::endl;
     }
 
+    // Create default scene
+    CreateScene("Main", gravity);
+    
+/*  
+    // Legacy single scene creation (moved to CreateSceneInternal)
+    
     // Create scene
     PxSceneDesc sceneDesc(m_Physics->getTolerancesScale());
+    sceneDesc.gravity = PxVec3(gravity.x, gravity.y, gravity.z);
+    m_Gravity = gravity;
+    ...
+*/
     sceneDesc.gravity = PxVec3(gravity.x, gravity.y, gravity.z);
     m_Gravity = gravity;
 
@@ -136,8 +150,13 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
         sceneDesc.cpuDispatcher = m_Dispatcher; // Only need CPU dispatcher if running on CPU? Actually need it anyway for callbacks/triggers.
     }
 
-    // Create CPU dispatcher (Always needed for API callbacks and non-GPU tasks)
-    m_Dispatcher = PxDefaultCpuDispatcherCreate(2); // 2 worker threads
+    // Create CPU dispatcher
+    // If determinism is enabled, use 1 thread. Otherwise use 2 (or more).
+    int threadCount = g_EngineConfig.enableDeterminism ? 1 : 2;
+    if (g_EngineConfig.enableDeterminism) {
+        std::cout << "PhysX: Determinism enabled. Enforcing single-threaded CPU dispatch." << std::endl;
+    }
+    m_Dispatcher = PxDefaultCpuDispatcherCreate(threadCount);
     sceneDesc.cpuDispatcher = m_Dispatcher;
     
     // Set custom filter shader for callbacks
@@ -163,13 +182,17 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
     m_ContactModifyCallback = new PhysXContactModifyCallback(this);
     sceneDesc.contactModifyCallback = m_ContactModifyCallback;
 
+/*
+    // Replaced by CreateScene call above
     m_Scene = m_Physics->createScene(sceneDesc);
     if (!m_Scene) {
         std::cerr << "Failed to create PhysX scene!" << std::endl;
         return;
     }
+*/
 
-    // Configure scene for PVD
+/*
+    // Configure scene for PVD (Moved to CreateSceneInternal)
     if (m_Pvd) {
         PxPvdSceneClient* pvdClient = m_Scene->getScenePvdClient();
         if (pvdClient) {
@@ -178,6 +201,7 @@ void PhysXBackend::Initialize(const Vec3& gravity) {
             pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
         }
     }
+*/
 
     m_Initialized = true;
     std::cout << "PhysX initialized successfully!" << std::endl;
@@ -233,10 +257,14 @@ void PhysXBackend::Shutdown() {
         m_DefaultMaterial = nullptr;
     }
 
-    if (m_Scene) {
-        m_Scene->release();
-        m_Scene = nullptr;
+    // Release all scenes
+    for (auto& pair : m_Scenes) {
+        if (pair.second) {
+            pair.second->release();
+        }
     }
+    m_Scenes.clear();
+    m_ActiveScene = nullptr;
 
     if (m_Dispatcher) {
         m_Dispatcher->release();
@@ -277,7 +305,7 @@ void PhysXBackend::Shutdown() {
 }
 
 void PhysXBackend::Update(float deltaTime, int subSteps) {
-    if (!m_Initialized || !m_Scene) {
+    if (!m_Initialized || m_Scenes.empty()) {
         return;
     }
 
@@ -325,8 +353,8 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
             std::vector<PxVehicleConcurrentUpdateData> concurrentUpdateData(vehicles.size());
             PxVehicleUpdates(
                 deltaTime, 
-                m_Scene->getGravity(), 
-                m_Scene->getFrictionType(), 
+                m_ActiveScene->getGravity(), 
+                m_ActiveScene->getFrictionType(), 
                 vehicles.size(), 
                 vehicles.data(), 
                 NULL, 
@@ -343,7 +371,7 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
     }
 
     // Update vehicles
-    if (!m_Vehicles.empty()) {
+    if (!m_Vehicles.empty() && m_ActiveScene) {
         // Prepare vehicle update data
         std::vector<PxVehicleWheels*> vehicles;
         for (auto* vehicle : m_Vehicles) {
@@ -356,7 +384,7 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
             // Raycasts for suspension
             PxRaycastQueryResult* raycastResults = new PxRaycastQueryResult[vehicles.size()];
             PxVehicleSuspensionRaycasts(
-                m_Scene->getBatchQuery(PxBatchQueryDesc(vehicles.size(), 0, 0)), 
+                m_ActiveScene->getBatchQuery(PxBatchQueryDesc(vehicles.size(), 0, 0)), 
                 vehicles.size(), 
                 vehicles.data(), 
                 vehicles.size(), 
@@ -368,8 +396,8 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
             std::vector<PxVehicleConcurrentUpdateData> concurrentUpdateData(vehicles.size());
             PxVehicleUpdates(
                 deltaTime, 
-                m_Scene->getGravity(), 
-                m_Scene->getFrictionType(), 
+                m_ActiveScene->getGravity(), 
+                m_ActiveScene->getFrictionType(), 
                 vehicles.size(), 
                 vehicles.data(), 
                 NULL, 
@@ -396,9 +424,169 @@ void PhysXBackend::Update(float deltaTime, int subSteps) {
         }
     }
 
-    // Simulate physics
-    m_Scene->simulate(deltaTime);
-    m_Scene->fetchResults(true); // Block until simulation completes
+    // Simulate all scenes
+    PhysicsStats frameStats = {};
+    frameStats.activeScenes = 0;
+    
+    for (auto& pair : m_Scenes) {
+         PxScene* scene = pair.second;
+         if (scene) {
+             scene->simulate(deltaTime);
+             scene->fetchResults(true);
+             
+             // Gather stats
+             PxSimulationStatistics pxStats;
+             scene->getSimulationStatistics(pxStats);
+             
+             frameStats.activeScenes++;
+             frameStats.activeRigidBodies += pxStats.nbActiveDynamicBodies; // + nbActiveKinematic?
+             frameStats.staticRigidBodies += pxStats.nbStaticBodies;
+             frameStats.kinematicRigidBodies += pxStats.nbActiveKinematicBodies;
+             frameStats.dynamicRigidBodies += pxStats.nbDynamicBodies;
+             frameStats.aggregates += pxStats.nbAggregates;
+             frameStats.articulations += pxStats.nbArticulations;
+             frameStats.constraints += pxStats.nbActiveConstraints;
+             frameStats.broadPhaseAdds += pxStats.nbBroadPhaseAdds;
+             frameStats.broadPhaseRemoves += pxStats.nbBroadPhaseRemoves;
+             frameStats.narrowPhaseTouches += pxStats.nbDiscreteContactPairs[PxGeometryType::eBOX][PxGeometryType::eBOX]; // This is 2D array, we want total
+             
+             // Sum all contact pairs
+             for(int i=0; i < PxGeometryType::eGEOMETRY_COUNT; i++) {
+                 for(int j=0; j < PxGeometryType::eGEOMETRY_COUNT; j++) {
+                    frameStats.narrowPhaseTouches += pxStats.nbDiscreteContactPairs[i][j];
+                 }
+             }
+             
+             frameStats.lostTouches += pxStats.nbLostTouchPairs;
+             frameStats.lostPairs += pxStats.nbLostPairs;
+         }
+    }
+    
+    // Update GPU memory usage
+    frameStats.gpuMemoryUsageMB = GetGpuMemoryUsageMB();
+    
+    m_LastFrameStats = frameStats;
+}
+
+PhysicsStats PhysXBackend::GetStatistics() const {
+    return m_LastFrameStats;
+}
+
+// Scene Management
+
+physx::PxScene* PhysXBackend::CreateScene(const std::string& name, const Vec3& gravity) {
+    PxVec3 pxGravity(gravity.x, gravity.y, gravity.z);
+    PxScene* newScene = CreateSceneInternal(name, pxGravity);
+    if (newScene) {
+        m_Scenes[name] = newScene;
+        if (!m_ActiveScene) {
+            m_ActiveScene = newScene;
+        }
+        return newScene;
+    }
+    return nullptr;
+}
+
+void PhysXBackend::ReleaseScene(const std::string& name) {
+    auto it = m_Scenes.find(name);
+    if (it != m_Scenes.end()) {
+        if (m_ActiveScene == it->second) {
+            m_ActiveScene = nullptr; 
+            // Pick another if available?
+            if (m_Scenes.size() > 1) {
+                // Find one that isn't this one
+                 for(auto& pair : m_Scenes) {
+                     if (pair.first != name) {
+                         m_ActiveScene = pair.second;
+                         break;
+                     }
+                 }
+            }
+        }
+        
+        it->second->release();
+        m_Scenes.erase(it);
+    }
+}
+
+physx::PxScene* PhysXBackend::GetScene(const std::string& name) {
+    auto it = m_Scenes.find(name);
+    if (it != m_Scenes.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
+void PhysXBackend::SetActiveScene(const std::string& name) {
+    auto it = m_Scenes.find(name);
+    if (it != m_Scenes.end()) {
+        m_ActiveScene = it->second;
+    }
+}
+
+
+physx::PxScene* PhysXBackend::CreateSceneInternal(const std::string& name, const physx::PxVec3& gravity) {
+    // Re-implemented standard creation logic
+    PxSceneDesc sceneDesc(m_Physics->getTolerancesScale());
+    sceneDesc.gravity = gravity;
+
+    if (m_CudaContextManager) {
+        sceneDesc.cudaContextManager = m_CudaContextManager;
+        sceneDesc.flags |= PxSceneFlag::eENABLE_GPU_DYNAMICS;
+        sceneDesc.flags |= PxSceneFlag::eENABLE_PCM;
+        sceneDesc.flags |= PxSceneFlag::eENABLE_STABILIZATION;
+        sceneDesc.broadPhaseType = PxBroadPhaseType::eGPU;
+        sceneDesc.gpuMaxNumPartitions = 8;
+    } else {
+        sceneDesc.cpuDispatcher = m_Dispatcher;
+    }
+
+    // Always use CPU dispatcher for callbacks
+    sceneDesc.cpuDispatcher = m_Dispatcher;
+    sceneDesc.filterShader = PhysXSimulationFilterShader;
+    sceneDesc.flags |= PxSceneFlag::eENABLE_CCD;
+
+    if (g_EngineConfig.enableDeterminism) {
+        sceneDesc.flags |= PxSceneFlag::eENABLE_ENHANCED_DETERMINISM;
+        // Disable GPU dynamics for strict determinism? 
+        // PhysX docs say GPU can be deterministic, but let's stick to CPU single-thread for now unless specified otherwise.
+        // If we want STRICT determinism, usually avoiding GPU is safer or requires specific config.
+        // For now, if determinism is enabled, we keep GPU check above logic but ensure Enhanced flag is set.
+        // However, if we forced 1 CPU thread, we should probably respect that for the scene logic too. 
+        // But the scene logic above checks m_CudaContextManager. 
+        // Let's modify logic: if Determinism is enabled, ignore CUDA?
+        // Or trust that user won't have CUDA if they want CPU determinism?
+        // Let's force CPU if determinism is ON for safety.
+        
+        // Remove GPU flags if they were added
+        if (g_EngineConfig.enableDeterminism) {
+             sceneDesc.flags &= ~PxSceneFlag::eENABLE_GPU_DYNAMICS;
+             sceneDesc.cudaContextManager = nullptr;
+             sceneDesc.broadPhaseType = PxBroadPhaseType::eSAP; // SAP is often more deterministic than MBP? MBP is default. 
+        }
+    }
+
+    // Use same callbacks - Need to make sure callbacks handle multiple scenes or stick to single instance?
+    // Same callback instance is fine, but it will receive events from ALL scenes.
+    sceneDesc.simulationEventCallback = m_CollisionCallback;
+    sceneDesc.contactModifyCallback = m_ContactModifyCallback;
+
+    PxScene* scene = m_Physics->createScene(sceneDesc);
+    if (!scene) {
+        std::cerr << "Failed to create PhysX scene: " << name << std::endl;
+        return nullptr;
+    }
+
+    if (m_Pvd) {
+        PxPvdSceneClient* pvdClient = scene->getScenePvdClient();
+        if (pvdClient) {
+            pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_CONSTRAINTS, true);
+            pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_CONTACTS, true);
+            pvdClient->setScenePvdFlag(PxPvdSceneFlag::eTRANSMIT_SCENEQUERIES, true);
+        }
+    }
+    
+    return scene;
 }
 
 void PhysXBackend::UpdateCharacterControllers(float deltaTime) {
@@ -411,8 +599,12 @@ void PhysXBackend::UpdateCharacterControllers(float deltaTime) {
 
 void PhysXBackend::SetGravity(const Vec3& gravity) {
     m_Gravity = gravity;
-    if (m_Scene) {
-        m_Scene->setGravity(PxVec3(gravity.x, gravity.y, gravity.z));
+    // Update all scenes gravity? Or just active?
+    // Let's update all for now since global gravity setter implies global setting
+    for (auto& pair : m_Scenes) {
+        if (pair.second) {
+            pair.second->setGravity(PxVec3(gravity.x, gravity.y, gravity.z));
+        }
     }
 }
 
@@ -421,9 +613,12 @@ Vec3 PhysXBackend::GetGravity() const {
 }
 
 bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter) {
-    if (!m_Scene) {
+    if (!m_ActiveScene) {
         return false;
     }
+    
+    // Use Active Scene
+    PxScene* scene = m_ActiveScene;
 
     PxVec3 origin(from.x, from.y, from.z);
     PxVec3 direction = PxVec3(to.x - from.x, to.y - from.y, to.z - from.z);
@@ -435,7 +630,7 @@ bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, ui
     filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER;
 
     PxRaycastBuffer hitBuffer;
-    bool hasHit = m_Scene->raycast(origin, direction, distance, hitBuffer, PxHitFlag::eDEFAULT, filterData);
+    bool hasHit = scene->raycast(origin, direction, distance, hitBuffer, PxHitFlag::eDEFAULT, filterData);
 
     if (hasHit && hitBuffer.hasBlock) {
         const PxRaycastHit& pxHit = hitBuffer.block;
@@ -505,7 +700,8 @@ bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, ui
 }
 
 int PhysXBackend::OverlapSphere(const Vec3& center, float radius, std::vector<void*>& results, uint32_t filter) {
-    if (!m_Scene) return 0;
+    if (!m_ActiveScene) return 0;
+    PxScene* scene = m_ActiveScene;
 
     PxSphereGeometry sphereGeom(radius);
     PxTransform pose(PxVec3(center.x, center.y, center.z));
@@ -519,7 +715,7 @@ int PhysXBackend::OverlapSphere(const Vec3& center, float radius, std::vector<vo
     filterData.data.word0 = filter;
     filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK;
 
-    if (m_Scene->overlap(sphereGeom, pose, buf, filterData)) {
+    if (scene->overlap(sphereGeom, pose, buf, filterData)) {
         for (PxU32 i = 0; i < buf.nbTouches; i++) {
             if (buf.touches[i].actor && buf.touches[i].actor->userData) {
                 results.push_back(buf.touches[i].actor->userData);
@@ -532,7 +728,8 @@ int PhysXBackend::OverlapSphere(const Vec3& center, float radius, std::vector<vo
 }
 
 int PhysXBackend::OverlapBox(const Vec3& center, const Vec3& halfExtents, const Quat& rotation, std::vector<void*>& results, uint32_t filter) {
-    if (!m_Scene) return 0;
+    if (!m_ActiveScene) return 0;
+    PxScene* scene = m_ActiveScene;
 
     PxBoxGeometry boxGeom(halfExtents.x, halfExtents.y, halfExtents.z);
     PxTransform pose(
@@ -548,7 +745,7 @@ int PhysXBackend::OverlapBox(const Vec3& center, const Vec3& halfExtents, const 
     filterData.data.word0 = filter;
     filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK;
 
-    if (m_Scene->overlap(boxGeom, pose, buf, filterData)) {
+    if (scene->overlap(boxGeom, pose, buf, filterData)) {
         for (PxU32 i = 0; i < buf.nbTouches; i++) {
             if (buf.touches[i].actor && buf.touches[i].actor->userData) {
                 results.push_back(buf.touches[i].actor->userData);
@@ -561,7 +758,8 @@ int PhysXBackend::OverlapBox(const Vec3& center, const Vec3& halfExtents, const 
 }
 
 int PhysXBackend::OverlapCapsule(const Vec3& center, float radius, float halfHeight, const Quat& rotation, std::vector<void*>& results, uint32_t filter) {
-    if (!m_Scene) return 0;
+    if (!m_ActiveScene) return 0;
+    PxScene* scene = m_ActiveScene;
 
     // PhysX capsule is defined along X axis by default geometry constructor in previous versions?
     // Actually PxCapsuleGeometry: "The capsule is centered at the origin, extending along the x-axis" is FALSE.
@@ -585,7 +783,7 @@ int PhysXBackend::OverlapCapsule(const Vec3& center, float radius, float halfHei
     filterData.data.word0 = filter;
     filterData.flags = PxQueryFlag::eSTATIC | PxQueryFlag::eDYNAMIC | PxQueryFlag::ePREFILTER | PxQueryFlag::eNO_BLOCK;
 
-    if (m_Scene->overlap(capsuleGeom, pose, buf, filterData)) {
+    if (scene->overlap(capsuleGeom, pose, buf, filterData)) {
         for (PxU32 i = 0; i < buf.nbTouches; i++) {
             if (buf.touches[i].actor && buf.touches[i].actor->userData) {
                 results.push_back(buf.touches[i].actor->userData);
@@ -611,7 +809,7 @@ bool PhysXBackend::IsDebugDrawEnabled() const {
 }
 
 void* PhysXBackend::GetNativeWorld() {
-    return m_Scene;
+    return m_ActiveScene;
 }
 
 void PhysXBackend::ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) {

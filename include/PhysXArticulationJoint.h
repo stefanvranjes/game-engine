@@ -42,6 +42,7 @@ public:
     // Drive settings
     void SetDrive(Axis axis, float stiffness, float damping, float maxForce, DriveType type = DriveType::Target);
     void SetDriveTarget(Axis axis, float target);
+    void SetDriveTarget(const Quat& target);
     void SetDriveVelocity(Axis axis, float velocity);
 
     // Friction

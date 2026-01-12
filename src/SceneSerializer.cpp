@@ -4,6 +4,7 @@
 #include "RigidBody.h"
 #include "Animator.h"
 #include "RigidBody.h"
+#ifdef USE_PHYSX
 #include "PhysXRigidBody.h"
 #include "PhysXDestructible.h"
 #include "PhysXBackend.h"
@@ -12,6 +13,18 @@
 #include "PhysXArticulationLink.h"
 #include "PhysXArticulationJoint.h"
 #include "PhysXAggregate.h"
+#endif
+#include "PrefabManager.h"
+#include "Prefab.h"
+#ifdef USE_PHYSX
+#include "PhysXArticulationLink.h"
+#include "PhysXArticulationJoint.h"
+#include "PhysXAggregate.h"
+#include "PhysXCloth.h"
+#include "PhysXSoftBody.h"
+#include "PhysXCharacterController.h"
+#include "PhysXVehicle.h"
+#endif
 #include "PrefabManager.h"
 #include "Prefab.h"
 #include "KinematicController.h"
@@ -252,6 +265,7 @@ json SceneSerializer::SerializeGameObjectToJson(
         objJson["kinematicController"] = SerializeKinematicController(kc);
     }
     
+#ifdef USE_PHYSX
     // Serialize PhysX components
     if (auto prb = obj->GetPhysicsRigidBody()) {
         objJson["physxRigidBody"] = SerializePhysXRigidBody(prb);
@@ -266,6 +280,23 @@ json SceneSerializer::SerializeGameObjectToJson(
     if (auto link = obj->GetArticulationLink()) {
         objJson["articulationLink"] = SerializeArticulationLink(link);
     }
+    if (auto agg = obj->GetPhysXAggregate()) {
+        objJson["physxAggregate"] = SerializeAggregate(agg);
+    }
+
+    if (auto cloth = obj->GetCloth()) {
+        objJson["physxCloth"] = SerializePhysXCloth(cloth);
+    }
+    if (auto softBody = obj->GetSoftBody()) {
+        objJson["physxSoftBody"] = SerializePhysXSoftBody(softBody);
+    }
+    if (auto vehicle = obj->GetPhysXVehicle()) {
+        objJson["physxVehicle"] = SerializePhysXVehicle(vehicle);
+    }
+    if (auto cct = obj->GetPhysicsCharacterController()) {
+        objJson["physxCharacterController"] = SerializePhysXCharacterController(cct);
+    }
+#endif
 
     // Serialize LOD levels
     objJson["lodLevels"] = SerializeLODLevels(obj);
@@ -335,6 +366,7 @@ std::shared_ptr<GameObject> SceneSerializer::DeserializeGameObjectFromJson(const
         }
     }
 
+#ifdef USE_PHYSX
     // Deserialize PhysX components
     if (data.contains("physxRigidBody")) {
         if (auto prb = DeserializePhysXRigidBody(data["physxRigidBody"])) {
@@ -358,6 +390,33 @@ std::shared_ptr<GameObject> SceneSerializer::DeserializeGameObjectFromJson(const
             obj->SetArticulationLink(link);
         }
     }
+    if (data.contains("physxAggregate")) {
+        if (auto agg = DeserializeAggregate(data["physxAggregate"])) {
+            obj->SetPhysXAggregate(agg);
+        }
+    }
+
+    if (data.contains("physxCloth")) {
+        if (auto cloth = DeserializePhysXCloth(data["physxCloth"])) {
+            obj->SetCloth(cloth);
+        }
+    }
+    if (data.contains("physxSoftBody")) {
+        if (auto softBody = DeserializePhysXSoftBody(data["physxSoftBody"])) {
+            obj->SetSoftBody(softBody);
+        }
+    }
+    if (data.contains("physxVehicle")) {
+        if (auto vehicle = DeserializePhysXVehicle(data["physxVehicle"])) {
+            obj->SetPhysXVehicle(vehicle);
+        }
+    }
+    if (data.contains("physxCharacterController")) {
+        if (auto cct = DeserializePhysXCharacterController(data["physxCharacterController"])) {
+            obj->SetPhysicsCharacterController(cct);
+        }
+    }
+#endif
 
     // Deserialize LOD levels
     if (data.contains("lodLevels")) {
@@ -945,3 +1004,124 @@ std::shared_ptr<PhysXAggregate> SceneSerializer::DeserializeAggregate(const json
     
     return aggregate;
 }
+
+// ===== Character Controller Serialization =====
+
+json SceneSerializer::SerializePhysXCharacterController(std::shared_ptr<IPhysicsCharacterController> controller)
+{
+    json j;
+    j["stepHeight"] = controller->GetStepHeight();
+    j["maxWalkSpeed"] = controller->GetMaxWalkSpeed();
+    j["slopeLimit"] = controller->GetSlopeLimit();
+    j["contactOffset"] = controller->GetContactOffset();
+    j["upDirection"] = {controller->GetUpDirection().x, controller->GetUpDirection().y, controller->GetUpDirection().z};
+    
+    // We ideally need radius and height from the controller. 
+    // Assuming we can get it via extended interface or shape.
+    // For now, these are often dynamic, so we might rely on default or component props.
+    
+    return j;
+}
+
+std::shared_ptr<IPhysicsCharacterController> SceneSerializer::DeserializePhysXCharacterController(const json& data)
+{
+    if (!m_PhysXBackend) return nullptr;
+    
+    auto cct = std::make_shared<PhysXCharacterController>(m_PhysXBackend);
+    
+    float stepHeight = data.value("stepHeight", 0.5f);
+    float slopeLimit = data.value("slopeLimit", 45.0f);
+    float contactOffset = data.value("contactOffset", 0.01f);
+    
+    // Default shape (Capsule)
+    auto shape = PhysXShape::CreateCapsule(m_PhysXBackend, 0.5f, 1.0f);
+    cct->Initialize(shape, 80.0f, stepHeight);
+    
+    cct->SetSlopeLimit(slopeLimit);
+    cct->SetContactOffset(contactOffset);
+    
+    if (data.contains("upDirection")) {
+        Vec3 up(data["upDirection"][0], data["upDirection"][1], data["upDirection"][2]);
+        cct->SetUpDirection(up);
+    }
+    
+    m_PhysXBackend->RegisterCharacterController(cct.get());
+    
+    return cct;
+}
+
+// ===== Vehicle Serialization =====
+
+json SceneSerializer::SerializePhysXVehicle(std::shared_ptr<PhysXVehicle> vehicle)
+{
+    json j;
+    // Serialize vehicle tuning parameters
+    // This requires getters on PhysXVehicle which might not exist yet.
+    // Placeholder.
+    return j;
+}
+
+std::shared_ptr<PhysXVehicle> SceneSerializer::DeserializePhysXVehicle(const json& data)
+{
+    if (!m_PhysXBackend) return nullptr;
+    
+    // Position usually comes from GameObject transform, but vehicle initialization needs it.
+    // We can use origin for now and let sync handle it.
+    physx::PxVec3 pos(0,0,0); 
+    auto vehicle = std::make_shared<PhysXVehicle>(m_PhysXBackend, pos);
+    
+    m_PhysXBackend->RegisterVehicle(vehicle.get());
+    
+    return vehicle;
+}
+
+// ===== Soft Body Serialization =====
+
+json SceneSerializer::SerializePhysXSoftBody(std::shared_ptr<IPhysicsSoftBody> softBody)
+{
+    json j;
+    // Cast to concrete type if needed to access extended properties
+    // auto sb = std::dynamic_pointer_cast<PhysXSoftBody>(softBody);
+    // if (sb) { ... }
+    
+    // Need mesh path or generator config
+    // j["meshPath"] = ...
+    
+    return j;
+}
+
+std::shared_ptr<IPhysicsSoftBody> SceneSerializer::DeserializePhysXSoftBody(const json& data)
+{
+    if (!m_PhysXBackend) return nullptr;
+    
+    auto sb = std::make_shared<PhysXSoftBody>(m_PhysXBackend);
+    
+    // Need to initialize with mesh
+    // sb->Initialize(...)
+    
+    m_PhysXBackend->RegisterSoftBody(sb.get());
+    
+    return sb;
+}
+
+// ===== Cloth Serialization =====
+
+json SceneSerializer::SerializePhysXCloth(std::shared_ptr<IPhysicsCloth> cloth)
+{
+    json j;
+    // Serialize cloth properties
+    return j;
+}
+
+std::shared_ptr<IPhysicsCloth> SceneSerializer::DeserializePhysXCloth(const json& data)
+{
+    if (!m_PhysXBackend) return nullptr;
+    
+    auto cloth = std::make_shared<PhysXCloth>(m_PhysXBackend);
+    // Initialize...
+    
+    m_PhysXBackend->RegisterCloth(cloth.get());
+    
+    return cloth;
+}
+#endif

@@ -270,7 +270,9 @@ public:
      */
     const std::string& GetLastError() const { return m_LastError; }
 
+#ifdef USE_PHYSX
     void SetPhysXBackend(class PhysXBackend* backend);
+#endif
 
 private:
     std::string m_PrefabDirectory;

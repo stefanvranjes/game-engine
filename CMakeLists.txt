@@ -236,6 +236,19 @@ else()
     endif()
 endif()
 
+# Fetch Box2D
+FetchContent_Declare(
+    box2d
+    GIT_REPOSITORY https://github.com/erincatto/box2d.git
+    GIT_TAG v2.4.1
+)
+FetchContent_MakeAvailable(box2d)
+
+if(PHYSICS_BACKEND STREQUAL "BOX2D")
+    message(STATUS "Using Box2D physics backend")
+    add_compile_definitions(USE_BOX2D)
+endif()
+
 # Fetch Lua
 FetchContent_Declare(
     lua
@@ -540,6 +553,9 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/SoftBodyPieceManager.cpp
         src/TearResistanceMap.cpp
         src/SoftBodyTearPattern.cpp
+        src/PhysXRagdoll.cpp
+        src/PhysXRope.cpp
+        src/PhysXCustomConstraint.cpp
         src/StraightTearPattern.cpp
         src/CurvedTearPattern.cpp
         src/RadialTearPattern.cpp
@@ -599,6 +615,12 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         target_sources(GameEngine PRIVATE src/PBDFluidSolverGPU.cu)
         set_source_files_properties(src/PBDFluidSolverGPU.cu PROPERTIES LANGUAGE CUDA)
     endif()
+elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
+    target_sources(GameEngine PRIVATE
+        src/Box2DBackend.cpp
+        src/Box2DShape.cpp
+        src/Box2DRigidBody.cpp
+    )
 else()
     # Add Bullet backend wrapper
     target_sources(GameEngine PRIVATE
@@ -624,6 +646,19 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
     if(CUDAToolkit_FOUND)
         target_include_directories(GameEngine PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
     endif()
+    if(CUDAToolkit_FOUND)
+        target_include_directories(GameEngine PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+    endif()
+elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
+    target_include_directories(GameEngine PUBLIC 
+        include 
+        include/imgui 
+        game-engine-multiplayer/include 
+        ${miniaudio_SOURCE_DIR} 
+        ${box2d_SOURCE_DIR}/include 
+        ${assimp_SOURCE_DIR}/include 
+        ${MONO_INCLUDE_DIRS}
+    )
 else()
     target_include_directories(GameEngine PUBLIC 
         include 
@@ -694,6 +729,21 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
             target_compile_definitions(GameEngine PRIVATE _WIN32_WINNT=0x0601)  # Windows 7+
         endif()
     endif()
+    endif()
+elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
+    target_link_libraries(GameEngine PRIVATE 
+        glfw 
+        opengl32 
+        nlohmann_json 
+        tinygltf 
+        assimp 
+        ws2_32 
+        winmm 
+        box2d 
+        lua 
+        pybind11::embed 
+        glm::glm
+    )
 else()
     target_link_libraries(GameEngine PRIVATE 
         glfw 

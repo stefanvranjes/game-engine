@@ -10,7 +10,13 @@
 #include "Profiler.h"
 #include "TelemetryServer.h"
 #include "PhysicsSystem.h"
-#include "PhysXBackend.h" // Added
+#ifdef USE_PHYSX
+#include "PhysXBackend.h"
+#endif
+
+#ifdef USE_BOX2D
+#include "Box2DBackend.h"
+#endif
 #include "ECS.h"
 #include "AssetHotReloadManager.h"
 #include <memory>
@@ -24,7 +30,9 @@ public:
     void Run();
     void Shutdown();
     void LoadCornellBox(); // Test scene
+#ifdef USE_PHYSX
     void LoadGpuTestScene(); // GPU Rigid Body test scene
+#endif
 
 private:
     void Update(float deltaTime);
@@ -38,7 +46,13 @@ private:
     std::unique_ptr<ImGuiManager> m_ImGui;
     std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
     std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
+#ifdef USE_PHYSX
     std::unique_ptr<class PhysXBackend> m_PhysXBackend;
+#endif
+
+#ifdef USE_BOX2D
+    std::unique_ptr<class Box2DBackend> m_Box2DBackend;
+#endif
     
     // Asset Hot-Reload
     std::unique_ptr<AssetHotReloadManager> m_HotReloadManager;

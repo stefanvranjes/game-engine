@@ -49,6 +49,9 @@ struct EngineConfig {
     // PhysX Debugging
     bool enablePhysXVisualDebugger = false;
     
+    // PhysX Determinism
+    bool enableDeterminism = false;
+    
     // Window/display settings
     uint32_t windowWidth = 1920;
     uint32_t windowHeight = 1080;

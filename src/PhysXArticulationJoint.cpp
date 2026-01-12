@@ -60,6 +60,11 @@ void PhysXArticulationJoint::SetDriveTarget(Axis axis, float target) {
     m_Joint->setDriveTarget(static_cast<PxArticulationAxis::Enum>(axis), target);
 }
 
+void PhysXArticulationJoint::SetDriveTarget(const Quat& target) {
+    if (!m_Joint) return;
+    m_Joint->setDriveTarget(PxTransform(PxVec3(0,0,0), PxQuat(target.x, target.y, target.z, target.w)));
+}
+
 void PhysXArticulationJoint::SetDriveVelocity(Axis axis, float velocity) {
     if (!m_Joint) return;
     m_Joint->setDriveVelocity(static_cast<PxArticulationAxis::Enum>(axis), velocity);

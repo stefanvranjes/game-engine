@@ -12,8 +12,13 @@
 #include <algorithm>
 #include <GLFW/glfw3.h>
 #include "imgui/imgui.h"
+#ifdef USE_PHYSX
 #include "PhysXRigidBody.h"
 #include "PhysXShape.h"
+#endif
+#ifdef USE_BOX2D
+#include "Box2DBackend.h"
+#endif
 
 Application::Application()
     : m_LastFrameTime(0.0f)
@@ -28,9 +33,16 @@ Application::~Application() {
     if (m_PhysicsSystem) {
         m_PhysicsSystem->Shutdown();
     }
+#ifdef USE_PHYSX
     if (m_PhysXBackend) {
         m_PhysXBackend->Shutdown();
     }
+#endif
+#ifdef USE_BOX2D
+    if (m_Box2DBackend) {
+        m_Box2DBackend->Shutdown();
+    }
+#endif
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
     // ScriptSystem::GetInstance().Shutdown();
@@ -119,6 +131,7 @@ bool Application::Init() {
     m_PhysicsSystem->Initialize(Vec3(0, -9.81f, 0)); // Standard Earth gravity
     std::cout << "Physics System initialized with Bullet3D" << std::endl;
 
+#ifdef USE_PHYSX
     // Initialize PhysX Backend
     m_PhysXBackend = std::make_unique<PhysXBackend>();
     m_PhysXBackend->Initialize(Vec3(0, -9.81f, 0));
@@ -126,6 +139,14 @@ bool Application::Init() {
     
     // Pass PhysX Backend to Renderer (for serialization)
     m_Renderer->SetPhysXBackend(m_PhysXBackend.get());
+#endif
+
+#ifdef USE_BOX2D
+    // Initialize Box2D Backend
+    m_Box2DBackend = std::make_unique<Box2DBackend>();
+    m_Box2DBackend->Initialize(Vec3(0, -9.81f, 0));
+    std::cout << "Box2D Backend initialized" << std::endl;
+#endif
 
     // Initialize ECS Manager
     m_EntityManager = std::make_unique<EntityManager>();
@@ -331,6 +352,7 @@ void Application::Update(float deltaTime) {
             }
             
             // 2. Step PhysX
+#ifdef USE_PHYSX
             if (m_PhysXBackend) {
                 m_PhysXBackend->Update(m_PhysicsStepSize);
                 
@@ -353,6 +375,45 @@ void Application::Update(float deltaTime) {
                     }
                 }
             }
+#endif
+
+#ifdef USE_BOX2D
+            // 2b. Step Box2D
+            if (m_Box2DBackend) {
+                m_Box2DBackend->Update(m_PhysicsStepSize);
+                
+                // Sync Transforms
+                // Box2DBackend might not have GetActiveRigidBodies fully implemented or optimized yet, 
+                // but checking it would be consistent.
+                // Assuming we can iterate all bodies or similar.
+                // For now, let's assume active bodies or just rely on Update doing callbacks? 
+                // Box2D rigid bodies hold pointers to GameObjects, and SyncTransformFromPhysics works.
+                // We'd need to iterate bodies. Does backend expose them?
+                
+                // Implementation in Box2DBackend.cpp doesn't seem to expose a "GetActiveRigidBodies" method 
+                // (interface has GetActiveRigidBodies? IPhysicsBackend has it? Let's check interface).
+                // IPhysicsBackend has: virtual void GetActiveRigidBodies(std::vector<IPhysicsRigidBody*>& outBodies) = 0;
+                
+                // So calling GetActiveRigidBodies on m_Box2DBackend should work if implemented.
+                // Assuming it is implemented.
+                
+                static std::vector<IPhysicsRigidBody*> activeBox2DBodies;
+                m_Box2DBackend->GetActiveRigidBodies(activeBox2DBodies);
+                
+                for (IPhysicsRigidBody* body : activeBox2DBodies) {
+                    if (!body) continue;
+                    
+                    GameObject* owner = static_cast<GameObject*>(body->GetUserData());
+                    if (owner) {
+                         Vec3 pos;
+                         Quat rot;
+                         body->SyncTransformFromPhysics(pos, rot);
+                         
+                         owner->UpdatePhysicsState(pos, rot);
+                    }
+                }
+            }
+#endif
             
             m_PhysicsAccumulator -= m_PhysicsStepSize;
         }
@@ -1287,14 +1348,17 @@ void Application::RenderEditorUI() {
                           "Edit files and they will reload automatically in the editor.");
     }
     
+#ifdef USE_PHYSX
     ImGui::Separator();
     if (ImGui::Button("Run GPU Rigid Body Test")) {
         LoadGpuTestScene();
     }
+#endif
     
     ImGui::End();
 }
 
+#ifdef USE_PHYSX
 void Application::LoadGpuTestScene() {
     if (!m_PhysXBackend || !m_Renderer) return;
 
@@ -1338,7 +1402,7 @@ void Application::LoadGpuTestScene() {
     // PhysX shapes can be shared between rigid bodies if attached to multiple? 
     // Actually PxShape can be shared if we use PxRigidActor::attachShape.
     // But PhysXRigidBody::Initialize creates its own actor and attaches the shape.
-    // PhysXShape wrapper holds a unique PxShape? Let's check PhysXShape.cpp later. 
+    // PhysXShape w wrapper holds a unique PxShape? Let's check PhysXShape.cpp later. 
     // Assuming we create new wrappers for now to be safe.
     
     for (int x = 0; x < gridSize; ++x) {
@@ -1370,3 +1434,4 @@ void Application::LoadGpuTestScene() {
     
     std::cout << "Loaded GPU Rigid Body Test Scene with " << (gridSize*gridSize*5) << " cubes." << std::endl;
 }
+#endif

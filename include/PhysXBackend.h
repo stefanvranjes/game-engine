@@ -6,6 +6,7 @@
 #include <memory>
 #include <vector>
 #include <unordered_map>
+#include <map>
 
 // PhysX forward declarations
 namespace physx {
@@ -45,6 +46,26 @@ public:
 };
 
 /**
+ * @brief Physics simulation statistics
+ */
+struct PhysicsStats {
+    uint32_t activeRigidBodies = 0;
+    uint32_t staticRigidBodies = 0;
+    uint32_t kinematicRigidBodies = 0;
+    uint32_t dynamicRigidBodies = 0; // Total dynamic (active + sleeping)
+    uint32_t aggregates = 0;
+    uint32_t articulations = 0;
+    uint32_t constraints = 0;
+    uint32_t broadPhaseAdds = 0;
+    uint32_t broadPhaseRemoves = 0;
+    uint32_t narrowPhaseTouches = 0; // Pairs in contact
+    uint32_t lostTouches = 0;
+    uint32_t lostPairs = 0;
+    size_t gpuMemoryUsageMB = 0;
+    uint32_t activeScenes = 0;
+};
+
+/**
  * @brief PhysX implementation of physics backend
  * 
  * Provides physics simulation using NVIDIA PhysX SDK 5.x
@@ -59,6 +80,16 @@ public:
     void Initialize(const Vec3& gravity) override;
     void Shutdown() override;
     void Update(float deltaTime, int subSteps = 1) override;
+    
+    // Scene Management
+    physx::PxScene* CreateScene(const std::string& name, const Vec3& gravity);
+    void ReleaseScene(const std::string& name);
+    physx::PxScene* GetScene(const std::string& name);
+    void SetActiveScene(const std::string& name);
+    physx::PxScene* GetActiveScene() const { return m_ActiveScene; }
+
+    // Profiling
+    PhysicsStats GetStatistics() const;
     
     // Time tracking
     double GetSimulationTime() const { return m_SimulationTime; }
@@ -79,7 +110,7 @@ public:
 
     // PhysX-specific methods
     physx::PxPhysics* GetPhysics() const { return m_Physics; }
-    physx::PxScene* GetScene() const { return m_Scene; }
+    physx::PxScene* GetScene() const { return m_ActiveScene; } // Deprecated: returns active scene
     physx::PxMaterial* GetDefaultMaterial() const { return m_DefaultMaterial; }
     bool IsGpuEnabled() const { return m_CudaContextManager != nullptr; }
     
@@ -132,11 +163,16 @@ private:
     // PhysX core objects
     physx::PxFoundation* m_Foundation;
     physx::PxPhysics* m_Physics;
-    physx::PxScene* m_Scene;
+    std::map<std::string, physx::PxScene*> m_Scenes;
+    physx::PxScene* m_ActiveScene;
+    
     physx::PxDefaultCpuDispatcher* m_Dispatcher;
     physx::PxPvd* m_Pvd; // PhysX Visual Debugger
     physx::PxCudaContextManager* m_CudaContextManager; // CUDA Context Manager
     physx::PxMaterial* m_DefaultMaterial;
+
+    // Helper to create a scene with current settings
+    physx::PxScene* CreateSceneInternal(const std::string& name, const physx::PxVec3& gravity);
 
     // Custom allocator and error callback
     physx::PxDefaultAllocator* m_Allocator;
@@ -158,6 +194,13 @@ private:
     bool m_DebugDrawEnabled;
     Vec3 m_Gravity;
     double m_SimulationTime = 0.0;
+    
+    // State
+    bool m_Initialized;
+    bool m_DebugDrawEnabled;
+    Vec3 m_Gravity;
+    double m_SimulationTime = 0.0;
+    PhysicsStats m_LastFrameStats;
     
     // GPU tracking
     mutable size_t m_GpuMemoryUsageMB;

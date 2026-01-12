@@ -48,6 +48,13 @@ EngineConfig EngineConfig::LoadFromEnvironment() {
         SPDLOG_INFO("PhysX Visual Debugger: {}", config.enablePhysXVisualDebugger ? "enabled" : "disabled");
     }
 
+    // PhysX Determinism
+    const char* detEnv = std::getenv("GE_PHYSX_DETERMINISM");
+    if (detEnv) {
+        config.enableDeterminism = (std::string(detEnv) == "true" || std::string(detEnv) == "1");
+        SPDLOG_INFO("PhysX Determinism: {}", config.enableDeterminism ? "enabled" : "disabled");
+    }
+
     return config;
 }
 
