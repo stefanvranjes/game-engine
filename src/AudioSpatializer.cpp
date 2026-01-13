@@ -41,7 +41,8 @@ AudioSpatializer::SpatializationOutput AudioSpatializer::ComputeSpatialization(c
     // If source has direction
     if (params.sourceDirection.LengthSquared() > 0.5f) { // Assuming normalized
         // dirToListener is -dirToSource
-        out.coneFalloff = ComputeConeAttenuation(params.sourceDirection, -dirToSource, 
+        Vec3 negToSource = Vec3(0,0,0) - dirToSource;
+        out.coneFalloff = ComputeConeAttenuation(params.sourceDirection, negToSource, 
                                                 params.coneInnerAngle, params.coneOuterAngle, params.coneOuterGain);
     } else {
         out.coneFalloff = 1.0f;

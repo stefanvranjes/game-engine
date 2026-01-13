@@ -1,7 +1,9 @@
 #include "GizmoManager.h"
 #include "GameObject.h"
+#ifdef USE_PHYSX
 #include "PhysXSoftBody.h"
 #include "FractureLinePatternLibrary.h"
+#endif
 #include "Camera.h"
 #include <GLFW/glfw3.h>
 
@@ -9,6 +11,7 @@ GizmoManager::GizmoManager() {
     m_TranslationGizmo = std::make_unique<TranslationGizmo>();
     m_RotationGizmo = std::make_unique<RotationGizmo>();
     m_ScaleGizmo = std::make_unique<ScaleGizmo>();
+#ifdef USE_PHYSX
     m_FractureLineGizmo = std::make_unique<FractureLineGizmo>();
     
     // Initialize pattern library
@@ -17,7 +20,10 @@ GizmoManager::GizmoManager() {
     
     // Try to load existing library
     LoadPatternLibrary("");
+#endif
 }
+
+GizmoManager::~GizmoManager() = default;
 
 void GizmoManager::SetSelectedObject(std::shared_ptr<GameObject> object) {
     m_SelectedObject = object;
@@ -28,19 +34,23 @@ void GizmoManager::SetSelectedObject(std::shared_ptr<GameObject> object) {
          m_ScaleGizmo->SetTransform(&m_SelectedObject->GetTransform());
          
          // Bind soft body to fracture line gizmo
+#ifdef USE_PHYSX
          if (m_FractureLineGizmo) {
              auto softBody = m_SelectedObject->GetSoftBody();
              auto physxSoftBody = std::dynamic_pointer_cast<PhysXSoftBody>(softBody);
              m_FractureLineGizmo->SetSoftBody(physxSoftBody.get());
          }
+#endif
     } else {
          m_TranslationGizmo->SetTransform(nullptr);
          m_RotationGizmo->SetTransform(nullptr);
          m_ScaleGizmo->SetTransform(nullptr);
          
+#ifdef USE_PHYSX
          if (m_FractureLineGizmo) {
              m_FractureLineGizmo->SetSoftBody(nullptr);
          }
+#endif
     }
 }
 
@@ -75,10 +85,12 @@ void GizmoManager::Render(Shader* shader, const Camera& camera) {
     if (!m_SelectedObject) return;
     
     // Render fracture line gizmo in FractureLine edit mode
+#ifdef USE_PHYSX
     if (m_EditMode == EditMode::FractureLine && m_FractureLineGizmo) {
         m_FractureLineGizmo->Draw(shader, camera);
         return;
     }
+#endif
     
     Gizmo* active = GetActiveGizmo();
     if (active) {
@@ -174,6 +186,7 @@ void GizmoManager::ClearSubObjectSelection() {
     m_SelectedFaces.clear();
 }
 
+#ifdef USE_PHYSX
 FractureLineGizmo* GizmoManager::GetFractureLineGizmo() {
     return m_FractureLineGizmo.get();
 }
@@ -242,4 +255,5 @@ bool GizmoManager::LoadPatternLibrary(const std::string& filename) {
     
     return library->LoadFromFile(path);
 }
+#endif
 

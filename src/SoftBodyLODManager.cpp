@@ -1,5 +1,7 @@
 #include "SoftBodyLODManager.h"
+#ifdef USE_PHYSX
 #include "PhysXSoftBody.h"
+#endif
 #include <cmath>
 #include <iostream>
 
@@ -67,12 +69,16 @@ bool SoftBodyLODManager::ShouldUpdateThisFrame() const {
 }
 
 float SoftBodyLODManager::CalculateDistance(PhysXSoftBody* softBody, const Vec3& cameraPosition) {
+#ifdef USE_PHYSX
     // Get center of mass of soft body
     Vec3 centerOfMass = softBody->GetCenterOfMass();
     
     // Calculate distance
     Vec3 diff = cameraPosition - centerOfMass;
     return diff.Length();
+#else
+    return 0.0f;
+#endif
 }
 
 bool SoftBodyLODManager::TransitionToLOD(PhysXSoftBody* softBody, int newLOD) {
@@ -99,6 +105,7 @@ bool SoftBodyLODManager::TransitionToLOD(PhysXSoftBody* softBody, int newLOD) {
     
     m_CurrentLOD = newLOD;
     
+#ifdef USE_PHYSX
     // Handle frozen LOD
     if (newLevel->isFrozen) {
         std::cout << "SoftBodyLODManager: Freezing simulation" << std::endl;
@@ -106,6 +113,7 @@ bool SoftBodyLODManager::TransitionToLOD(PhysXSoftBody* softBody, int newLOD) {
     } else {
         softBody->SetActive(true);
     }
+#endif
     
     return true;
 }
@@ -117,6 +125,7 @@ void SoftBodyLODManager::TransferState(
 {
     if (!oldLevel || !newLevel || !softBody) return;
     
+#ifdef USE_PHYSX
     // Get current state from soft body
     std::vector<Vec3> oldPositions(oldLevel->vertexCount);
     std::vector<Vec3> oldVelocities(oldLevel->vertexCount);
@@ -165,4 +174,5 @@ void SoftBodyLODManager::TransferState(
     
     std::cout << "SoftBodyLODManager: Transferred state from " << oldLevel->vertexCount 
               << " to " << newLevel->vertexCount << " vertices" << std::endl;
+#endif
 }

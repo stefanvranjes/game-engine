@@ -1898,7 +1898,7 @@ static bool IntersectTriangle(const Vec3& orig, const Vec3& dir, float maxDist,
     return false;
 }
 
-bool PhysXCloth::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit) {
+bool PhysXCloth::Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit) {
     if (!m_Enabled || m_ParticleCount == 0) return false;
 
     // 1. AABB Check

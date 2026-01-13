@@ -3,7 +3,7 @@
 #include "PhysXArticulation.h"
 #include "PhysXArticulationLink.h"
 #include "PhysXArticulationJoint.h"
-#include "Skeleton.h"
+#include "Bone.h"
 #include "Animator.h"
 #include "IPhysicsShape.h"
 #include <map>
@@ -39,6 +39,7 @@ struct RagdollBoneConfig {
     float driveForceLimit = FLT_MAX;
 };
 
+#ifdef USE_PHYSX
 class PhysXRagdoll {
 public:
     PhysXRagdoll(PhysXBackend* backend, std::shared_ptr<Skeleton> skeleton);
@@ -68,7 +69,7 @@ public:
     // Note: This usually requires a way to write back to the Animator's transforms or a POST-animator pass
     void ApplyPoseToSkeleton(std::vector<Mat4>& outGlobalTransforms);
 
-    PhysXArticulation* GetArticulation() const { return m_Articulation; }
+    PhysXArticulation* GetArticulation() const { return m_Articulation.get(); }
     PhysXArticulationLink* GetLink(const std::string& boneName) const;
 
 private:

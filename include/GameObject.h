@@ -6,6 +6,7 @@
 #include "Model.h"
 #include "Math/Mat4.h"
 #include "Math/Vec2.h"
+#include "Math/Quat.h"
 #include <vector>
 #include <memory>
 #include <string>
@@ -19,6 +20,7 @@ class Terrain;
 class ScriptComponent;
 class IPhysicsCloth;
 class IPhysicsSoftBody;
+class IPhysicsRigidBody;
 #ifdef USE_PHYSX
 class PhysXArticulation;
 class PhysXArticulationLink;
@@ -83,12 +85,7 @@ public:
     std::shared_ptr<RigidBody> GetRigidBody() const { return m_RigidBody; }
 
     // Physics - Rigid Bodies (PhysX Interface)
-    void SetPhysicsRigidBody(std::shared_ptr<IPhysicsRigidBody> body) { 
-        m_PhysicsRigidBody = body; 
-        if (m_PhysicsRigidBody) {
-            m_PhysicsRigidBody->SetUserData(this);
-        }
-    }
+    void SetPhysicsRigidBody(std::shared_ptr<IPhysicsRigidBody> body);
     std::shared_ptr<IPhysicsRigidBody> GetPhysicsRigidBody() const { return m_PhysicsRigidBody; }
     
     // Physics - Kinematic Controllers

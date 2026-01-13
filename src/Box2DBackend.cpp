@@ -149,7 +149,7 @@ public:
     }
 };
 
-bool Box2DBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter) {
+bool Box2DBackend::Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit, uint32_t filter) {
     if (!m_World) return false;
 
     RycastCallback callback;

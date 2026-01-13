@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include "Math/Vec3.h"
 
 #ifdef USE_PHYSX
 #include <PxPhysicsAPI.h>

@@ -3,6 +3,7 @@
 #include "Math/Vec3.h"
 #include "Math/Quat.h"
 #include <memory>
+#include <vector>
 
 // Forward declarations
 class IPhysicsRigidBody;
@@ -12,7 +13,7 @@ class IPhysicsShape;
 /**
  * @brief Raycast hit result structure
  */
-struct RaycastHit {
+struct PhysicsRaycastHit {
     Vec3 point;         // World space point of impact
     Vec3 normal;        // Surface normal at impact
     float distance;     // Distance from ray origin to hit point
@@ -67,7 +68,7 @@ public:
      * @param filter Optional collision filter mask
      * @return True if a hit was detected
      */
-    virtual bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter = ~0u) = 0;
+    virtual bool Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit, uint32_t filter = ~0u) = 0;
 
     /**
      * @brief Get the number of rigid bodies in the world
@@ -107,7 +108,7 @@ public:
 
     /**
      * @brief Apply an impulse to a rigid body
-     * @param userData Backend-specific rigid body pointer (from RaycastHit)
+     * @param userData Backend-specific rigid body pointer (from PhysicsRaycastHit)
      * @param impulse Impulse vector to apply
      * @param point Point of application in world space
      */

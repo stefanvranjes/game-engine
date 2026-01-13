@@ -44,7 +44,7 @@ bool AudioSystem::Initialize() {
 
     // Initialize Reverb Node
     // We get the node graph from the engine
-    ma_node_graph* nodeGraph = ma_engine_get_node_graph(&m_engine);
+    // ma_node_graph* nodeGraph = ma_engine_get_node_graph(&m_engine);
     
     // Initialize Reverb Node - DISABLED due to API mismatch
     /*
@@ -157,7 +157,7 @@ void AudioSystem::SetMusicVolume(float volume) {
     ma_sound_group_set_volume(&m_musicGroup, volume);
 }
 
-void AudioSystem::Update(float deltaTime) {
+void AudioSystem::Update(float /*deltaTime*/) {
     if (!m_initialized) return;
 
     // Update mixer state (fades, time-based effects)

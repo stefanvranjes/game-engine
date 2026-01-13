@@ -45,7 +45,11 @@ public:
         bool prettyPrintJSON = true;  // Only for JSON format
     };
 
-    SceneSerializer() : m_PhysXBackend(nullptr), m_PrefabManager(nullptr) {}
+    SceneSerializer() : 
+#ifdef USE_PHYSX
+        m_PhysXBackend(nullptr), 
+#endif
+        m_PrefabManager(nullptr) {}
     ~SceneSerializer() = default;
 
 #ifdef USE_PHYSX

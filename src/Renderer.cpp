@@ -21,8 +21,9 @@
 #include "GBuffer.h"
 #ifdef USE_PHYSX
 #include "PhysXCloth.h"
-#include "IPhysicsSoftBody.h"
 #endif
+#include "IPhysicsSoftBody.h"
+#include "IPhysicsCloth.h"
 
 Renderer::Renderer() 
     : m_Camera(nullptr)
@@ -307,7 +308,8 @@ void Renderer::SetupImpostor(std::shared_ptr<GameObject> obj, float minDistance)
          0.5f,  0.5f, 0.0f,  1.0f, 1.0f
     };
     
-    auto quadMesh = std::make_shared<Mesh>(vertices, std::vector<unsigned int>(), 800); // 800 is dummy size? No, it's vertex count usually? 
+    // auto quadMesh = std::make_shared<Mesh>(vertices, std::vector<unsigned int>(), 800); 
+    std::shared_ptr<Mesh> quadMesh; 
     // Wait, Mesh constructor signature: Mesh(vertices, indices, ...)
     // Wait, let's check Mesh.h or CreateCube usage.
     // Mesh::CreateCube returns shared_ptr<Mesh>.
@@ -1545,7 +1547,6 @@ void Renderer::Render() {
 
     // Bind spot shadow maps
     spotShadowIndex = 0;
-    std::vector<Mat4> spotLightMatrices;
     for (size_t i = 0; i < m_Lights.size(); ++i) {
         if (m_Lights[i].type == LightType::Spot && m_Lights[i].castsShadows && spotShadowIndex < m_SpotShadows.size()) {
             m_SpotShadows[spotShadowIndex]->BindForReading(8 + spotShadowIndex);
@@ -2137,8 +2138,8 @@ void Renderer::InitIBL() {
     glBindFramebuffer(GL_FRAMEBUFFER, captureFBO);
     unsigned int maxMipLevels = 5;
     for (unsigned int mip = 0; mip < maxMipLevels; ++mip) {
-        unsigned int mipWidth = 128 * std::pow(0.5, mip);
-        unsigned int mipHeight = 128 * std::pow(0.5, mip);
+        unsigned int mipWidth = static_cast<unsigned int>(128 * std::pow(0.5, mip));
+        unsigned int mipHeight = static_cast<unsigned int>(128 * std::pow(0.5, mip));
         glBindRenderbuffer(GL_RENDERBUFFER, captureRBO);
         glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, mipWidth, mipHeight);
         glViewport(0, 0, mipWidth, mipHeight);
@@ -2370,13 +2371,13 @@ void Renderer::RenderBatched(const std::map<Material*, std::vector<RenderItem>>&
             // Locations 3, 4, 5, 6
             std::size_t vec4Size = sizeof(Vec4);
             glEnableVertexAttribArray(3);
-            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)0);
+            glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(4 * vec4Size), (void*)0);
             glEnableVertexAttribArray(4);
-            glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(1 * vec4Size));
+            glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(4 * vec4Size), (void*)(1 * vec4Size));
             glEnableVertexAttribArray(5);
-            glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(2 * vec4Size));
+            glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(4 * vec4Size), (void*)(2 * vec4Size));
             glEnableVertexAttribArray(6);
-            glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, 4 * vec4Size, (void*)(3 * vec4Size));
+            glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, static_cast<GLsizei>(4 * vec4Size), (void*)(3 * vec4Size));
             
             glVertexAttribDivisor(3, 1);
             glVertexAttribDivisor(4, 1);
@@ -2511,7 +2512,7 @@ void Renderer::RenderDecals(const Mat4& view, const Mat4& projection) {
     if (decalObjects.empty()) return;
     
     SCOPED_PROFILE("RenderDecals");
-    SCOPED_GPU_PROFILE("DecalPass", glm::vec4(1.0f, 0.0f, 1.0f, 1.0f));
+    SCOPED_GPU_PROFILE_COLOR("DecalPass", glm::vec4(1.0f, 0.0f, 1.0f, 1.0f));
     
     m_DecalShader->Use();
     
@@ -2642,7 +2643,7 @@ void Renderer::RenderReflectionPass() {
     if (!m_PlanarReflection || !m_Camera || !m_Root) return;
     
     SCOPED_PROFILE("PlanarReflection");
-    SCOPED_GPU_PROFILE("PlanarReflectionPass", glm::vec4(0.2f, 0.6f, 1.0f, 1.0f));
+    SCOPED_GPU_PROFILE_COLOR("PlanarReflectionPass", glm::vec4(0.2f, 0.6f, 1.0f, 1.0f));
     
     // Find water objects to determine reflection plane
     std::vector<GameObject*> waterObjects;
@@ -2685,7 +2686,7 @@ void Renderer::RenderReflectionPass() {
     m_PlanarReflection->BindForWriting();
     
     // Enable clip plane to avoid rendering objects below water
-    glEnable(GL_CLIP_DISTANCE0);
+    glEnable(GL_CLIP_PLANE0);
     
     // Flip face culling since we're rendering a reflection
     glFrontFace(GL_CW);
@@ -2742,7 +2743,7 @@ void Renderer::RenderReflectionPass() {
     
     // Restore state
     glFrontFace(GL_CCW);
-    glDisable(GL_CLIP_DISTANCE0);
+    glDisable(GL_CLIP_PLANE0);
     m_PlanarReflection->Unbind();
     
     // Restore original viewport
@@ -2773,7 +2774,7 @@ void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
     if (waterObjects.empty()) return;
 
     SCOPED_PROFILE("RenderWater");
-    SCOPED_GPU_PROFILE("WaterPass", glm::vec4(0.0f, 0.5f, 1.0f, 1.0f));
+    SCOPED_GPU_PROFILE_COLOR("WaterPass", glm::vec4(0.0f, 0.5f, 1.0f, 1.0f));
 
     m_WaterShader->Use();
     
@@ -2825,12 +2826,12 @@ void Renderer::RenderWater(const Mat4& view, const Mat4& projection) {
     }
     
     // Bind Depth Texture (for shoreline foam)
-    glActiveTexture(GL_TEXTURE4);
+    glActiveTexture(GL_TEXTURE0 + 4);
     glBindTexture(GL_TEXTURE_2D, m_GBuffer->GetDepthTexture());
     m_WaterShader->SetInt("u_DepthTexture", 4);
     
     // Bind Foam Texture (placeholder - use normal map for now if no foam texture)
-    glActiveTexture(GL_TEXTURE7);
+    glActiveTexture(GL_TEXTURE0 + 7);
     if (m_TextureManager) {
         auto foamTex = m_TextureManager->LoadTexture("assets/foam.png");
         if (foamTex) {
@@ -2975,7 +2976,7 @@ void Renderer::RenderTerrain(const Mat4& view, const Mat4& projection) {
     if (!m_Root || !m_TerrainShader || !m_Camera) return;
 
     SCOPED_PROFILE("RenderTerrain");
-    SCOPED_GPU_PROFILE("TerrainPass", glm::vec4(0.5f, 0.3f, 0.1f, 1.0f));
+    SCOPED_GPU_PROFILE_COLOR("TerrainPass", glm::vec4(0.5f, 0.3f, 0.1f, 1.0f));
 
     // Find all terrain objects
     std::vector<GameObject*> terrainObjects;
@@ -2997,7 +2998,7 @@ void Renderer::RenderTerrain(const Mat4& view, const Mat4& projection) {
     if (terrainObjects.empty()) return;
 
     // Bind G-Buffer for terrain rendering
-    m_GBuffer->Bind();
+    m_GBuffer->BindForWriting();
 
     m_TerrainShader->Use();
     
@@ -3029,7 +3030,7 @@ void Renderer::RenderVegetation(const Mat4& view, const Mat4& projection, float 
     if (!m_Root || !m_GrassShader || !m_Camera) return;
 
     SCOPED_PROFILE("RenderVegetation");
-    SCOPED_GPU_PROFILE("VegetationPass", glm::vec4(0.2f, 0.6f, 0.2f, 1.0f));
+    SCOPED_GPU_PROFILE_COLOR("VegetationPass", glm::vec4(0.2f, 0.6f, 0.2f, 1.0f));
 
     // Collect vegetation from terrain objects
     std::vector<Vegetation*> vegetationList;
@@ -3124,8 +3125,8 @@ void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projec
         RenderCloth(child.get(), view, projection);
     }
 
-    // Check if object has PhysXCloth component
-    auto cloth = std::dynamic_pointer_cast<PhysXCloth>(obj->GetCloth());
+    // Check if object has Cloth component (generic)
+    auto cloth = obj->GetCloth();
     if (!cloth || !cloth->IsEnabled()) return;
     
     // Get mesh from component or object

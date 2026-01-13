@@ -20,6 +20,11 @@ public:
         return Vec3(x - other.x, y - other.y, z - other.z);
     }
 
+    // Unary minus
+    Vec3 operator-() const {
+        return Vec3(-x, -y, -z);
+    }
+
     // Scalar multiplication
     Vec3 operator*(float scalar) const {
         return Vec3(x * scalar, y * scalar, z * scalar);
@@ -57,6 +62,16 @@ public:
         y /= scalar;
         z /= scalar;
         return *this;
+    }
+
+    // Equality operator
+    bool operator==(const Vec3& other) const {
+        return x == other.x && y == other.y && z == other.z;
+    }
+
+    // Inequality operator
+    bool operator!=(const Vec3& other) const {
+        return !(*this == other);
     }
 
     // Dot product
@@ -98,5 +113,10 @@ public:
             y /= len;
             z /= len;
         }
+    }
+
+    // Linear interpolation
+    static Vec3 Lerp(const Vec3& a, const Vec3& b, float t) {
+        return a + (b - a) * t;
     }
 };

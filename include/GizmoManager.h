@@ -4,8 +4,10 @@
 #include "TranslationGizmo.h"
 #include "RotationGizmo.h"
 #include "ScaleGizmo.h"
+#ifdef USE_PHYSX
 #include "FractureLineGizmo.h"
-#include <memory> 
+#endif
+#include <memory>
 #include <string>
 
 class GameObject;
@@ -15,6 +17,7 @@ struct GLFWwindow;
 class GizmoManager {
 public:
     GizmoManager();
+    ~GizmoManager();
     
     void Update(float deltaTime);
     void Render(Shader* shader, const Camera& camera);
@@ -69,9 +72,10 @@ public:
         Vertex,
         Edge,
         Face, // Triangle
+#ifdef USE_PHYSX
         FractureLine
+#endif
     };
-    
     
     void SetEditMode(EditMode mode) { m_EditMode = mode; }
     EditMode GetEditMode() const { return m_EditMode; }
@@ -82,6 +86,7 @@ public:
     
     void ClearSubObjectSelection();
     
+#ifdef USE_PHYSX
     // Fracture Line Gizmo
     /**
      * @brief Get fracture line gizmo
@@ -123,6 +128,7 @@ public:
      * @brief Load pattern library from file
      */
     bool LoadPatternLibrary(const std::string& filename = "");
+#endif
 
 private:
     EditMode m_EditMode = EditMode::Object;
@@ -136,8 +142,10 @@ private:
     std::vector<Vec3> m_OriginalVertexPositions;
     
     // Fracture line gizmo
+#ifdef USE_PHYSX
     std::unique_ptr<FractureLineGizmo> m_FractureLineGizmo;
     
     // Pattern library
     std::unique_ptr<class FractureLinePatternLibrary> m_PatternLibrary;
+#endif
 };

@@ -10,6 +10,7 @@ public:
     bool Init(unsigned int width, unsigned int height);
     void BindForWriting();
     void BindForReading();
+    void Unbind();
     void Shutdown();
 
     unsigned int GetPositionTexture() const { return m_PositionTexture; }

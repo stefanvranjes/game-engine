@@ -1,4 +1,6 @@
 #include "GameObject.h"
+#include "Math/Vec3.h"
+#include "Math/Quat.h"
 #include "Frustum.h"
 #include "GLExtensions.h"
 #include "Animator.h"
@@ -8,6 +10,8 @@
 #include "AudioSource.h"
 #include <algorithm>
 #include <iostream>
+
+#include "IPhysicsRigidBody.h"
 
 static std::shared_ptr<Mesh> s_UnitCube = nullptr;
 
@@ -692,5 +696,12 @@ void GameObject::InterpolatePhysicsState(float alpha) {
     m_Transform.position = Vec3::Lerp(m_PreviousPhysicsPosition, m_PhysicsPosition, alpha);
     
     // Slerp for rotation
-    m_Transform.rotation = Quat::Slerp(m_PreviousPhysicsRotation, m_PhysicsRotation, alpha).ToEulerAngles();
+    m_Transform.rotation = Quat::Slerp(m_PreviousPhysicsRotation, m_PhysicsRotation, alpha).ToEuler();
+}
+
+void GameObject::SetPhysicsRigidBody(std::shared_ptr<IPhysicsRigidBody> body) {
+    m_PhysicsRigidBody = body;
+    if (m_PhysicsRigidBody) {
+        m_PhysicsRigidBody->SetUserData(this);
+    }
 }

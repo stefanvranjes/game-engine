@@ -28,4 +28,15 @@ struct Quat {
     
     // Convert to Euler angles
     Vec3 ToEuler() const;
+
+    // Spherical linear interpolation
+    static Quat Slerp(const Quat& a, const Quat& b, float t);
+
+    bool operator==(const Quat& other) const {
+        return x == other.x && y == other.y && z == other.z && w == other.w;
+    }
+
+    bool operator!=(const Quat& other) const {
+        return !(*this == other);
+    }
 };

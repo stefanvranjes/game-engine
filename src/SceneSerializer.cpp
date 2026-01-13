@@ -1,4 +1,5 @@
 #include "SceneSerializer.h"
+#include "IPhysicsRigidBody.h"
 #include "MaterialNew.h"
 #include "Animator.h"
 #include "RigidBody.h"
@@ -14,7 +15,6 @@
 #include "PhysXArticulationJoint.h"
 #include "PhysXAggregate.h"
 #endif
-#include "PrefabManager.h"
 #include "Prefab.h"
 #ifdef USE_PHYSX
 #include "PhysXArticulationLink.h"
@@ -25,8 +25,6 @@
 #include "PhysXCharacterController.h"
 #include "PhysXVehicle.h"
 #endif
-#include "PrefabManager.h"
-#include "Prefab.h"
 #include "KinematicController.h"
 #include <fstream>
 #include <sstream>
@@ -581,7 +579,7 @@ void SceneSerializer::DeserializeLODLevels(std::shared_ptr<GameObject>& obj, con
 
 void SceneSerializer::WriteBinaryString(std::vector<uint8_t>& buffer, const std::string& str)
 {
-    uint32_t length = str.length();
+    uint32_t length = static_cast<uint32_t>(str.length());
     buffer.insert(buffer.end(), (uint8_t*)&length, (uint8_t*)&length + 4);
     buffer.insert(buffer.end(), str.begin(), str.end());
 }
@@ -742,6 +740,7 @@ void SceneSerializer::SetError(const std::string& error)
     std::cerr << "[SceneSerializer] " << error << std::endl;
 }
 
+#ifdef USE_PHYSX
 json SceneSerializer::SerializePhysXRigidBody(std::shared_ptr<IPhysicsRigidBody> rigidbody)
 {
     json json;

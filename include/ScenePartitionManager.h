@@ -39,7 +39,13 @@ public:
     /**
      * @brief Get number of partitions
      */
-    size_t GetPartitionCount() const { return m_Partitions.size(); }
+    size_t GetPartitionCount() const { 
+#ifdef USE_PHYSX
+        return m_Partitions.size(); 
+#else
+        return 0;
+#endif
+    }
     
     /**
      * @brief Register soft body (assigns to partition)
@@ -68,7 +74,9 @@ public:
     size_t GetTotalSoftBodyCount() const;
 
 private:
+#ifdef USE_PHYSX
     std::vector<std::unique_ptr<PhysXScenePartition>> m_Partitions;
+#endif
     WorkStealingThreadPool& m_ThreadPool;
     physx::PxPhysics* m_Physics;
     mutable std::mutex m_Mutex;

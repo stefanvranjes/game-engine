@@ -61,6 +61,36 @@ struct MessageBatch {
 };
 
 struct NetworkManager::Impl {
+    // --- COMMON MEMBERS ---
+    // Message handling
+    std::function<void(int, const Message&)> messageCallback;
+    std::atomic<uint32_t> nextSequenceNumber{0};
+    
+    // Statistics
+    NetworkStats stats;
+    std::mutex statsMutex;
+    
+    // Worker threads (Common control)
+    std::atomic<bool> running{false};
+
+    // Reliability tracking
+    ReliabilityConfig reliabilityConfig;
+    std::unordered_map<uint32_t, PendingAck> pendingAcks;  // seqNum -> pending message
+    std::unordered_set<uint32_t> receivedSequenceNumbers;   // For duplicate detection
+    std::mutex ackMutex;
+    std::thread ackThread;
+    std::mt19937 rng;  // Random number generator for jitter
+
+    // Bandwidth optimization
+    std::unordered_map<int, MessageBatch> pendingBatches;  // nodeId -> batch
+    std::mutex batchMutex;
+    std::thread batchThread;
+    
+    // Bandwidth throttling
+    uint64_t lastSendTime = 0;
+    size_t bytesThisSecond = 0;
+    std::mutex throttleMutex;
+
 #ifdef HAS_ASIO
     // ASIO-based implementation
     asio::io_context ioContext;
@@ -80,6 +110,25 @@ struct NetworkManager::Impl {
         uint64_t totalMemoryMB;
         std::array<uint8_t, 8192> readBuffer;  // Read buffer for async operations
     };
+    
+    std::unordered_map<int, std::unique_ptr<Connection>> connections;
+    std::mutex connectionsMutex;
+
+    Impl() {
+        stats = {};
+        #ifdef _WIN32
+        WSACleanup(); // Is this needed for ASIO? Probably safer to have standard init if we mix.
+                      // But ASIO handles winsock init usually.
+        #endif
+    }
+
+    ~Impl() {
+        running = false;
+        if (ackThread.joinable()) ackThread.join();
+        if (batchThread.joinable()) batchThread.join();
+        if (ioThread.joinable()) ioThread.join();
+        // Socket cleanup handled by RAII (shared_ptr<socket>, unique_ptr<acceptor>)
+    }
     
 #else
     // Connection state
@@ -104,33 +153,15 @@ struct NetworkManager::Impl {
     std::unordered_map<int, std::unique_ptr<Connection>> connections;
     std::mutex connectionsMutex;
     
-    // Message handling
-    std::function<void(int, const Message&)> messageCallback;
-    std::atomic<uint32_t> nextSequenceNumber{0};
-    
-    // Statistics
-    NetworkStats stats;
-    std::mutex statsMutex;
-    
-    // Worker threads
-    std::atomic<bool> running{false};
     std::thread acceptThread;
     std::thread receiveThread;
     std::thread heartbeatThread;
-    
-    // Reliability tracking (from Reliability.cpp)
-    ReliabilityConfig reliabilityConfig;
-    std::unordered_map<uint32_t, PendingAck> pendingAcks;  // seqNum -> pending message
-    std::unordered_set<uint32_t> receivedSequenceNumbers;   // For duplicate detection
-    std::mutex ackMutex;
-    std::thread ackThread;
-    std::mt19937 rng;  // Random number generator for jitter
 
     Impl() {
-        // Initialize stats
-        stats = {};
+        stats = {}; // Initialize stats
         #ifdef _WIN32
-        WSACleanup(); // Just in case? No, dont call cleanup in constructor
+        WSACleanup(); // Clean previous if any? Or mostly init happens in global?
+        // Actually, NetworkManager likely calls WSAStartup in Initialize.
         #endif
     }
 
@@ -141,9 +172,9 @@ struct NetworkManager::Impl {
         if (receiveThread.joinable()) receiveThread.join();
         if (heartbeatThread.joinable()) heartbeatThread.join();
         if (ackThread.joinable()) ackThread.join();
+        if (batchThread.joinable()) batchThread.join();
         
         // Close all sockets
-        #ifndef HAS_ASIO
         for (auto& [id, conn] : connections) {
             if (conn && conn->socket != INVALID_SOCKET_VALUE) {
                 closesocket(conn->socket);
@@ -157,18 +188,8 @@ struct NetworkManager::Impl {
         #ifdef _WIN32
         WSACleanup();
         #endif
-        #endif
     }
-    
-    // Bandwidth optimization (from NetworkManagerBandwidth.cpp)
-    std::unordered_map<int, MessageBatch> pendingBatches;  // nodeId -> batch
-    std::mutex batchMutex;
-    std::thread batchThread;
-    
-    // Bandwidth throttling
-    uint64_t lastSendTime = 0;
-    size_t bytesThisSecond = 0;
-    std::mutex throttleMutex;
+#endif
 
     // Methods
     bool ShouldCompress(const std::vector<uint8_t>& data);
@@ -188,5 +209,4 @@ struct NetworkManager::Impl {
     void HandleAck(uint32_t ackSeqNum);
     bool IsDuplicate(uint32_t seqNum);
     void SendAck(int nodeId, uint32_t seqNum);
-#endif
 };

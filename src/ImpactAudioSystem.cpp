@@ -1,6 +1,7 @@
 #include "ImpactAudioSystem.h"
 #include "PhysicsSystem.h"
 #include "PhysXBackend.h"
+#include "IPhysicsRigidBody.h"
 #include "AudioSource.h"
 #include "AudioSystem.h"
 #include "GameObject.h"
@@ -16,17 +17,15 @@ bool ImpactAudioSystem::Initialize() {
     if (m_Initialized) return true;
 
     // Hook into Physics Backend
-    IPhysicsBackend* backend = PhysicsSystem::Get().GetBackend();
-    // Assuming we can cast to PhysXBackend to access the special callback
-    // Ideally this would be part of IPhysicsBackend interface but we added it to PhysXBackend only.
-    // Use dynamic cast or static if we are sure.
+    // IPhysicsBackend* backend = PhysicsSystem::Get().GetBackend(); // Error: PhysicsSystem has no GetBackend
     
-    // We can't dynamic_cast without RTTI enabled everywhere and including headers.
-    // PhysicsSystem usually holds pointers.
-    // Assuming backend is PhysXBackend if usage is proper.
-    
+    // Get backend from Application
     #ifdef USE_PHYSX
-    PhysXBackend* physxBackend = dynamic_cast<PhysXBackend*>(backend);
+    #include "Application.h"
+    extern Application* g_Application; // Or use static Get if available
+    // Assuming Application::Get() exists as added in Application.h
+    PhysXBackend* physxBackend = Application::Get().GetPhysXBackend();
+    
     if (physxBackend) {
         physxBackend->SetGlobalCollisionCallback([this](IPhysicsRigidBody* b1, IPhysicsRigidBody* b2, const Vec3& p, const Vec3& n, float i) {
             this->OnCollision(b1, b2, p, n, i);

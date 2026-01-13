@@ -12,6 +12,7 @@ enum class TextureState {
 class Texture {
 public:
     Texture();
+    Texture(unsigned int id, int width, int height, int channels);
     ~Texture();
 
     // Load image from file (Blocking - Legacy)

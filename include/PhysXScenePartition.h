@@ -16,6 +16,7 @@ class PhysXSoftBody;
  * 
  * Manages a PhysX scene and its associated soft bodies for parallel simulation.
  */
+#ifdef USE_PHYSX
 class PhysXScenePartition {
 public:
     /**
@@ -72,3 +73,4 @@ private:
     std::vector<PhysXSoftBody*> m_SoftBodies;
     int m_PartitionIndex;
 };
+#endif

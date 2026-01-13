@@ -2,6 +2,7 @@
 #include "Math/Vec3.h"
 #include <memory>
 #include <unordered_map>
+#include <string>
 class GameObject;
 class AudioSource;
 /**

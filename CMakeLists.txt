@@ -109,6 +109,9 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/syoyo/tinygltf.git
     GIT_TAG v2.8.13
 )
+# Prevent tinygltf from defining STB_IMAGE_IMPLEMENTATION (we define it in Texture.cpp)
+set(TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION ON CACHE BOOL "" FORCE)
+set(TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION ON CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(tinygltf)
 
 # Fetch miniaudio
@@ -242,6 +245,8 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/erincatto/box2d.git
     GIT_TAG v2.4.1
 )
+set(BOX2D_BUILD_TESTBED OFF CACHE BOOL "" FORCE)
+set(BOX2D_BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(box2d)
 
 if(PHYSICS_BACKEND STREQUAL "BOX2D")
@@ -449,6 +454,10 @@ add_executable(GameEngine
     src/CloudProvider.cpp
     # src/StateSerializer.cpp
     src/ProtobufSerializer.cpp
+    src/SoftBodyLOD.cpp
+    src/SoftBodyLODManager.cpp
+    src/PhysicsCollisionShape.cpp
+    src/TetrahedralMeshSimplifier.cpp
 )
 
 # Add RDMA sources if available
@@ -463,6 +472,10 @@ set(SOURCES ${SOURCES}
     ${IMGUI_SOURCES}
     ${ADDITIONAL_SOURCES}  # Includes generated protobuf sources
 )
+
+# Add ImGui sources to GameEngine target
+target_sources(GameEngine PRIVATE ${IMGUI_SOURCES})
+
 
 # Find PhysX
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
@@ -571,11 +584,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/ClothTearPattern.cpp
         src/ClothTearPatternLibrary.cpp
         src/QuickHull.cpp
-        src/SoftBodyCollisionCache.cpp
         src/AnisotropicMaterial.cpp
-        src/SoftBodyLOD.cpp
-        src/SoftBodyLODManager.cpp
-        src/TetrahedralMeshSimplifier.cpp
         src/SoftBodySerializer.cpp
         src/SoftBodyDeformationRecorder.cpp
         src/SoftBodyEditor.cpp

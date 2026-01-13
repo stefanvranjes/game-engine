@@ -34,7 +34,7 @@ public:
     void Update(float deltaTime, int subSteps = 1) override;
     void SetGravity(const Vec3& gravity) override;
     Vec3 GetGravity() const override;
-    bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter = ~0u) override;
+    bool Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit, uint32_t filter = ~0u) override;
     int GetNumRigidBodies() const override;
     void SetDebugDrawEnabled(bool enabled) override;
     bool IsDebugDrawEnabled() const override;

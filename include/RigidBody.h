@@ -3,21 +3,13 @@
 #include "Math/Vec3.h"
 #include "Math/Quat.h"
 #include "PhysicsCollisionShape.h"
+#include "IPhysicsRigidBody.h" // Includes BodyType enum
 #include <memory>
 
 // Forward declarations
 class btRigidBody;
 class btMotionState;
 class PhysicsSystem;
-
-/**
- * @brief Body type for physics simulation
- */
-enum class BodyType {
-    Static,     // Non-moving bodies (walls, terrain, platforms)
-    Dynamic,    // Affected by gravity and forces
-    Kinematic   // Moved by code, affects dynamic bodies
-};
 
 /**
  * @brief Rigid body component for physics simulation

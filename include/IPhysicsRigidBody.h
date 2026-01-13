@@ -4,6 +4,7 @@
 #include "Math/Quat.h"
 #include "IPhysicsShape.h"
 #include <memory>
+#include <functional>
 
 /**
  * @brief Body type enumeration
@@ -72,9 +73,6 @@ public:
      * @brief Get velocity threshold
      */
     virtual float GetTriggerVelocityThreshold() const = 0;
-
-    /**
-     * @brief Get time spent by otherBody inside this trigger
 
     /**
      * @brief Get time spent by otherBody inside this trigger

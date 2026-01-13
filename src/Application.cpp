@@ -20,6 +20,8 @@
 #include "Box2DBackend.h"
 #endif
 
+static Application* s_Instance = nullptr;
+
 Application::Application()
     : m_LastFrameTime(0.0f)
     , m_FPS(0.0f)
@@ -27,12 +29,14 @@ Application::Application()
     , m_FPSTimer(0.0f)
     , m_SelectedObjectIndex(-1)
 {
+    s_Instance = this;
 }
 
 Application::~Application() {
     if (m_PhysicsSystem) {
         m_PhysicsSystem->Shutdown();
     }
+    s_Instance = nullptr;
 #ifdef USE_PHYSX
     if (m_PhysXBackend) {
         m_PhysXBackend->Shutdown();
@@ -43,9 +47,11 @@ Application::~Application() {
         m_Box2DBackend->Shutdown();
     }
 #endif
-    AudioSystem::Get().Shutdown();
-    RemoteProfiler::Instance().Shutdown();
     // ScriptSystem::GetInstance().Shutdown();
+}
+
+Application& Application::Get() {
+    return *s_Instance;
 }
 
 void Application::Shutdown() {
@@ -477,7 +483,7 @@ void Application::Update(float deltaTime) {
                  // Recursive function to interpolate
                  std::function<void(std::shared_ptr<GameObject>)> interpolateRecursive = 
                     [&](std::shared_ptr<GameObject> obj) {
-                        if (obj->GetPhysicsRigidBody()) {
+                        if (obj->GetPhysicsRigidBody() != nullptr) {
                             obj->InterpolatePhysicsState(alpha);
                         }
                         for (auto& child : obj->GetChildren()) {

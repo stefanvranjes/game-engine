@@ -58,9 +58,11 @@ void ParallelPhysicsSystem::RegisterSoftBody(PhysXSoftBody* softBody, SoftBodyLO
     }
     
     // Register with quality system
+#ifdef USE_PHYSX
     if (m_QualitySystem && lodManager) {
         m_QualitySystem->RegisterSoftBody(softBody, lodManager);
     }
+#endif
     
     // Register with LOD manager
     if (m_LODManager && lodManager) {
@@ -76,6 +78,12 @@ void ParallelPhysicsSystem::UnregisterSoftBody(PhysXSoftBody* softBody) {
     if (m_SceneManager) {
         m_SceneManager->UnregisterSoftBody(softBody);
     }
+    
+#ifdef USE_PHYSX
+    if (m_QualitySystem) {
+        m_QualitySystem->UnregisterSoftBody(softBody);
+    }
+#endif
     
     if (m_LODManager) {
         m_LODManager->UnregisterSoftBody(softBody);

@@ -1,8 +1,13 @@
 #include "AudioOcclusion.h"
-#include "PhysicsSystem.h"
-#include "PhysXBackend.h" // For raycasting
-#include "GameObject.h"   // For finding GameObjects
+#include "PhysicsSystem.h" // Keep for legacy if needed or remove?
+#include "Application.h"
+#ifdef USE_PHYSX
+#include "PhysXBackend.h"
+#endif
+#include "IPhysicsBackend.h"
+#include "GameObject.h"
 #include "AudioSource.h"
+#include <string>
 
 AudioOcclusion& AudioOcclusion::Get() {
     static AudioOcclusion instance;
@@ -33,8 +38,6 @@ void AudioOcclusion::Shutdown() {
 
 void AudioOcclusion::RegisterObstacle(GameObject* gameObject, MaterialType material) {
     if (!gameObject) return;
-    // Store pointer address as key. Note: beware of pointer reuse if not handled carefuly, 
-    // but GameObject usually has persistent identity in this engine.
     m_obstacles[reinterpret_cast<uintptr_t>(gameObject)] = {gameObject, material};
 }
 
@@ -56,24 +59,22 @@ AudioOcclusion::OcclusionResult AudioOcclusion::ComputeOcclusion(const Vec3& lis
     
     dir /= dist; // Normalize
 
-    // Raycast from listener to source
-    RaycastHit hit;
-    
-    // We need to cast multiple rays if sample count > 1, but for now implementing single ray
-    // We want to find ALL hits to accumulate occlusion, but PhysicsSystem usually returns closest.
-    // PhysXBackend might support multi-hit or we can step raycasts.
-    // For a simple implementation: Check if there is ANY hit between Listener and Source.
-    
-    // In a robust system, we raycast: if hit, store occlusion, move ray start to hit.point + epsilon, raycast again until source.
+    PhysicsRaycastHit hit;
+#ifndef USE_PHYSX
+    return result; // Or use legacy PhysicsSystem::RaycastHit
+#endif
     
     Vec3 currentRayStart = listenerPos;
     float remainingDist = dist;
-    int maxSteps = 5; // Max walls to penetrate
-    
-    // Safety offset to avoid self-intersection
+    int maxSteps = 5;
     const float kEpsilon = 0.05f; 
 
-    IPhysicsBackend* backend = PhysicsSystem::Get().GetBackend();
+#ifdef USE_PHYSX
+    auto* backend = Application::Get().GetPhysXBackend();
+#else
+    IPhysicsBackend* backend = nullptr;
+#endif
+
     if (!backend) return result;
 
     // Filter: Ignore the source object itself if provided

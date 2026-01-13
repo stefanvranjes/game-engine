@@ -1,6 +1,6 @@
 #pragma once
 
-#include "ThreadPool.h"
+#include "WorkStealingThreadPool.h"
 #include "Math/Vec3.h"
 #include <vector>
 #include <mutex>
@@ -17,7 +17,7 @@ public:
      * @brief Constructor
      * @param threadPool Reference to thread pool
      */
-    explicit ParallelSoftBodyManager(ThreadPool& threadPool);
+    explicit ParallelSoftBodyManager(WorkStealingThreadPool& threadPool);
     
     /**
      * @brief Register soft body for parallel updates
@@ -73,7 +73,7 @@ private:
         SoftBodyLODManager* lodManager;
     };
     
-    ThreadPool& m_ThreadPool;
+    WorkStealingThreadPool& m_ThreadPool;
     std::vector<SoftBodyEntry> m_SoftBodies;
     mutable std::mutex m_SoftBodyMutex;
     

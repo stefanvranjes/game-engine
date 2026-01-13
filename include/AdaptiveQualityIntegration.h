@@ -2,7 +2,11 @@
 
 #include "PerformanceMonitor.h"
 #include "AdaptiveQualityController.h"
+#include "Math/Vec3.h"
+#ifdef USE_PHYSX
 #include "SoftBodyLODManager.h"
+#endif
+#include <vector>
 #include <vector>
 #include <memory>
 
@@ -28,12 +32,14 @@ public:
     /**
      * @brief Register soft body for adaptive quality management
      */
+#ifdef USE_PHYSX
     void RegisterSoftBody(PhysXSoftBody* softBody, SoftBodyLODManager* lodManager);
     
     /**
      * @brief Unregister soft body
      */
     void UnregisterSoftBody(PhysXSoftBody* softBody);
+#endif
     
     /**
      * @brief Get performance monitor
@@ -57,8 +63,10 @@ public:
 
 private:
     struct SoftBodyEntry {
+#ifdef USE_PHYSX
         PhysXSoftBody* softBody;
         SoftBodyLODManager* lodManager;
+#endif
     };
     
     PerformanceMonitor m_PerformanceMonitor;

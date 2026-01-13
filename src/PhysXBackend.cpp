@@ -24,6 +24,28 @@
 
 using namespace physx;
 
+// Define nested classes
+class PhysXBackend::PhysXCollisionCallback : public PxSimulationEventCallback {
+public:
+    PhysXCollisionCallback(PhysXBackend* backend) : m_Backend(backend) {}
+    void onConstraintBreak(PxConstraintInfo* constraints, PxU32 count) override {}
+    void onWake(PxActor** actors, PxU32 count) override {}
+    void onSleep(PxActor** actors, PxU32 count) override {}
+    void onContact(const PxContactPairHeader& pairHeader, const PxContactPair* pairs, PxU32 nbPairs) override;
+    void onTrigger(PxTriggerPair* pairs, PxU32 count) override;
+    void onAdvance(const PxRigidBody* const* bodyBuffer, const PxTransform* poseBuffer, const PxU32 count) override {}
+private:
+    PhysXBackend* m_Backend;
+};
+
+class PhysXBackend::PhysXContactModifyCallback : public PxContactModifyCallback {
+public:
+    PhysXContactModifyCallback(PhysXBackend* backend) : m_Backend(backend) {}
+    void onContactModify(PxContactModifyPair* const pairs, PxU32 count) override;
+private:
+    PhysXBackend* m_Backend;
+};
+
 PhysXBackend::PhysXBackend()
     : m_Foundation(nullptr)
     , m_Physics(nullptr)
@@ -525,10 +547,11 @@ void PhysXBackend::SetActiveScene(const std::string& name) {
 }
 
 
-physx::PxScene* PhysXBackend::CreateSceneInternal(const std::string& name, const physx::PxVec3& gravity) {
-    // Re-implemented standard creation logic
+physx::PxScene* PhysXBackend::CreateSceneInternal(const std::string& name, const Vec3& gravity) {
+    if (!m_Physics || !m_Dispatcher) return nullptr;
+
     PxSceneDesc sceneDesc(m_Physics->getTolerancesScale());
-    sceneDesc.gravity = gravity;
+    sceneDesc.gravity = PxVec3(gravity.x, gravity.y, gravity.z);
 
     if (m_CudaContextManager) {
         sceneDesc.cudaContextManager = m_CudaContextManager;
@@ -612,7 +635,7 @@ Vec3 PhysXBackend::GetGravity() const {
     return m_Gravity;
 }
 
-bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter) {
+bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit, uint32_t filter) {
     if (!m_ActiveScene) {
         return false;
     }
@@ -686,7 +709,7 @@ bool PhysXBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, ui
             continue;
         }
 
-        RaycastHit clothHit;
+        PhysicsRaycastHit clothHit;
         if (cloth->Raycast(from, to, clothHit)) {
             if (clothHit.distance < hit.distance) {
                 hit = clothHit;
@@ -1051,7 +1074,6 @@ void PhysXBackend::GetActiveRigidBodies(std::vector<IPhysicsRigidBody*>& outBodi
 }
 
 
-// Custom filter shader
 // Custom filter shader
 physx::PxFilterFlags PhysXSimulationFilterShader(
     physx::PxFilterObjectAttributes attributes0, physx::PxFilterData filterData0,

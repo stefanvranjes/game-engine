@@ -4,6 +4,7 @@
 #include "ImpactAudioSystem.h" // For getting object surfaces? Or should we expose that?
 #include "AudioSource.h"
 #include "GameObject.h"
+#include "IPhysicsRigidBody.h"
 #include <iostream>
 #include <algorithm>
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Vec3.h"
+#include "IPhysicsShape.h" // Includes PhysicsShapeType enum
 #include <memory>
 
 // Forward declarations
@@ -10,19 +11,6 @@ class btSphereShape;
 class btCapsuleShape;
 class btCylinderShape;
 class btCompoundShape;
-
-/**
- * @brief Collision shape types supported by the physics engine
- */
-enum class PhysicsShapeType {
-    Box,
-    Sphere,
-    Capsule,
-    Cylinder,
-    Compound,
-    Mesh,  // For future use with btBvhTriangleMeshShape
-    Plane   // For future use with btStaticPlaneShape
-};
 
 /**
  * @brief Wrapper around Bullet3D collision shapes

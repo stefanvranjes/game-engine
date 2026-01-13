@@ -38,6 +38,13 @@ public:
     void LoadBox2DCharacterTest();
 #endif
 
+#ifdef USE_PHYSX
+    class PhysXBackend* GetPhysXBackend() { return m_PhysXBackend.get(); }
+#endif
+
+    // Access singleton
+    static Application& Get();
+
 private:
     void Update(float deltaTime);
     void Render();

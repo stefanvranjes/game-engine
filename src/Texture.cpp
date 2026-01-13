@@ -23,6 +23,23 @@ Texture::Texture()
     Touch();
 }
 
+Texture::Texture(unsigned int id, int width, int height, int channels)
+    : m_TextureID(id)
+    , m_Width(width)
+    , m_Height(height)
+    , m_Channels(channels)
+    , m_State(TextureState::Loaded) // Assume loaded since we have an ID
+    , m_LocalBuffer(nullptr)
+    , m_LastUsedTime(0.0)
+    , m_IsHDR(false)
+    , m_LocalBufferHDR(nullptr)
+    , m_AnisotropyLevel(1.0f)
+    , m_DownscaleLevel(0)
+    , m_GenerateMipmaps(true)
+{
+    Touch();
+}
+
 Texture::~Texture() {
     Unload();
     if (m_LocalBuffer) {

@@ -138,7 +138,7 @@ Vec3 BulletBackend::GetGravity() const {
     return Vec3(0, -9.81f, 0);
 }
 
-bool BulletBackend::Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter) {
+bool BulletBackend::Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit, uint32_t filter) {
     if (!m_DynamicsWorld) {
         return false;
     }

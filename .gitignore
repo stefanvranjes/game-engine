@@ -35,6 +35,8 @@
 build/
 build2/
 build3/
+assimp_build/
+_deps/
 cmake-build-debug/
 cmake-build-release/
 CMakeCache.txt

@@ -241,11 +241,61 @@ public:
     virtual void SetCollisionMassScale(float scale) = 0;
 
     /**
+     * @brief Enable/Disable two-sided rendering
+     */
+    virtual void SetTwoSidedRendering(bool enabled) = 0;
+
+    /**
+     * @brief Check if two-sided rendering is enabled
+     */
+    virtual bool GetTwoSidedRendering() const = 0;
+
+    /**
+     * @brief Enable/Disable subsurface scattering
+     */
+    virtual void SetEnableSubsurface(bool enabled) = 0;
+
+    /**
+     * @brief Check if subsurface scattering is enabled
+     */
+    virtual bool GetEnableSubsurface() const = 0;
+
+    /**
+     * @brief Set translucency
+     */
+    virtual void SetTranslucency(float translucency) = 0;
+
+    /**
+     * @brief Get translucency
+     */
+    virtual float GetTranslucency() const = 0;
+
+    /**
+     * @brief Set wrinkle scale
+     */
+    virtual void SetWrinkleScale(float scale) = 0;
+
+    /**
+     * @brief Get wrinkle scale
+     */
+    virtual float GetWrinkleScale() const = 0;
+
+     /**
+     * @brief Enable/Disable wrinkle detail
+     */
+    virtual void SetEnableWrinkleDetail(bool enabled) = 0;
+
+    /**
+     * @brief Check if wrinkle detail is enabled
+     */
+    virtual bool GetEnableWrinkleDetail() const = 0;
+
+    /**
      * @brief Raycast against cloth triangles
      * @param from Start position
      * @param to End position
      * @param hit Hit result (output)
      * @return True if hit
      */
-    virtual bool Raycast(const Vec3& from, const Vec3& to, struct RaycastHit& hit) = 0;
+    virtual bool Raycast(const Vec3& from, const Vec3& to, struct PhysicsRaycastHit& hit) = 0;
 };

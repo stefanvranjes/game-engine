@@ -1,5 +1,6 @@
 // Message acknowledgment and reliability implementation
 #include "NetworkManagerImpl.h" // Includes NetworkManager.h and defines Impl/PendingAck
+#include <mutex>
 
 // Implementations of NetworkManager::Impl methods defined in NetworkManagerReliability.cpp
 
@@ -173,7 +174,7 @@ bool NetworkManager::SendMessageToNode(int nodeId, const Message& msg, bool reli
         m_Impl->pendingAcks[sendMsg.sequenceNumber] = pending;
     }
     
-    return SendMessageInternal(nodeId, sendMsg);
+    return m_Impl->SendMessageInternal(nodeId, sendMsg);
 }
 
 void NetworkManager::SetReliabilityConfig(const ReliabilityConfig& config) {
@@ -216,8 +217,8 @@ void NetworkManager::ProcessReceivedMessage(int nodeId, const Message& msg) {
         std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
         auto it = m_Impl->connections.find(nodeId);
         if (it != m_Impl->connections.end()) {
-            std::lock_guard<std::mutex> queueLock(it->second.queueMutex);
-            it->second.messageQueue.push(msg);
+            std::lock_guard<std::mutex> queueLock(it->second->queueMutex);
+            it->second->messageQueue.push(msg);
         }
     }
 }

@@ -8,6 +8,7 @@ ClothAudioSystem& ClothAudioSystem::Get() {
     return instance;
 }
 
+#ifdef USE_PHYSX
 bool ClothAudioSystem::Initialize() {
     if (m_Initialized) return true;
     m_Initialized = true;
@@ -95,3 +96,11 @@ void ClothAudioSystem::Update(float deltaTime) {
         // data.source->SetPitch(0.9f + volume * 0.2f);
     }
 }
+#else
+// Dummy implementations when PhysX is disabled
+bool ClothAudioSystem::Initialize() { return true; }
+void ClothAudioSystem::Shutdown() {}
+void ClothAudioSystem::RegisterCloth(PhysXCloth* cloth, const std::string& soundPath, float volumeScale) {}
+void ClothAudioSystem::UnregisterCloth(PhysXCloth* cloth) {}
+void ClothAudioSystem::Update(float deltaTime) {}
+#endif

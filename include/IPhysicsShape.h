@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Math/Vec3.h"
+#include <memory>
 
 /**
  * @brief Physics shape type enumeration
@@ -12,7 +13,8 @@ enum class PhysicsShapeType {
     Cylinder,
     Compound,
     ConvexMesh,
-    TriangleMesh
+    TriangleMesh,
+    Plane
 };
 
 /**

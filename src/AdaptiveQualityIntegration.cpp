@@ -1,5 +1,8 @@
 #include "AdaptiveQualityIntegration.h"
+#ifdef USE_PHYSX
 #include "PhysXSoftBody.h"
+#endif
+#include <iostream>
 #include <iostream>
 
 AdaptiveQualityIntegration::AdaptiveQualityIntegration() {
@@ -25,13 +28,16 @@ void AdaptiveQualityIntegration::Update(float deltaTime, const Vec3& cameraPosit
     m_QualityController.Update(deltaTime, m_PerformanceMonitor);
     
     // Update LOD for all soft bodies
+#ifdef USE_PHYSX
     for (auto& entry : m_SoftBodies) {
         if (entry.lodManager && entry.softBody) {
             entry.lodManager->UpdateLOD(entry.softBody, cameraPosition, deltaTime);
         }
     }
+#endif
 }
 
+#ifdef USE_PHYSX
 void AdaptiveQualityIntegration::RegisterSoftBody(PhysXSoftBody* softBody, SoftBodyLODManager* lodManager) {
     if (!softBody || !lodManager) {
         return;
@@ -63,6 +69,7 @@ void AdaptiveQualityIntegration::UnregisterSoftBody(PhysXSoftBody* softBody) {
         }
     }
 }
+#endif
 
 void AdaptiveQualityIntegration::EnableAdaptiveQuality(bool enable) {
     m_QualityController.EnableAutoAdapt(enable);
@@ -77,9 +84,11 @@ void AdaptiveQualityIntegration::SetTargetFPS(float fps) {
 void AdaptiveQualityIntegration::ApplyQualitySettings(const QualitySettings& settings) {
     // Apply LOD distance multiplier to all LOD managers
     for (auto& entry : m_SoftBodies) {
+#ifdef USE_PHYSX
         if (entry.lodManager) {
             entry.lodManager->SetLODDistanceMultiplier(settings.lodDistanceMultiplier);
         }
+#endif
     }
     
     // Note: Solver iterations and substeps would be applied to PhysXSoftBody

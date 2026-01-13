@@ -103,6 +103,10 @@ void GBuffer::BindForReading() {
     glBindTexture(GL_TEXTURE_2D, m_AlbedoSpecTexture);
 }
 
+void GBuffer::Unbind() {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
 void GBuffer::Shutdown() {
     if (m_FBO) {
         glDeleteFramebuffers(1, &m_FBO);

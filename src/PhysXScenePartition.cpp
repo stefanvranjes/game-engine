@@ -1,5 +1,6 @@
 #include "PhysXScenePartition.h"
 #include "PhysXSoftBody.h"
+#ifdef USE_PHYSX
 #include <PxPhysicsAPI.h>
 #include <iostream>
 #include <algorithm>
@@ -95,3 +96,4 @@ void PhysXScenePartition::FetchResults(bool block) {
     // Fetch results
     m_Scene->fetchResults(block);
 }
+#endif

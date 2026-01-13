@@ -67,7 +67,7 @@ public:
     void SetSelfCollisionStiffness(float stiffness) override;
     void SetTwoWayCoupling(bool enabled) override;
     void SetCollisionMassScale(float scale) override;
-    bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit) override;
+    bool Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit) override;
     
     // Audio Support
     float GetAverageVelocity() const { return m_AverageVelocity; }

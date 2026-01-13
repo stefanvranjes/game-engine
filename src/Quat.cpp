@@ -87,3 +87,39 @@ Vec3 Quat::ToEuler() const {
     
     return euler;
 }
+
+Quat Quat::Slerp(const Quat& a, const Quat& b, float t) {
+    float cosHalfTheta = a.w * b.w + a.x * b.x + a.y * b.y + a.z * b.z;
+
+    Quat end = b;
+    if (cosHalfTheta < 0.0f) {
+        end = Quat(-b.x, -b.y, -b.z, -b.w);
+        cosHalfTheta = -cosHalfTheta;
+    }
+
+    if (std::abs(cosHalfTheta) >= 1.0f) {
+        return a;
+    }
+
+    float halfTheta = std::acos(cosHalfTheta);
+    float sinHalfTheta = std::sqrt(1.0f - cosHalfTheta * cosHalfTheta);
+
+    if (std::abs(sinHalfTheta) < 0.001f) {
+        return Quat(
+            a.x * 0.5f + end.x * 0.5f,
+            a.y * 0.5f + end.y * 0.5f,
+            a.z * 0.5f + end.z * 0.5f,
+            a.w * 0.5f + end.w * 0.5f
+        );
+    }
+
+    float ratioA = std::sin((1.0f - t) * halfTheta) / sinHalfTheta;
+    float ratioB = std::sin(t * halfTheta) / sinHalfTheta;
+
+    return Quat(
+        a.x * ratioA + end.x * ratioB,
+        a.y * ratioA + end.y * ratioB,
+        a.z * ratioA + end.z * ratioB,
+        a.w * ratioA + end.w * ratioB
+    );
+}

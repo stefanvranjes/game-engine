@@ -1,10 +1,11 @@
 #include "PythonScriptSystem.h"
 #include "GameObject.h"
 #include "Transform.h"
-#include "Transform.h"
 #include "Math/Vec3.h"
+#ifdef USE_PHYSX
 #include "PhysXRagdoll.h"
 #include "PhysXArticulationLink.h" // Already included in Ragdoll header but good for clarity
+#endif
 
 void PythonScriptSystem::RegisterTypes() {
     py::module_ m = py::module_::import("__main__");
@@ -34,6 +35,7 @@ void PythonScriptSystem::RegisterTypes() {
         .def("get_transform", &GameObject::GetTransform, py::return_value_policy::reference);
 
     // --- PhysX ML Integration ---
+#ifdef USE_PHYSX
     
     // Bind RagdollState
     py::enum_<RagdollState>(m, "RagdollState")
@@ -72,5 +74,5 @@ void PythonScriptSystem::RegisterTypes() {
         .def("get_link", &PhysXRagdoll::GetLink, py::return_value_policy::reference)
         // .def("add_bone", &PhysXRagdoll::AddBone) // Requires wrapping IPhysicsShape? For now assume setup in C++
         .def("update", &PhysXRagdoll::Update);
-
+#endif
 }

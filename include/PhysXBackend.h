@@ -7,6 +7,9 @@
 #include <vector>
 #include <unordered_map>
 #include <map>
+#include <string>
+
+#include <cstdint>
 
 // PhysX forward declarations
 namespace physx {
@@ -19,13 +22,22 @@ namespace physx {
     class PxDefaultAllocator;
     class PxDefaultErrorCallback;
     class PxCudaContextManager;
+    class PxSimulationEventCallback;
     class PxContactModifyCallback;
     class PxContactModifyPair;
+    class PxActor;
+    class PxRigidBody;
+    class PxTransform;
+    
+    // Structs
+    struct PxConstraintInfo;
+    struct PxContactPairHeader;
+    struct PxContactPair;
+    struct PxTriggerPair;
 }
 
 class IPhysicsRigidBody;
 class IPhysicsCharacterController;
-class IPhysicsSoftBody;
 class IPhysicsSoftBody;
 class IPhysicsCloth;
 class PhysXVehicle;
@@ -42,7 +54,7 @@ public:
      * @param pairs Array of contact pairs to modify
      * @param count Number of pairs
      */
-    virtual void OnContactModify(physx::PxContactModifyPair* const pairs, physx::PxU32 count) = 0;
+    virtual void OnContactModify(physx::PxContactModifyPair* const pairs, uint32_t count) = 0;
 };
 
 /**
@@ -95,11 +107,10 @@ public:
     double GetSimulationTime() const { return m_SimulationTime; }
     void SetGravity(const Vec3& gravity) override;
     Vec3 GetGravity() const override;
-    bool Raycast(const Vec3& from, const Vec3& to, RaycastHit& hit, uint32_t filter = ~0u) override;
+    bool Raycast(const Vec3& from, const Vec3& to, PhysicsRaycastHit& hit, uint32_t filter = ~0u) override;
     int GetNumRigidBodies() const override;
     void SetDebugDrawEnabled(bool enabled) override;
     bool IsDebugDrawEnabled() const override;
-    const char* GetBackendName() const override { return "PhysX 5.x"; }
     const char* GetBackendName() const override { return "PhysX 5.x"; }
     void* GetNativeWorld() override;
     void ApplyImpulse(void* userData, const Vec3& impulse, const Vec3& point) override;
@@ -172,7 +183,7 @@ private:
     physx::PxMaterial* m_DefaultMaterial;
 
     // Helper to create a scene with current settings
-    physx::PxScene* CreateSceneInternal(const std::string& name, const physx::PxVec3& gravity);
+    physx::PxScene* CreateSceneInternal(const std::string& name, const Vec3& gravity);
 
     // Custom allocator and error callback
     physx::PxDefaultAllocator* m_Allocator;
@@ -195,11 +206,7 @@ private:
     Vec3 m_Gravity;
     double m_SimulationTime = 0.0;
     
-    // State
-    bool m_Initialized;
-    bool m_DebugDrawEnabled;
-    Vec3 m_Gravity;
-    double m_SimulationTime = 0.0;
+
     PhysicsStats m_LastFrameStats;
     
     // GPU tracking
@@ -210,35 +217,10 @@ private:
     void UpdateCharacterControllers(float deltaTime);
 
     // Collision Callback
-    class PhysXCollisionCallback : public physx::PxSimulationEventCallback {
-    public:
-        PhysXCollisionCallback(PhysXBackend* backend) : m_Backend(backend) {}
-        void onConstraintBreak(physx::PxConstraintInfo* constraints, physx::PxU32 count) override {}
-        void onWake(physx::PxActor** actors, physx::PxU32 count) override {}
-        void onSleep(physx::PxActor** actors, physx::PxU32 count) override {}
-        void onContact(const physx::PxContactPairHeader& pairHeader, const physx::PxContactPair* pairs, physx::PxU32 nbPairs) override;
-        void onTrigger(physx::PxTriggerPair* pairs, physx::PxU32 count) override {}
-        void onAdvance(const physx::PxRigidBody* const* bodyBuffer, const physx::PxTransform* poseBuffer, const physx::PxU32 count) override {}
-    private:
-        PhysXBackend* m_Backend;
-    };
-
+    class PhysXCollisionCallback;
     PhysXCollisionCallback* m_CollisionCallback;
 
     // Contact Modification Callback
-    class PhysXContactModifyCallback : public physx::PxContactModifyCallback {
-    public:
-        PhysXContactModifyCallback(PhysXBackend* backend) : m_Backend(backend) {}
-        void onContactModify(physx::PxContactModifyPair* const pairs, physx::PxU32 count) override;
-    private:
-        PhysXBackend* m_Backend;
-    };
-
+    class PhysXContactModifyCallback;
     PhysXContactModifyCallback* m_ContactModifyCallback;
 };
-
-// Custom filter shader to enable simulation callbacks
-physx::PxFilterFlags PhysXSimulationFilterShader(
-    physx::PxFilterObjectAttributes attributes0, physx::PxFilterData filterData0,
-    physx::PxFilterObjectAttributes attributes1, physx::PxFilterData filterData1,
-    physx::PxPairFlags& pairFlags, const void* constantBlock, physx::PxU32 constantBlockSize);

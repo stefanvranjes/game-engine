@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <iostream>
 
-ParallelSoftBodyManager::ParallelSoftBodyManager(ThreadPool& threadPool)
+ParallelSoftBodyManager::ParallelSoftBodyManager(WorkStealingThreadPool& threadPool)
     : m_ThreadPool(threadPool)
     , m_BatchSize(4)
     , m_ParallelEnabled(true)

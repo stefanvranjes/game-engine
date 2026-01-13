@@ -126,6 +126,11 @@ bool TranslationGizmo::OnMousePress(const Ray& ray) {
     return false;
 }
 
+void TranslationGizmo::OnMouseRelease() {
+    m_IsDragging = false;
+    m_DragAxis = GizmoAxis::None;
+}
+
 void TranslationGizmo::OnMouseDrag(const Ray& ray, const Camera& camera) {
     if (!m_IsDragging || !m_Transform) return;
     
