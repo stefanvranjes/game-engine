@@ -134,7 +134,7 @@ bool AssetPipeline::ProcessAssets(bool incrementalOnly) {
         const auto* entry = m_Database.GetAssetEntry(assetPath);
         if (!entry) continue;
 
-        std::string fullSourcePath = std::filesystem::path(m_Config.assetSourceDir) / assetPath;
+        std::string fullSourcePath = (std::filesystem::path(m_Config.assetSourceDir) / assetPath).string();
         std::string outputPath = GetAssetOutputPath(assetPath);
 
         ProcessingJob job;
@@ -162,7 +162,7 @@ bool AssetPipeline::ProcessAsset(const std::string& assetPath, bool force) {
         return true;  // Already processed
     }
 
-    std::string fullSourcePath = std::filesystem::path(m_Config.assetSourceDir) / assetPath;
+    std::string fullSourcePath = (std::filesystem::path(m_Config.assetSourceDir) / assetPath).string();
     std::string outputPath = GetAssetOutputPath(assetPath);
 
     if (!std::filesystem::exists(fullSourcePath)) {
@@ -344,7 +344,7 @@ std::string AssetPipeline::GetAssetOutputPath(const std::string& assetPath) {
     std::string assetType = AssetConverter::DetectAssetType(assetPath);
 
     // Keep path structure but potentially change extension
-    return std::filesystem::path(m_Config.assetOutputDir) / outputPath;
+    return (std::filesystem::path(m_Config.assetOutputDir) / outputPath).string();
 }
 
 bool AssetPipeline::ShouldProcessAsset(const std::string& assetPath) const {

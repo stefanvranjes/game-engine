@@ -59,7 +59,7 @@ void AudioMixer::Shutdown() {
     m_initialized = false;
 }
 
-ChannelGroup* AudioMixer::CreateStandardGroup(const std::string& name, ChannelGroupType type, ChannelGroup* parent) {
+AudioMixer::ChannelGroup* AudioMixer::CreateStandardGroup(const std::string& name, AudioMixer::ChannelGroupType type, AudioMixer::ChannelGroup* parent) {
     if (!m_engine) return nullptr;
 
     auto* group = new ChannelGroup();
@@ -114,7 +114,7 @@ void AudioMixer::UpdateFades(float deltaTime) {
     }
 }
 
-ChannelGroup* AudioMixer::GetGroup(ChannelGroupType type) {
+AudioMixer::ChannelGroup* AudioMixer::GetGroup(ChannelGroupType type) {
     auto it = m_standardGroups.find(static_cast<int>(type));
     if (it != m_standardGroups.end()) {
         return it->second;
@@ -122,7 +122,7 @@ ChannelGroup* AudioMixer::GetGroup(ChannelGroupType type) {
     return nullptr;
 }
 
-ChannelGroup* AudioMixer::GetGroupByName(const std::string& name) {
+AudioMixer::ChannelGroup* AudioMixer::GetGroupByName(const std::string& name) {
     for (auto* group : m_allGroups) {
         if (group->name == name) {
             return group;
@@ -131,7 +131,7 @@ ChannelGroup* AudioMixer::GetGroupByName(const std::string& name) {
     return nullptr;
 }
 
-ChannelGroup* AudioMixer::CreateCustomGroup(const std::string& name, ChannelGroupType parentType) {
+AudioMixer::ChannelGroup* AudioMixer::CreateCustomGroup(const std::string& name, AudioMixer::ChannelGroupType parentType) {
     if (!m_engine) return nullptr;
     if (GetGroupByName(name)) return nullptr; // Already exists
 
@@ -185,7 +185,7 @@ void AudioMixer::DestroyCustomGroup(const std::string& name) {
     m_customGroups.erase(it);
 }
 
-void AudioMixer::SetGroupVolume(ChannelGroupType type, float volume) {
+void AudioMixer::SetGroupVolume(AudioMixer::ChannelGroupType type, float volume) {
     auto* group = GetGroup(type);
     if (!group) return;
 
@@ -201,7 +201,7 @@ void AudioMixer::SetGroupVolumeByName(const std::string& name, float volume) {
     ApplyGroupVolume(group);
 }
 
-void AudioMixer::ApplyGroupVolume(ChannelGroup* group) {
+void AudioMixer::ApplyGroupVolume(AudioMixer::ChannelGroup* group) {
     if (!group || !group->group) return;
 
     float effectiveVolume = group->volume;
@@ -217,7 +217,7 @@ void AudioMixer::ApplyGroupVolume(ChannelGroup* group) {
     ma_sound_group_set_volume(group->group, effectiveVolume);
 }
 
-float AudioMixer::GetGroupVolume(ChannelGroupType type) const {
+float AudioMixer::GetGroupVolume(AudioMixer::ChannelGroupType type) const {
     auto it = m_standardGroups.find(static_cast<int>(type));
     if (it != m_standardGroups.end()) {
         return it->second->volume;
@@ -225,7 +225,7 @@ float AudioMixer::GetGroupVolume(ChannelGroupType type) const {
     return 0.0f;
 }
 
-void AudioMixer::MuteGroup(ChannelGroupType type, bool mute) {
+void AudioMixer::MuteGroup(AudioMixer::ChannelGroupType type, bool mute) {
     auto* group = GetGroup(type);
     if (!group) return;
 
@@ -239,18 +239,18 @@ void AudioMixer::MuteGroup(ChannelGroupType type, bool mute) {
     }
 }
 
-bool AudioMixer::IsGroupMuted(ChannelGroupType type) const {
+bool AudioMixer::IsGroupMuted(AudioMixer::ChannelGroupType type) const {
     auto* group = GetGroup(type);
     return group ? group->muted : false;
 }
 
-void AudioMixer::ToggleMute(ChannelGroupType type) {
+void AudioMixer::ToggleMute(AudioMixer::ChannelGroupType type) {
     auto* group = GetGroup(type);
     if (!group) return;
     MuteGroup(type, !group->muted);
 }
 
-void AudioMixer::FadeVolume(ChannelGroupType type, float targetVolume, float duration) {
+void AudioMixer::FadeVolume(AudioMixer::ChannelGroupType type, float targetVolume, float duration) {
     auto* group = GetGroup(type);
     if (!group) return;
 
@@ -259,12 +259,12 @@ void AudioMixer::FadeVolume(ChannelGroupType type, float targetVolume, float dur
     group->fadeElapsed = 0.0f;
 }
 
-void AudioMixer::CrossFade(ChannelGroupType fromType, ChannelGroupType toType, float duration) {
+void AudioMixer::CrossFade(AudioMixer::ChannelGroupType fromType, AudioMixer::ChannelGroupType toType, float duration) {
     FadeVolume(fromType, 0.0f, duration);
     FadeVolume(toType, 1.0f, duration);
 }
 
-void AudioMixer::SetLowPassFilter(ChannelGroupType type, float cutoffHz) {
+void AudioMixer::SetLowPassFilter(AudioMixer::ChannelGroupType type, float cutoffHz) {
     auto* group = GetGroup(type);
     if (!group || !group->group) return;
 
@@ -274,14 +274,14 @@ void AudioMixer::SetLowPassFilter(ChannelGroupType type, float cutoffHz) {
     // For now, we store the value for application via node graphs if implemented
 }
 
-void AudioMixer::SetHighPassFilter(ChannelGroupType type, float cutoffHz) {
+void AudioMixer::SetHighPassFilter(AudioMixer::ChannelGroupType type, float cutoffHz) {
     auto* group = GetGroup(type);
     if (!group || !group->group) return;
 
     group->hpfCutoff = cutoffHz;
 }
 
-void AudioMixer::ResetFilters(ChannelGroupType type) {
+void AudioMixer::ResetFilters(AudioMixer::ChannelGroupType type) {
     auto* group = GetGroup(type);
     if (!group) return;
 
@@ -289,7 +289,7 @@ void AudioMixer::ResetFilters(ChannelGroupType type) {
     group->hpfCutoff = 20.0f;
 }
 
-float AudioMixer::GetLowPassFilterCutoff(ChannelGroupType type) const {
+float AudioMixer::GetLowPassFilterCutoff(AudioMixer::ChannelGroupType type) const {
     auto it = m_standardGroups.find(static_cast<int>(type));
     if (it != m_standardGroups.end()) {
         return it->second->lpfCutoff;
@@ -297,7 +297,7 @@ float AudioMixer::GetLowPassFilterCutoff(ChannelGroupType type) const {
     return 20000.0f;
 }
 
-float AudioMixer::GetHighPassFilterCutoff(ChannelGroupType type) const {
+float AudioMixer::GetHighPassFilterCutoff(AudioMixer::ChannelGroupType type) const {
     auto it = m_standardGroups.find(static_cast<int>(type));
     if (it != m_standardGroups.end()) {
         return it->second->hpfCutoff;
@@ -305,7 +305,7 @@ float AudioMixer::GetHighPassFilterCutoff(ChannelGroupType type) const {
     return 20.0f;
 }
 
-void AudioMixer::SetCompression(ChannelGroupType type, float thresholdDb, float ratio,
+void AudioMixer::SetCompression(AudioMixer::ChannelGroupType type, float thresholdDb, float ratio,
                                  float attackMs, float releaseMs) {
     auto* group = GetGroup(type);
     if (!group) return;
@@ -314,7 +314,7 @@ void AudioMixer::SetCompression(ChannelGroupType type, float thresholdDb, float 
     // Store compression parameters for potential DSP implementation
 }
 
-void AudioMixer::DisableCompression(ChannelGroupType type) {
+void AudioMixer::DisableCompression(AudioMixer::ChannelGroupType type) {
     auto* group = GetGroup(type);
     if (!group) return;
 
@@ -348,7 +348,7 @@ void AudioMixer::MuteAll(bool mute) {
     }
 }
 
-ma_sound_group* AudioMixer::GetMAAudioGroup(ChannelGroupType type) {
+ma_sound_group* AudioMixer::GetMAAudioGroup(AudioMixer::ChannelGroupType type) {
     auto* group = GetGroup(type);
     return group ? group->group : nullptr;
 }

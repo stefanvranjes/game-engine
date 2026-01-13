@@ -175,6 +175,10 @@ std::shared_ptr<AudioSource> GameObject::GetAudioSource() const {
     return nullptr;
 }
 
+void GameObject::ProcessLODGroups() {
+    // LOD logic placeholder
+}
+
 void GameObject::UpdateAnimator(float deltaTime) {
     // Update animator if present
     if (m_Animator) {

@@ -9,6 +9,7 @@
 #include <atomic>
 #include <functional>
 #include <cstdint>
+#include <glm/glm.hpp>
 
 /**
  * @enum ResourcePriority

@@ -1,6 +1,6 @@
 #include "SceneSerializer.h"
 #include "IPhysicsRigidBody.h"
-#include "MaterialNew.h"
+#include "Material.h"
 #include "Animator.h"
 #include "RigidBody.h"
 #include "Animator.h"

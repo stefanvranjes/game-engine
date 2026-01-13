@@ -60,6 +60,8 @@ public:
     void SetPhysXBackend(class PhysXBackend* backend);
 #endif
 
+    void ClearScene();
+
     // Prefab management
     std::shared_ptr<Prefab> CreatePrefab(const std::string& prefabName, std::shared_ptr<GameObject> sourceObject = nullptr);
     std::shared_ptr<Prefab> GetPrefab(const std::string& prefabName);

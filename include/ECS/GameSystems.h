@@ -4,6 +4,7 @@
 #include "ECS/Components.h"
 #include "Math/Vec3.h"
 #include <functional>
+#include <algorithm>
 
 /**
  * @brief Movement component for smooth velocity-based movement.

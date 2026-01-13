@@ -213,8 +213,8 @@ public:
      */
     ma_sound_group* GetMAAudioGroup(ChannelGroupType type);
 private:
-    AudioMixer() {}
-    ~AudioMixer() {}
+    AudioMixer();
+    ~AudioMixer();
     // Internal helpers
     void ApplyGroupVolume(ChannelGroup* group);
     void UpdateFades(float deltaTime);

@@ -2,38 +2,47 @@
 #include "NetworkManager.hpp"
 #include "Message.hpp"
 #include "Peer.hpp"
+#include <asio.hpp>
 #include <iostream>
 #include <vector>
 #include <thread>
-#include <asio.hpp>
 
-using asio::ip::tcp;
+Server::Server(int port) : port(port), running(false) {}
 
-class Server {
-public:
-    Server(asio::io_context& io_context, short port)
-        : acceptor_(io_context, tcp::endpoint(tcp::v4(), port)) {
-        start_accept();
-    }
-
-private:
-    void start_accept() {
-        Peer* new_peer = new Peer(acceptor_.get_io_context());
-        acceptor_.async_accept(new_peer->get_socket(),
-            std::bind(&Server::handle_accept, this, new_peer, std::placeholders::_1));
-    }
-
-    void handle_accept(Peer* new_peer, const asio::error_code& error) {
-        if (!error) {
-            peers_.push_back(new_peer);
-            new_peer->start();
+void Server::start() {
+    running = true;
+    try {
+        asio::io_context io_context;
+        asio::ip::tcp::acceptor acceptor(io_context, asio::ip::tcp::endpoint(asio::ip::tcp::v4(), port));
+        std::cout << "Server started on port " << port << std::endl;
+        
+        while (running) {
+            std::shared_ptr<Peer> new_peer = std::make_shared<Peer>(io_context);
+            acceptor.accept(new_peer->get_socket());
+            clients.push_back(new_peer);
             std::cout << "New client connected!" << std::endl;
-            start_accept();
-        } else {
-            delete new_peer;
         }
+    } catch (std::exception& e) {
+        std::cerr << "Server error: " << e.what() << std::endl;
+        running = false;
     }
+}
 
-    tcp::acceptor acceptor_;
-    std::vector<Peer*> peers_;
-};
+void Server::stop() {
+    running = false;
+}
+
+void Server::broadcastMessage(const Message& message) {
+    std::vector<uint8_t> data = message.serialize();
+    for (auto& client : clients) {
+        client->SendData(data.data(), data.size());
+    }
+}
+
+void Server::acceptConnections() {
+    // Handled in start() for now
+}
+
+void Server::handleClient(std::shared_ptr<Peer> client) {
+    // Basic implementation
+}

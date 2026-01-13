@@ -103,6 +103,9 @@ void ParticleEmitter::UpdateLOD(float distance) {
     }
 }
 
+ParticleEmitter::~ParticleEmitter() {
+}
+
 void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
     if (!m_Active) return;
 
@@ -121,9 +124,8 @@ void ParticleEmitter::Update(float deltaTime, const Vec3& cameraPos) {
         m_CalculatedEmitterVelocity = Vec3(0,0,0);
     }
     
-    // Animate turbulence time
-    m_Time += deltaTime;
-
+    // Update mixer state (fades, time-based effects)
+    // AudioMixer::Get().Update(deltaTime);
     if (m_UseGPUCompute) {
         UpdateGPU(deltaTime);
     } else {
@@ -1134,4 +1136,51 @@ int ParticleEmitter::KillOldest(int count) {
     // On GPU, maybe we just lower the "ActiveParticleCount" uniform if we could?
     
     return killed;
+}
+std::shared_ptr<ParticleEmitter> ParticleEmitter::CreateFire(const Vec3& position) {
+    auto emitter = std::make_shared<ParticleEmitter>(position, 500);
+    emitter->SetSpawnRate(100.0f);
+    emitter->SetParticleLifetime(1.5f);
+    emitter->SetVelocityRange(Vec3(-0.5f, 1.0f, -0.5f), Vec3(0.5f, 3.0f, 0.5f));
+    emitter->SetColorRange(Vec4(1.0f, 0.5f, 0.0f, 1.0f), Vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    emitter->SetSizeRange(0.5f, 0.1f);
+    emitter->SetGravity(Vec3(0, 1.0f, 0)); // Heat rises
+    emitter->SetEmitterShape(EmitterShape::Sphere);
+    emitter->SetSphereRadius(0.5f);
+    return emitter;
+}
+
+std::shared_ptr<ParticleEmitter> ParticleEmitter::CreateSmoke(const Vec3& position) {
+    auto emitter = std::make_shared<ParticleEmitter>(position, 300);
+    emitter->SetSpawnRate(20.0f);
+    emitter->SetParticleLifetime(4.0f);
+    emitter->SetVelocityRange(Vec3(-0.2f, 0.5f, -0.2f), Vec3(0.2f, 1.5f, 0.2f));
+    emitter->SetColorRange(Vec4(0.3f, 0.3f, 0.3f, 0.5f), Vec4(0.1f, 0.1f, 0.1f, 0.0f));
+    emitter->SetSizeRange(0.8f, 2.0f);
+    emitter->SetGravity(Vec3(0, 0.2f, 0));
+    return emitter;
+}
+
+std::shared_ptr<ParticleEmitter> ParticleEmitter::CreateSparks(const Vec3& position) {
+    auto emitter = std::make_shared<ParticleEmitter>(position, 200);
+    emitter->SetSpawnRate(0.0f); // Bursts only
+    emitter->SetParticleLifetime(0.8f);
+    emitter->SetVelocityRange(Vec3(-5.0f, 2.0f, -5.0f), Vec3(5.0f, 8.0f, 5.0f));
+    emitter->SetColorRange(Vec4(1.0f, 0.9f, 0.5f, 1.0f), Vec4(1.0f, 0.5f, 0.0f, 0.0f));
+    emitter->SetSizeRange(0.1f, 0.0f);
+    emitter->SetGravity(Vec3(0, -9.8f, 0));
+    emitter->SetBlendMode(BlendMode::Additive);
+    return emitter;
+}
+
+std::shared_ptr<ParticleEmitter> ParticleEmitter::CreateMagic(const Vec3& position) {
+    auto emitter = std::make_shared<ParticleEmitter>(position, 1000);
+    emitter->SetSpawnRate(150.0f);
+    emitter->SetParticleLifetime(2.5f);
+    emitter->SetVelocityRange(Vec3(-2.0f, -2.0f, -2.0f), Vec3(2.0f, 2.0f, 2.0f));
+    emitter->SetColorRange(Vec4(0.0f, 0.5f, 1.0f, 1.0f), Vec4(0.5f, 0.0f, 1.0f, 0.0f));
+    emitter->SetSizeRange(0.3f, 0.0f);
+    emitter->SetGravity(Vec3(0, 0, 0));
+    emitter->SetBlendMode(BlendMode::Additive);
+    return emitter;
 }

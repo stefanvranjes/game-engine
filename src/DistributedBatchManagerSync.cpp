@@ -51,8 +51,8 @@ void DistributedBatchManager::SyncSoftBodyState(PhysXSoftBody* softBody) {
         auto& lastState = m_Impl->lastSyncedStates[softBody];
         
         StateSerializer::SerializationOptions options;
-        options.enableCompression = true;
-        options.enableDeltaEncoding = true;
+        options.compressData = true;
+        options.deltaEncoding = true;
         
         std::vector<uint8_t> deltaData = m_Impl->stateSerializer->SerializeDelta(
             softBody, lastState, options);
@@ -70,7 +70,7 @@ void DistributedBatchManager::SyncSoftBodyState(PhysXSoftBody* softBody) {
         syncMsg.type = NetworkManager::MessageType::STATE_SYNC_FULL;
         
         StateSerializer::SerializationOptions options;
-        options.enableCompression = true;
+        options.compressData = true;
         
         std::vector<uint8_t> fullData = m_Impl->stateSerializer->SerializeSoftBody(
             softBody, options);
@@ -94,7 +94,7 @@ void DistributedBatchManager::HandleStateSyncFull(int nodeId, const NetworkManag
     
     // Deserialize state
     StateSerializer::SerializationOptions options;
-    options.enableCompression = true;
+    options.compressData = true;
     
     // TODO: Find corresponding soft body
     PhysXSoftBody* softBody = nullptr;  // Placeholder
@@ -118,8 +118,8 @@ void DistributedBatchManager::HandleStateSyncDelta(int nodeId, const NetworkMana
     
     if (softBody) {
         StateSerializer::SerializationOptions options;
-        options.enableCompression = true;
-        options.enableDeltaEncoding = true;
+        options.compressData = true;
+        options.deltaEncoding = true;
         
         m_Impl->stateSerializer->ApplyDelta(softBody, msg.data, options);
         
@@ -139,7 +139,7 @@ void DistributedBatchManager::BroadcastStateUpdate(PhysXSoftBody* softBody) {
     }
     
     StateSerializer::SerializationOptions options;
-    options.enableCompression = true;
+    options.compressData = true;
     
     std::vector<uint8_t> stateData = m_Impl->stateSerializer->SerializeSoftBody(
         softBody, options);

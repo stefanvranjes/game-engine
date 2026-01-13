@@ -1,5 +1,8 @@
 #pragma once
 
+#include <glm/glm.hpp>
+#include "Math/Vec3.h"
+#include "Math/Vec4.h"
 #include <string>
 #include <unordered_map>
 
@@ -18,7 +21,11 @@ public:
     void SetFloat(const std::string& name, float value);
     void SetVec2(const std::string& name, float x, float y);
     void SetVec3(const std::string& name, float x, float y, float z);
+    void SetVec3(const std::string& name, const glm::vec3& value);
+    void SetVec3(const std::string& name, const Vec3& value);
     void SetVec4(const std::string& name, float x, float y, float z, float w);
+    void SetVec4(const std::string& name, const glm::vec4& value);
+    void SetVec4(const std::string& name, const Vec4& value);
     void SetMat4(const std::string& name, const float* value);
 
     unsigned int GetProgramID() const { return m_ProgramID; }

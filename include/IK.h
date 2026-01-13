@@ -2,6 +2,7 @@
 
 #include "Math/Vec3.h"
 #include "Math/Mat4.h"
+#include "Animation.h"
 #include <vector>
 #include <string>
 

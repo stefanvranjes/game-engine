@@ -56,6 +56,7 @@ struct AnimationState {
     
     std::vector<AnimationTransition> transitions;
     
+    AnimationState() : name(""), type(Type::Animation), index(-1), loop(true), speed(1.0f) {}
     AnimationState(std::string n, int idx, Type t = Type::Animation) 
         : name(n), type(t), index(idx), loop(true), speed(1.0f) {}
 };

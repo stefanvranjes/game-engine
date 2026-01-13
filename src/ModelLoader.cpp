@@ -2,7 +2,7 @@
 #include "Model.h"
 #include "GLTFLoader.h"
 #include "Mesh.h"
-#include "MaterialNew.h"
+#include "Material.h"
 #include "TextureManager.h"
 #include <tiny_gltf.h>
 #include <assimp/Importer.hpp>

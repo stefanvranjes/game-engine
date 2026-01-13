@@ -235,7 +235,6 @@ void ProbeBaker::UpdateBaking() {
 }
 
 void ProbeBaker::StopBaking() {
-    m_InputState = false; // Signal threads to stop
     m_IsBaking = false;
     m_State = BakingState::Idle;
     
@@ -262,11 +261,11 @@ void ProbeBaker::BakeProbe(int probeIndex, ProbeGrid* grid, const std::vector<Ga
     for(int i=0;i<m_Settings.samplesPerProbe;++i) {
         glm::vec3 d = GenerateHemisphereSample(i, m_Settings.samplesPerProbe, glm::vec3(0,1,0));
         RayHit hit;
-        if(Raytrace(probe.position, d, scene, hit)) samps.push_back(ComputeDirectLighting(hit, lights, scene));
-        else samps.push_back(GetSkyColor(d));
+        if(Raytrace(probe.position, d, scene, hit)) samples.push_back(ComputeDirectLighting(hit, lights, scene));
+        else samples.push_back(GetSkyColor(d));
         dirs.push_back(d);
     }
-    EncodeToSphericalHarmonics(samps, dirs, probe.shCoefficients);
+    EncodeToSphericalHarmonics(samples, dirs, probe.shCoefficients);
 }
 
 void ProbeBaker::BakeProbe(int probeIndex, ProbeGrid* grid, const SceneSnapshot& snapshot) {

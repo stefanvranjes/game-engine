@@ -1,6 +1,8 @@
 #include "AssetConverter.h"
 #include <iostream>
 #include <chrono>
+#include <fstream>
+#include <algorithm>
 
 std::function<void(float, const std::string&)> AssetConverter::m_ProgressCallback;
 

@@ -408,3 +408,49 @@ void ParticleSystem::RenderTrails(Camera* camera) {
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 }
+void ParticleSystem::RenderFromGPU(const std::shared_ptr<ParticleEmitter>& emitter, Camera* camera) {
+    if (!emitter || !camera || !m_GPUShader) return;
+    
+    // Sort particles on GPU before rendering
+    SortParticlesGPU(emitter, camera);
+    
+    m_GPUShader->Use();
+    m_GPUShader->SetMat4("u_View", camera->GetViewMatrix().m);
+    m_GPUShader->SetMat4("u_Projection", camera->GetProjectionMatrix().m);
+    
+    // Set blend mode
+    if (emitter->GetBlendMode() == BlendMode::Additive) {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    } else {
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    }
+    
+    // Bind texture
+    auto texture = emitter->GetTexture();
+    if (texture) {
+        texture->Bind(0);
+        m_GPUShader->SetInt("u_Texture", 0);
+        m_GPUShader->SetInt("u_HasTexture", 1);
+    } else {
+        m_GPUShader->SetInt("u_HasTexture", 0);
+    }
+    
+    // Set atlas uniforms
+    m_GPUShader->SetFloat("u_AtlasRows", static_cast<float>(emitter->GetAtlasRows()));
+    m_GPUShader->SetFloat("u_AtlasCols", static_cast<float>(emitter->GetAtlasCols()));
+    
+    // Bind SSBO
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, emitter->GetParticleSSBO());
+    
+    // Draw using vertex pulling
+    glBindVertexArray(m_QuadVAO);
+    glDrawArrays(GL_TRIANGLES, 0, emitter->GetActiveParticleCount() * 6);
+    glBindVertexArray(0);
+}
+
+void ParticleSystem::RenderTrailsGPU(const std::shared_ptr<ParticleEmitter>& emitter, Camera* camera) {
+    if (!emitter || !camera || !m_TrailShader) return;
+    
+    // GPU Trails implementation would go here
+    // For now, this is a placeholder to resolve linker errors
+}

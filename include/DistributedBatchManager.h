@@ -227,6 +227,20 @@ public:
      */
     void EnableAutoLoadBalancing(bool enable, uint32_t checkIntervalMs = 1000);
     
+    /**
+     * @brief Configure heartbeat parameters
+     * @param intervalMs Heartbeat send interval
+     * @param timeoutMs Timeout for node failure
+     */
+    void SetHeartbeatConfig(uint32_t intervalMs, uint32_t timeoutMs);
+    
+    /**
+     * @brief Check if a worker node is healthy
+     * @param nodeId Node ID to check
+     * @return True if healthy
+     */
+    bool IsNodeHealthy(int nodeId) const;
+    
     // Statistics
     
     /**
@@ -354,7 +368,7 @@ public:
 private:
     struct Impl;
     std::unique_ptr<Impl> m_Impl;
-    
+
     // Internal helpers
     int SelectNodeForBatch(const std::vector<PhysXSoftBody*>& softBodies, uint32_t priority);
     void AssignBatchToNode(uint32_t batchId, int nodeId);

@@ -158,7 +158,7 @@ void Animator::Update(float deltaTime) {
                 Vec3 scale;
                 channel->GetTransform(fromSamplingTime, position, rotation, scale);
                 
-                Mat4 translation = Mat4::Translation(position);
+                Mat4 translation = Mat4::Translate(position);
                 Mat4 rotationMat = rotation.ToMatrix();
                 Mat4 scaleMat = Mat4::Scale(scale);
                 m_LocalTransforms[i] = translation * rotationMat * scaleMat;
@@ -181,7 +181,7 @@ void Animator::Update(float deltaTime) {
                 Vec3 scale;
                 channel->GetTransform(toSamplingTime, position, rotation, scale);
                 
-                Mat4 translation = Mat4::Translation(position);
+                Mat4 translation = Mat4::Translate(position);
                 Mat4 rotationMat = rotation.ToMatrix();
                 Mat4 scaleMat = Mat4::Scale(scale);
                 m_LocalTransforms[i] = translation * rotationMat * scaleMat;
@@ -359,7 +359,7 @@ void Animator::UpdateBoneTransforms() {
             channel->GetTransform(m_CurrentTime, position, rotation, scale);
             
             // Build transformation matrix: T * R * S
-            Mat4 translation = Mat4::Translation(position);
+            Mat4 translation = Mat4::Translate(position);
             Mat4 rotationMat = rotation.ToMatrix();
             Mat4 scaleMat = Mat4::Scale(scale);
             
@@ -642,7 +642,7 @@ void Animator::UpdateLayerTransforms(AnimationLayer& layer, float deltaTime, std
                 Vec3 scale;
                 channel->GetTransform(layer.currentTime, position, rotation, scale);
                 
-                Mat4 translation = Mat4::Translation(position);
+                Mat4 translation = Mat4::Translate(position);
                 Mat4 rotationMat = rotation.ToMatrix();
                 Mat4 scaleMat = Mat4::Scale(scale);
                 
@@ -881,6 +881,28 @@ float Animator::GetLayerBlendProgress(int layerIndex) const {
         return std::min(1.0f, layer.currentBlendTime / layer.blendTime);
     }
     return 1.0f;
+}
+
+float Animator::GetLayerNormalizedTime(int layerIndex) const {
+    if (layerIndex >= 0 && layerIndex < static_cast<int>(m_Layers.size())) {
+        const AnimationLayer& layer = m_Layers[layerIndex];
+        if (layer.type == LayerType::SingleAnimation && layer.animationIndex >= 0) {
+            Animation* anim = m_Animations[layer.animationIndex].get();
+            float duration = anim->GetDuration();
+            return (duration > 0.001f) ? (layer.currentTime / duration) : 0.0f;
+        }
+        // For blend trees, return 0 for now
+        return 0.0f;
+    }
+    
+    // Fallback: If no layers, treat index 0 as the base animation
+    if (layerIndex == 0 && m_CurrentAnimationIndex >= 0) {
+        Animation* anim = m_Animations[m_CurrentAnimationIndex].get();
+        float duration = anim->GetDuration();
+        return (duration > 0.001f) ? (m_CurrentTime / duration) : 0.0f;
+    }
+    
+    return 0.0f;
 }
 
 // Blend Tree Management

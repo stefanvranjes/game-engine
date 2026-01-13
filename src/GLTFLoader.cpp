@@ -1,5 +1,5 @@
 #include "GLTFLoader.h"
-#include "MaterialNew.h"
+#include "Material.h"
 #include "Model.h"
 #include "Mesh.h"
 #include "Texture.h"

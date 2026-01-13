@@ -95,7 +95,7 @@ public:
     /**
      * Get total package size
      */
-    size_t GetPackageSize() const { return m_PackageData.size(); }
+    size_t GetPackageSize() const { return m_PackageSize; }
     
     /**
      * Get number of assets

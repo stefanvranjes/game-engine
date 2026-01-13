@@ -30,6 +30,11 @@ public:
         return Vec3(x * scalar, y * scalar, z * scalar);
     }
 
+    // Component-wise multiplication
+    Vec3 operator*(const Vec3& other) const {
+        return Vec3(x * other.x, y * other.y, z * other.z);
+    }
+
     // Scalar division
     Vec3 operator/(float scalar) const {
         return Vec3(x / scalar, y / scalar, z / scalar);

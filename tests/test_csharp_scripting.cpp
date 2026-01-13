@@ -1,3 +1,4 @@
+#ifdef HAS_MONO
 #include <gtest/gtest.h>
 #include "CSharpScriptSystem.h"
 #include <fstream>
@@ -30,3 +31,4 @@ TEST_F(CSharpScriptingTest, RunScriptDLL) {
     bool result = CSharpScriptSystem::GetInstance().RunScript("missing_assembly.dll");
     EXPECT_FALSE(result);
 }
+#endif

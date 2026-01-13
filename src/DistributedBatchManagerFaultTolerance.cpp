@@ -137,26 +137,6 @@ void DistributedBatchManager::RegisterWorker(int nodeId, const NetworkManager::N
               << ", GPUs: " << info.gpuCount << ")" << std::endl;
 }
 
-void DistributedBatchManager::HandleHeartbeat(int nodeId, const NetworkManager::Message& msg) {
-    auto it = m_Impl->workers.find(nodeId);
-    if (it != m_Impl->workers.end()) {
-        auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()).count();
-        
-        it->second.lastHeartbeat = now;
-        
-        // If node was previously unhealthy, mark as recovered
-        if (!it->second.isHealthy) {
-            std::cout << "Worker node " << nodeId << " recovered" << std::endl;
-            it->second.isHealthy = true;
-            
-            std::lock_guard<std::mutex> lock(m_Impl->statsMutex);
-            m_Impl->stats.activeWorkers++;
-        }
-        
-        // TODO: Extract load info from heartbeat data
-    }
-}
 
 void DistributedBatchManager::SetHeartbeatConfig(uint32_t intervalMs, uint32_t timeoutMs) {
     m_Impl->heartbeatIntervalMs = intervalMs;
@@ -167,65 +147,10 @@ void DistributedBatchManager::SetHeartbeatConfig(uint32_t intervalMs, uint32_t t
 }
 
 bool DistributedBatchManager::IsNodeHealthy(int nodeId) const {
-    auto it = m_Impl->workers.find(nodeId);
+    const auto it = m_Impl->workers.find(nodeId);
     if (it != m_Impl->workers.end()) {
         return it->second.isHealthy;
     }
     return false;
 }
 
-void DistributedBatchManager::HandleMasterMessage(int nodeId, const NetworkManager::Message& msg) {
-    // Handle messages received by master
-    switch (msg.type) {
-        case NetworkManager::MessageType::NODE_REGISTER:
-            // Register new worker
-            {
-                auto nodeInfo = m_Impl->networkManager->GetNodeInfo(nodeId);
-                RegisterWorker(nodeId, nodeInfo);
-            }
-            break;
-            
-        case NetworkManager::MessageType::BATCH_RESULT:
-            // Handle batch completion
-            // TODO: Process batch results
-            {
-                std::lock_guard<std::mutex> lock(m_Impl->statsMutex);
-                m_Impl->stats.batchesCompleted++;
-            }
-            break;
-            
-        case NetworkManager::MessageType::HEARTBEAT:
-            // Update worker heartbeat
-            HandleHeartbeat(nodeId, msg);
-            break;
-            
-        case NetworkManager::MessageType::LOAD_REPORT:
-            // Update worker load
-            // TODO: Extract load from message data
-            UpdateWorkerLoad(nodeId, 0.5f);  // Placeholder
-            break;
-            
-        default:
-            break;
-    }
-}
-
-void DistributedBatchManager::HandleWorkerMessage(int nodeId, const NetworkManager::Message& msg) {
-    // Handle messages received by worker
-    switch (msg.type) {
-        case NetworkManager::MessageType::BATCH_ASSIGN:
-            // Process assigned batch
-            // TODO: Deserialize batch data and process
-            std::cout << "Received batch assignment from master" << std::endl;
-            break;
-            
-        case NetworkManager::MessageType::MIGRATION:
-            // Handle soft body migration
-            // TODO: Handle migration
-            std::cout << "Received migration request" << std::endl;
-            break;
-            
-        default:
-            break;
-    }
-}

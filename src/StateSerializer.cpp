@@ -1,5 +1,7 @@
 #include "StateSerializer.h"
+#ifdef USE_PHYSX
 #include "PhysXSoftBody.h"
+#endif
 #include <cstring>
 #include <algorithm>
 #include <iostream>
@@ -122,6 +124,7 @@ StateSerializer::StateSerializer() : m_Impl(std::make_unique<Impl>()) {}
 
 StateSerializer::~StateSerializer() = default;
 
+#ifdef USE_PHYSX
 std::vector<uint8_t> StateSerializer::SerializeSoftBody(const PhysXSoftBody* softBody,
                                                         const SerializationOptions& options) {
     if (!softBody) {
@@ -451,6 +454,7 @@ void StateSerializer::RestoreState(PhysXSoftBody* softBody, const SoftBodyState&
     softBody->SetVertexPositions(state.positions.data(), state.vertexCount);
     softBody->SetVertexVelocities(state.velocities.data(), state.vertexCount);
 }
+#endif
 
 std::vector<uint8_t> StateSerializer::Compress(const std::vector<uint8_t>& data) {
 #ifdef HAS_LZ4

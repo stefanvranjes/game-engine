@@ -4,22 +4,38 @@
 Peer::Peer() 
     : m_State(State::Disconnected)
     , m_ENetPeer(nullptr)
-    , m_NetworkId(0) {}
+    , m_NetworkId(0)
+    , socketFD(-1) {}
 
 Peer::Peer(const std::string& id)
     : m_Id(id)
     , m_State(State::Disconnected)
     , m_ENetPeer(nullptr)
-    , m_NetworkId(0) {}
+    , m_NetworkId(0)
+    , socketFD(-1) {}
 
 Peer::Peer(_ENetPeer* enetPeer)
     : m_State(State::Connected)
     , m_ENetPeer(enetPeer)
-    , m_NetworkId(0) {
+    , m_NetworkId(0)
+    , socketFD(-1) {
     if (enetPeer) {
         m_NetworkId = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(enetPeer->data));
     }
 }
+
+#ifdef HAS_ASIO
+Peer::Peer(asio::io_context& io_context)
+    : m_State(State::Disconnected)
+    , m_ENetPeer(nullptr)
+    , m_NetworkId(0)
+    , socketFD(-1)
+    , m_AsioSocket(std::make_unique<asio::ip::tcp::socket>(io_context)) {}
+
+asio::ip::tcp::socket& Peer::get_socket() {
+    return *m_AsioSocket;
+}
+#endif
 
 Peer::~Peer() {
     if (m_State != State::Disconnected && m_ENetPeer) {

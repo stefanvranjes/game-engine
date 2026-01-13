@@ -88,10 +88,6 @@ bool AnimationStateMachine::CheckCondition(const AnimationCondition& condition) 
     
     switch (condition.mode) {
         case AnimationConditionMode::If:
-            return (p.type == Parameter::Type::Bool || p.type == Parameter::Type::Trigger) && p.icon != 0; 
-            // Trigger or Bool true? Note: Trigger logic usually resets after check if consumed by transition
-            // Here checking raw value. Trigger reset logic handles outside.
-            // For Trigger: p.triggerActive
             if (p.type == Parameter::Type::Trigger) return p.triggerActive;
             if (p.type == Parameter::Type::Bool) return p.iValue != 0;
             return false;

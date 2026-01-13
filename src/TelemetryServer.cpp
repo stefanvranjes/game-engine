@@ -98,7 +98,7 @@ void TelemetryServer::RunServer()
 
 std::string TelemetryServer::GenerateHTMLDashboard() const
 {
-    return R"(
+    return R"HTML(
 <!DOCTYPE html>
 <html>
 <head>
@@ -319,7 +319,7 @@ std::string TelemetryServer::GenerateHTMLDashboard() const
     </script>
 </body>
 </html>
-    )";
+    )HTML";
 }
 
 std::string TelemetryServer::HandleProfilerRequest() const

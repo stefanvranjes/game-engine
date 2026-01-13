@@ -1592,3 +1592,60 @@ void Application::LoadBox2DCharacterTest() {
     std::cout << "Created Box2D Character Test" << std::endl;
 }
 #endif
+void Application::LoadCornellBox() {
+    if (!m_Renderer) return;
+    
+    m_Renderer->ClearScene();
+    std::cout << "Loading Cornell Box scene..." << std::endl;
+    
+    // Floor
+    auto floor = std::make_shared<GameObject>("Floor");
+    floor->SetTransform(Transform(Vec3(0, 0, 0), Vec3(0, 0, 0), Vec3(10, 0.1f, 10)));
+    auto whiteMat = std::make_shared<Material>();
+    whiteMat->SetDiffuse(Vec3(1, 1, 1));
+    floor->SetMaterial(whiteMat);
+    m_Renderer->GetRoot()->AddChild(floor);
+    
+    // Back Wall
+    auto backWall = std::make_shared<GameObject>("BackWall");
+    backWall->SetTransform(Transform(Vec3(0, 5, -5), Vec3(0, 0, 0), Vec3(10, 10, 0.1f)));
+    backWall->SetMaterial(whiteMat);
+    m_Renderer->GetRoot()->AddChild(backWall);
+    
+    // Left Wall (Red)
+    auto leftWall = std::make_shared<GameObject>("LeftWall");
+    leftWall->SetTransform(Transform(Vec3(-5, 5, 0), Vec3(0, 0, 0), Vec3(0.1f, 10, 10)));
+    auto redMat = std::make_shared<Material>();
+    redMat->SetDiffuse(Vec3(1, 0, 0));
+    leftWall->SetMaterial(redMat);
+    m_Renderer->GetRoot()->AddChild(leftWall);
+    
+    // Right Wall (Green)
+    auto rightWall = std::make_shared<GameObject>("RightWall");
+    rightWall->SetTransform(Transform(Vec3(5, 5, 0), Vec3(0, 0, 0), Vec3(0.1f, 10, 10)));
+    auto greenMat = std::make_shared<Material>();
+    greenMat->SetDiffuse(Vec3(0, 1, 0));
+    rightWall->SetMaterial(greenMat);
+    m_Renderer->GetRoot()->AddChild(rightWall);
+    
+    // Ceiling
+    auto ceiling = std::make_shared<GameObject>("Ceiling");
+    ceiling->SetTransform(Transform(Vec3(0, 10, 0), Vec3(0, 0, 0), Vec3(10, 0.1f, 10)));
+    ceiling->SetMaterial(whiteMat);
+    m_Renderer->GetRoot()->AddChild(ceiling);
+    
+    // Large Box
+    auto box1 = std::make_shared<GameObject>("LargeBox");
+    box1->SetTransform(Transform(Vec3(-1.5f, 1.5f, -1.0f), Vec3(0, 15, 0), Vec3(3, 3, 3)));
+    box1->SetMaterial(whiteMat);
+    m_Renderer->GetRoot()->AddChild(box1);
+    
+    // Small Box
+    auto box2 = std::make_shared<GameObject>("SmallBox");
+    box2->SetTransform(Transform(Vec3(1.5f, 1.0f, 1.0f), Vec3(0, -15, 0), Vec3(2, 2, 2)));
+    box2->SetMaterial(whiteMat);
+    m_Renderer->GetRoot()->AddChild(box2);
+    
+    // Light
+    m_Renderer->AddLight(Light(Vec3(0, 9.8f, 0), Vec3(1, 1, 1), 1.0f));
+}

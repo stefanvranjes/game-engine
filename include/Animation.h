@@ -20,6 +20,12 @@ struct Quaternion {
     
     // Normalize quaternion
     void Normalize();
+
+    // Create rotation from one vector to another
+    static Quaternion FromTo(const Vec3& from, const Vec3& to);
+    
+    // Quaternion multiplication
+    Quaternion operator*(const Quaternion& other) const;
 };
 
 // Single keyframe for animation

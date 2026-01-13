@@ -200,7 +200,7 @@ void BlendTree1D::CalculateNodeBoneMatrices(int nodeIndex,
             Vec3 scale;
             channel->GetTransform(node.currentTime, position, rotation, scale);
             
-            Mat4 translation = Mat4::Translation(position);
+            Mat4 translation = Mat4::Translate(position);
             Mat4 rotationMat = rotation.ToMatrix();
             Mat4 scaleMat = Mat4::Scale(scale);
             
@@ -471,7 +471,7 @@ void BlendTree2D::CalculateNodeBoneMatrices(int nodeIndex,
             Vec3 scale;
             channel->GetTransform(node.currentTime, position, rotation, scale);
             
-            Mat4 translation = Mat4::Translation(position);
+            Mat4 translation = Mat4::Translate(position);
             Mat4 rotationMat = rotation.ToMatrix();
             Mat4 scaleMat = Mat4::Scale(scale);
             
@@ -515,7 +515,7 @@ void BlendTree2D::Update(float deltaTime,
     int boneCount = skeleton->GetBoneCount();
     
     // Find containing triangle first determines weights and active nodes
-    int triIndex;
+    int triIndex = -1;
     Vec3 baryCoords;
     bool hasTriangle = !m_Triangles.empty() && FindContainingTriangle(m_CurrentParameter, triIndex, baryCoords);
     
@@ -678,7 +678,7 @@ Vec4 BlendTree3D::CalculateBarycentricCoordinates(Vec3 p, Vec3 a, Vec3 b, Vec3 c
     
     // Scalar triple product for volume calculation
     // Volume of tetrahedron = 1/6 * |(b-a) . ((c-a) x (d-a))|
-    float va6 = Vec3::Dot(vab, Vec3::Cross(vac, vad));
+    float va6 = vab.Dot(vac.Cross(vad));
     
     if (fabs(va6) < 0.0001f) {
         // Degenerate tetrahedron
@@ -688,14 +688,14 @@ Vec4 BlendTree3D::CalculateBarycentricCoordinates(Vec3 p, Vec3 a, Vec3 b, Vec3 c
     float invVol = 1.0f / va6;
     
     // Weight for D (VolABCP)
-    float wD = Vec3::Dot(vap, Vec3::Cross(vab, vac)) * invVol;
+    float wD = vap.Dot(vab.Cross(vac)) * invVol;
     
     // Weight for C (VolABPD)
-    float wC = Vec3::Dot(vap, Vec3::Cross(vad, vab)) * invVol;
+    float wC = vap.Dot(vad.Cross(vab)) * invVol;
     
     // Weight for B (VolAPCD)
     // Note: The order of cross product matters for signed volume
-    float wB = Vec3::Dot(vap, Vec3::Cross(vac, vad)) * invVol;
+    float wB = vap.Dot(vac.Cross(vad)) * invVol;
     
     // Weight for A = 1 - wB - wC - wD
     float wA = 1.0f - wB - wC - wD;
@@ -772,7 +772,7 @@ void BlendTree3D::CalculateNodeBoneMatrices(int nodeIndex,
             Vec3 scale;
             channel->GetTransform(node.currentTime, position, rotation, scale);
             
-            Mat4 translation = Mat4::Translation(position);
+            Mat4 translation = Mat4::Translate(position);
             Mat4 rotationMat = rotation.ToMatrix();
             Mat4 scaleMat = Mat4::Scale(scale);
             
@@ -815,7 +815,7 @@ void BlendTree3D::Update(float deltaTime,
     int boneCount = skeleton->GetBoneCount();
     
     // Find containing tetrahedron first
-    int tetIndex;
+    int tetIndex = -1;
     Vec4 baryCoords;
     bool hasTetra = !m_Tetrahedra.empty() && FindContainingTetrahedron(m_CurrentParameter, tetIndex, baryCoords);
     

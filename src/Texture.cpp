@@ -1,6 +1,12 @@
 #include "Texture.h"
 #include "GLExtensions.h"
 #define STB_IMAGE_IMPLEMENTATION
+#define TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION
+#define TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION
+#ifdef STB_IMAGE_IMPLEMENTATION
+#undef STB_IMAGE_IMPLEMENTATION
+#endif
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 #include <GLFW/glfw3.h>
 #include <iostream>

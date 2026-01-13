@@ -4,6 +4,7 @@
 #include "Material.h"
 #include <glad/glad.h>
 #include <iostream>
+#include <glm/gtc/matrix_transform.hpp>
 
 VoxelGrid::VoxelGrid(int resolution)
     : m_Resolution(resolution)

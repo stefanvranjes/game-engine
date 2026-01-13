@@ -2,7 +2,7 @@
 
 #include "Transform.h"
 #include "Mesh.h"
-#include "MaterialNew.h"
+#include "Material.h"
 #include "Model.h"
 #include "Math/Mat4.h"
 #include "Math/Vec2.h"
@@ -57,6 +57,7 @@ public:
     std::shared_ptr<Model> GetModel() const { return m_Model; }
     
     Transform& GetTransform() { return m_Transform; }
+    void SetTransform(const Transform& transform) { m_Transform = transform; }
     const Mat4& GetWorldMatrix() const { return m_WorldMatrix; }
     const std::string& GetName() const { return m_Name; }
     std::shared_ptr<Material> GetMaterial() { return m_Material; }

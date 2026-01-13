@@ -168,6 +168,7 @@ public:
     // Frame management
     void BeginFrame();
     void EndFrame();
+    uint32_t GetCurrentFrame() const { return current_frame_; }
 
     // Marker management
     void BeginMarker(const std::string& name, const glm::vec4& color = glm::vec4(1.0f));

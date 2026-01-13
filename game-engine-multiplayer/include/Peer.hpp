@@ -4,6 +4,10 @@
 #include <cstdint>
 #include <memory>
 
+#ifdef HAS_ASIO
+#include <asio.hpp>
+#endif
+
 // Forward declaration
 struct _ENetPeer;
 
@@ -25,6 +29,9 @@ public:
     Peer();
     explicit Peer(const std::string& id);
     explicit Peer(_ENetPeer* enetPeer);
+#ifdef HAS_ASIO
+    explicit Peer(asio::io_context& io_context);
+#endif
     ~Peer();
 
     // Connection management
@@ -57,7 +64,17 @@ public:
     
     bool IsConnected() const { return m_State == State::Connected; }
 
+    // ASIO compatibility stubs
+    void start() {}
+#ifdef HAS_ASIO
+    asio::ip::tcp::socket& get_socket();
+#endif
+
 private:
+    int socketFD = -1;
+#ifdef HAS_ASIO
+    std::unique_ptr<asio::ip::tcp::socket> m_AsioSocket;
+#endif
     std::string m_Id;
     uint32_t m_NetworkId = 0;
     State m_State = State::Disconnected;

@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 
+#ifdef HAS_MONO
 // Internal Calls
 // void CS_Log(string message)
 static void CS_Log(MonoString* message) {
@@ -23,6 +24,7 @@ CSharpScriptSystem::~CSharpScriptSystem() {
 }
 
 void CSharpScriptSystem::Init() {
+#ifdef HAS_MONO
     if (m_RootDomain) return;
 
     // Set path to mono libraries if needed (or rely on system path)
@@ -41,9 +43,13 @@ void CSharpScriptSystem::Init() {
     std::cout << "CSharpScriptSystem Initialized (Mono)" << std::endl;
     
     RegisterInternalCalls();
+#else
+    std::cout << "CSharpScriptSystem: Mono not found, scripting disabled." << std::endl;
+#endif
 }
 
 void CSharpScriptSystem::Shutdown() {
+#ifdef HAS_MONO
     if (m_Domain) {
         // mono_domain_unload(m_Domain); // Can cause issues if unloaded incorrectly, often skip in game engines
         m_Domain = nullptr;
@@ -53,6 +59,7 @@ void CSharpScriptSystem::Shutdown() {
         mono_jit_cleanup(m_RootDomain);
         m_RootDomain = nullptr;
     }
+#endif
 }
 
 void CSharpScriptSystem::Update(float deltaTime) {
@@ -62,14 +69,17 @@ void CSharpScriptSystem::Update(float deltaTime) {
 bool CSharpScriptSystem::RunScript(const std::string& filepath) {
     // In C#, "running a script" usually means loading an assembly.
     // If filepath ends in .dll, load it.
+#ifdef HAS_MONO
     if (filepath.find(".dll") != std::string::npos) {
         LoadAssembly(filepath);
         return m_GameAssembly != nullptr;
     }
+#endif
     return false;
 }
 
 void CSharpScriptSystem::LoadAssembly(const std::string& path) {
+#ifdef HAS_MONO
     if (!std::filesystem::exists(path)) {
         std::cerr << "Assembly not found: " << path << std::endl;
         return;
@@ -106,12 +116,16 @@ void CSharpScriptSystem::LoadAssembly(const std::string& path) {
         m_GameAssemblyImage = mono_assembly_get_image(m_GameAssembly);
         std::cout << "Loaded Assembly: " << path << std::endl;
     }
+#endif
 }
 
 void CSharpScriptSystem::RegisterInternalCalls() {
+#ifdef HAS_MONO
     mono_add_internal_call("GameEngine.Debug::Log", CS_Log);
+#endif
 }
 
+#ifdef HAS_MONO
 MonoObject* CSharpScriptSystem::CreateObject(const std::string& namespaceName, const std::string& className) {
     if (!m_GameAssemblyImage) return nullptr;
 
@@ -122,3 +136,4 @@ MonoObject* CSharpScriptSystem::CreateObject(const std::string& namespaceName, c
     mono_runtime_object_init(obj);
     return obj;
 }
+#endif

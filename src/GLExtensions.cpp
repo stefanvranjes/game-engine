@@ -48,6 +48,7 @@ PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage = nullptr;
 PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer = nullptr;
 PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers = nullptr;
 PFNGLTEXIMAGE3DPROC glTexImage3D = nullptr;
+PFNGLTEXSUBIMAGE3DPROC glTexSubImage3D = nullptr;
 PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer = nullptr;
 PFNGLTEXSTORAGE2DPROC glTexStorage2D = nullptr;
 
@@ -80,6 +81,9 @@ PFNGLMAPBUFFERPROC glMapBuffer = nullptr;
 PFNGLUNMAPBUFFERPROC glUnmapBuffer = nullptr;
 PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData = nullptr;
 PFNGLCLEARBUFFERDATAPROC glClearBufferData = nullptr;
+PFNGLCLEARTEXIMAGEPROC glClearTexImage = nullptr;
+PFNGLDEBUGMESSAGEINSERTPROC glDebugMessageInsert = nullptr;
+bool GLAD_GL_KHR_debug = false;
 
 
 bool LoadGLExtensions() {
@@ -129,6 +133,7 @@ bool LoadGLExtensions() {
     glFramebufferRenderbuffer = (PFNGLFRAMEBUFFERRENDERBUFFERPROC)wglGetProcAddress("glFramebufferRenderbuffer");
     glDeleteRenderbuffers = (PFNGLDELETERENDERBUFFERSPROC)wglGetProcAddress("glDeleteRenderbuffers");
     glTexImage3D = (PFNGLTEXIMAGE3DPROC)wglGetProcAddress("glTexImage3D");
+    glTexSubImage3D = (PFNGLTEXSUBIMAGE3DPROC)wglGetProcAddress("glTexSubImage3D");
     glFramebufferTextureLayer = (PFNGLFRAMEBUFFERTEXTURELAYERPROC)wglGetProcAddress("glFramebufferTextureLayer");
     glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
     
@@ -161,6 +166,12 @@ bool LoadGLExtensions() {
     glUnmapBuffer = (PFNGLUNMAPBUFFERPROC)wglGetProcAddress("glUnmapBuffer");
     glGetBufferSubData = (PFNGLGETBUFFERSUBDATAPROC)wglGetProcAddress("glGetBufferSubData");
     glClearBufferData = (PFNGLCLEARBUFFERDATAPROC)wglGetProcAddress("glClearBufferData");
+    glClearTexImage = (PFNGLCLEARTEXIMAGEPROC)wglGetProcAddress("glClearTexImage");
+    glDebugMessageInsert = (PFNGLDEBUGMESSAGEINSERTPROC)wglGetProcAddress("glDebugMessageInsert");
+
+    if (glDebugMessageInsert) {
+        GLAD_GL_KHR_debug = true;
+    }
     
     // Note: Compute shader functions are optional (OpenGL 4.3+)
     // We don't fail if they're not available, but log a warning

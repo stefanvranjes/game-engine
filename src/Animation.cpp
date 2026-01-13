@@ -16,17 +16,17 @@ Mat4 Quaternion::ToMatrix() const {
     float wy = w * y;
     float wz = w * z;
     
-    result.m[0][0] = 1.0f - 2.0f * (yy + zz);
-    result.m[0][1] = 2.0f * (xy + wz);
-    result.m[0][2] = 2.0f * (xz - wy);
+    result.m[0] = 1.0f - 2.0f * (yy + zz);
+    result.m[1] = 2.0f * (xy + wz);
+    result.m[2] = 2.0f * (xz - wy);
     
-    result.m[1][0] = 2.0f * (xy - wz);
-    result.m[1][1] = 1.0f - 2.0f * (xx + zz);
-    result.m[1][2] = 2.0f * (yz + wx);
+    result.m[4] = 2.0f * (xy - wz);
+    result.m[5] = 1.0f - 2.0f * (xx + zz);
+    result.m[6] = 2.0f * (yz + wx);
     
-    result.m[2][0] = 2.0f * (xz + wy);
-    result.m[2][1] = 2.0f * (yz - wx);
-    result.m[2][2] = 1.0f - 2.0f * (xx + yy);
+    result.m[8] = 2.0f * (xz + wy);
+    result.m[9] = 2.0f * (yz - wx);
+    result.m[10] = 1.0f - 2.0f * (xx + yy);
     
     return result;
 }
@@ -84,6 +84,39 @@ void Quaternion::Normalize() {
         z /= length;
         w /= length;
     }
+}
+
+Quaternion Quaternion::FromTo(const Vec3& from, const Vec3& to) {
+    Vec3 f = from.Normalized();
+    Vec3 t = to.Normalized();
+
+    float dot = f.Dot(t);
+    if (dot >= 1.0f) {
+        return Quaternion(0, 0, 0, 1);
+    }
+    if (dot <= -1.0f) {
+        // Find an orthogonal axis and rotate 180 degrees
+        Vec3 axis = Vec3(1, 0, 0).Cross(f);
+        if (axis.LengthSquared() < 0.001f) {
+            axis = Vec3(0, 1, 0).Cross(f);
+        }
+        axis = axis.Normalized();
+        return Quaternion(axis.x, axis.y, axis.z, 0);
+    }
+
+    float s = sqrtf((1.0f + dot) * 2.0f);
+    float invs = 1.0f / s;
+    Vec3 c = f.Cross(t);
+    return Quaternion(c.x * invs, c.y * invs, c.z * invs, s * 0.5f);
+}
+
+Quaternion Quaternion::operator*(const Quaternion& other) const {
+    return Quaternion(
+        w * other.x + x * other.w + y * other.z - z * other.y,
+        w * other.y - x * other.z + y * other.w + z * other.x,
+        w * other.z + x * other.y - y * other.x + z * other.w,
+        w * other.w - x * other.x - y * other.y - z * other.z
+    );
 }
 
 // AnimationChannel implementation
@@ -162,14 +195,14 @@ const AnimationChannel* Animation::GetChannelForBone(int boneIndex) const {
 // Matrix decomposition for blending
 void DecomposeMatrix(const Mat4& matrix, Vec3& translation, Quaternion& rotation, Vec3& scale) {
     // Extract translation (last column)
-    translation.x = matrix.m[3][0];
-    translation.y = matrix.m[3][1];
-    translation.z = matrix.m[3][2];
+    translation.x = matrix.m[12];
+    translation.y = matrix.m[13];
+    translation.z = matrix.m[14];
     
     // Extract scale (length of each column vector)
-    Vec3 col0(matrix.m[0][0], matrix.m[0][1], matrix.m[0][2]);
-    Vec3 col1(matrix.m[1][0], matrix.m[1][1], matrix.m[1][2]);
-    Vec3 col2(matrix.m[2][0], matrix.m[2][1], matrix.m[2][2]);
+    Vec3 col0(matrix.m[0], matrix.m[1], matrix.m[2]);
+    Vec3 col1(matrix.m[4], matrix.m[5], matrix.m[6]);
+    Vec3 col2(matrix.m[8], matrix.m[9], matrix.m[10]);
     
     scale.x = std::sqrt(col0.x * col0.x + col0.y * col0.y + col0.z * col0.z);
     scale.y = std::sqrt(col1.x * col1.x + col1.y * col1.y + col1.z * col1.z);
@@ -178,47 +211,47 @@ void DecomposeMatrix(const Mat4& matrix, Vec3& translation, Quaternion& rotation
     // Remove scale from rotation matrix
     Mat4 rotMatrix = matrix;
     if (scale.x > 0.0001f) {
-        rotMatrix.m[0][0] /= scale.x;
-        rotMatrix.m[0][1] /= scale.x;
-        rotMatrix.m[0][2] /= scale.x;
+        rotMatrix.m[0] /= scale.x;
+        rotMatrix.m[1] /= scale.x;
+        rotMatrix.m[2] /= scale.x;
     }
     if (scale.y > 0.0001f) {
-        rotMatrix.m[1][0] /= scale.y;
-        rotMatrix.m[1][1] /= scale.y;
-        rotMatrix.m[1][2] /= scale.y;
+        rotMatrix.m[4] /= scale.y;
+        rotMatrix.m[5] /= scale.y;
+        rotMatrix.m[6] /= scale.y;
     }
     if (scale.z > 0.0001f) {
-        rotMatrix.m[2][0] /= scale.z;
-        rotMatrix.m[2][1] /= scale.z;
-        rotMatrix.m[2][2] /= scale.z;
+        rotMatrix.m[8] /= scale.z;
+        rotMatrix.m[9] /= scale.z;
+        rotMatrix.m[10] /= scale.z;
     }
     
     // Convert rotation matrix to quaternion
-    float trace = rotMatrix.m[0][0] + rotMatrix.m[1][1] + rotMatrix.m[2][2];
+    float trace = rotMatrix.m[0] + rotMatrix.m[5] + rotMatrix.m[10];
     
     if (trace > 0.0f) {
         float s = std::sqrt(trace + 1.0f) * 2.0f;
         rotation.w = 0.25f * s;
-        rotation.x = (rotMatrix.m[2][1] - rotMatrix.m[1][2]) / s;
-        rotation.y = (rotMatrix.m[0][2] - rotMatrix.m[2][0]) / s;
-        rotation.z = (rotMatrix.m[1][0] - rotMatrix.m[0][1]) / s;
-    } else if (rotMatrix.m[0][0] > rotMatrix.m[1][1] && rotMatrix.m[0][0] > rotMatrix.m[2][2]) {
-        float s = std::sqrt(1.0f + rotMatrix.m[0][0] - rotMatrix.m[1][1] - rotMatrix.m[2][2]) * 2.0f;
-        rotation.w = (rotMatrix.m[2][1] - rotMatrix.m[1][2]) / s;
+        rotation.x = (rotMatrix.m[9] - rotMatrix.m[6]) / s;
+        rotation.y = (rotMatrix.m[2] - rotMatrix.m[8]) / s;
+        rotation.z = (rotMatrix.m[4] - rotMatrix.m[1]) / s;
+    } else if (rotMatrix.m[0] > rotMatrix.m[5] && rotMatrix.m[0] > rotMatrix.m[10]) {
+        float s = std::sqrt(1.0f + rotMatrix.m[0] - rotMatrix.m[5] - rotMatrix.m[10]) * 2.0f;
+        rotation.w = (rotMatrix.m[9] - rotMatrix.m[6]) / s;
         rotation.x = 0.25f * s;
-        rotation.y = (rotMatrix.m[0][1] + rotMatrix.m[1][0]) / s;
-        rotation.z = (rotMatrix.m[0][2] + rotMatrix.m[2][0]) / s;
-    } else if (rotMatrix.m[1][1] > rotMatrix.m[2][2]) {
-        float s = std::sqrt(1.0f + rotMatrix.m[1][1] - rotMatrix.m[0][0] - rotMatrix.m[2][2]) * 2.0f;
-        rotation.w = (rotMatrix.m[0][2] - rotMatrix.m[2][0]) / s;
-        rotation.x = (rotMatrix.m[0][1] + rotMatrix.m[1][0]) / s;
+        rotation.y = (rotMatrix.m[1] + rotMatrix.m[4]) / s;
+        rotation.z = (rotMatrix.m[2] + rotMatrix.m[8]) / s;
+    } else if (rotMatrix.m[5] > rotMatrix.m[10]) {
+        float s = std::sqrt(1.0f + rotMatrix.m[5] - rotMatrix.m[0] - rotMatrix.m[10]) * 2.0f;
+        rotation.w = (rotMatrix.m[2] - rotMatrix.m[8]) / s;
+        rotation.x = (rotMatrix.m[1] + rotMatrix.m[4]) / s;
         rotation.y = 0.25f * s;
-        rotation.z = (rotMatrix.m[1][2] + rotMatrix.m[2][1]) / s;
+        rotation.z = (rotMatrix.m[6] + rotMatrix.m[9]) / s;
     } else {
-        float s = std::sqrt(1.0f + rotMatrix.m[2][2] - rotMatrix.m[0][0] - rotMatrix.m[1][1]) * 2.0f;
-        rotation.w = (rotMatrix.m[1][0] - rotMatrix.m[0][1]) / s;
-        rotation.x = (rotMatrix.m[0][2] + rotMatrix.m[2][0]) / s;
-        rotation.y = (rotMatrix.m[1][2] + rotMatrix.m[2][1]) / s;
+        float s = std::sqrt(1.0f + rotMatrix.m[10] - rotMatrix.m[0] - rotMatrix.m[5]) * 2.0f;
+        rotation.w = (rotMatrix.m[4] - rotMatrix.m[1]) / s;
+        rotation.x = (rotMatrix.m[2] + rotMatrix.m[8]) / s;
+        rotation.y = (rotMatrix.m[6] + rotMatrix.m[9]) / s;
         rotation.z = 0.25f * s;
     }
     
@@ -231,22 +264,22 @@ Mat4 ComposeMatrix(const Vec3& translation, const Quaternion& rotation, const Ve
     Mat4 result = rotation.ToMatrix();
     
     // Apply scale
-    result.m[0][0] *= scale.x;
-    result.m[0][1] *= scale.x;
-    result.m[0][2] *= scale.x;
+    result.m[0] *= scale.x;
+    result.m[1] *= scale.x;
+    result.m[2] *= scale.x;
     
-    result.m[1][0] *= scale.y;
-    result.m[1][1] *= scale.y;
-    result.m[1][2] *= scale.y;
+    result.m[4] *= scale.y;
+    result.m[5] *= scale.y;
+    result.m[6] *= scale.y;
     
-    result.m[2][0] *= scale.z;
-    result.m[2][1] *= scale.z;
-    result.m[2][2] *= scale.z;
+    result.m[8] *= scale.z;
+    result.m[9] *= scale.z;
+    result.m[10] *= scale.z;
     
     // Apply translation
-    result.m[3][0] = translation.x;
-    result.m[3][1] = translation.y;
-    result.m[3][2] = translation.z;
+    result.m[12] = translation.x;
+    result.m[13] = translation.y;
+    result.m[14] = translation.z;
     
     return result;
 }

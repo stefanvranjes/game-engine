@@ -1,4 +1,4 @@
-#include "MaterialNew.h"
+#include "Material.h"
 #include "TextureManager.h"
 #include <fstream>
 #include <sstream>
@@ -99,3 +99,11 @@ bool Material::LoadFromFile(const std::string& filepath, TextureManager* texMana
 
 // Setters are defined inline in MaterialNew.h
 // Duplicate definitions removed. Implemented in header.
+
+void Material::SetMyAlpha(float opacity) {
+    SetOpacity(opacity);
+}
+
+void Material::SetMyTrans(bool transparent) {
+    SetIsTransparent(transparent);
+}

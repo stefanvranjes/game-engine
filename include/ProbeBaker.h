@@ -3,6 +3,7 @@
 #include <vector>
 #include <atomic>
 #include <memory>
+#include <thread>
 #include <glm/glm.hpp>
 #include "ProbeGrid.h"
 

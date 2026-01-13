@@ -1,6 +1,6 @@
 #pragma once
 
-#include "MaterialNew.h"
+#include "Material.h"
 #include <map>
 #include <string>
 #include <memory>

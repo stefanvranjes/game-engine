@@ -1,5 +1,6 @@
 #include "Shader.h"
 #include "GLExtensions.h"
+#include <glm/glm.hpp>
 #include <GLFW/glfw3.h>
 #include <fstream>
 #include <sstream>
@@ -312,6 +313,22 @@ void Shader::SetVec3(const std::string& name, float x, float y, float z) {
 
 void Shader::SetVec4(const std::string& name, float x, float y, float z, float w) {
     glUniform4f(GetUniformLocation(name), x, y, z, w);
+}
+
+void Shader::SetVec3(const std::string& name, const glm::vec3& value) {
+    glUniform3f(GetUniformLocation(name), value.x, value.y, value.z);
+}
+
+void Shader::SetVec3(const std::string& name, const Vec3& value) {
+    glUniform3f(GetUniformLocation(name), value.x, value.y, value.z);
+}
+
+void Shader::SetVec4(const std::string& name, const glm::vec4& value) {
+    glUniform4f(GetUniformLocation(name), value.x, value.y, value.z, value.w);
+}
+
+void Shader::SetVec4(const std::string& name, const Vec4& value) {
+    glUniform4f(GetUniformLocation(name), value.x, value.y, value.z, value.w);
 }
 
 void Shader::SetMat4(const std::string& name, const float* value) {

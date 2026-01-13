@@ -3,7 +3,7 @@
 #include <cmath>
 
 Mat4 TransformComponent::GetLocalMatrix() const {
-    Mat4 translation = Mat4::Translation(m_Position);
+    Mat4 translation = Mat4::Translate(m_Position);
     Mat4 rotation = Mat4::FromQuaternion(m_Rotation);
     Mat4 scale = Mat4::Scale(m_Scale);
     return translation * rotation * scale;

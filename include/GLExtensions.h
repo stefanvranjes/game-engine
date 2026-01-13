@@ -138,6 +138,23 @@
 #define GL_FUNC_SUBTRACT 0x800A
 #define GL_FUNC_REVERSE_SUBTRACT 0x800B
 #define GL_ONE 1
+#define GL_TEXTURE_3D 0x806F
+#define GL_RGBA8 0x8058
+#define GL_RED 0x1903
+#define GL_RG 0x8227
+#define GL_RGB 0x1907
+#define GL_RGBA 0x1908
+#define GL_R32F 0x822E
+#define GL_R32UI 0x8236
+#define GL_R32I 0x8235
+#define GL_RGBA32F 0x8814
+#define GL_RED_INTEGER 0x8D94
+#define GL_DEBUG_SOURCE_APPLICATION 0x9146
+#define GL_DEBUG_TYPE_MARKER 0x912B
+#define GL_DEBUG_SEVERITY_NOTIFICATION 0x826B
+#define GL_DEBUG_SOURCE_API 0x8246
+#define GL_DEBUG_TYPE_ERROR 0x824C
+#define GL_DEBUG_SEVERITY_HIGH 0x9146
 
 // OpenGL 4.3+ Compute Shader constants
 #define GL_COMPUTE_SHADER 0x91B9
@@ -234,6 +251,7 @@ typedef void (APIENTRYP PFNGLRENDERBUFFERSTORAGEPROC) (GLenum target, GLenum int
 typedef void (APIENTRYP PFNGLFRAMEBUFFERRENDERBUFFERPROC) (GLenum target, GLenum attachment, GLenum renderbuffertarget, GLuint renderbuffer);
 typedef void (APIENTRYP PFNGLDELETERENDERBUFFERSPROC) (GLsizei n, const GLuint *renderbuffers);
 typedef void (APIENTRYP PFNGLTEXIMAGE3DPROC) (GLenum target, GLint level, GLint internalformat, GLsizei width, GLsizei height, GLsizei depth, GLint border, GLenum format, GLenum type, const void *pixels);
+typedef void (APIENTRYP PFNGLTEXSUBIMAGE3DPROC) (GLenum target, GLint level, GLint xoffset, GLint yoffset, GLint zoffset, GLsizei width, GLsizei height, GLsizei depth, GLenum format, GLenum type, const void *pixels);
 typedef void (APIENTRYP PFNGLFRAMEBUFFERTEXTURELAYERPROC) (GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer);
 
 // Query Object Extensions
@@ -298,9 +316,8 @@ extern PFNGLRENDERBUFFERSTORAGEPROC glRenderbufferStorage;
 extern PFNGLFRAMEBUFFERRENDERBUFFERPROC glFramebufferRenderbuffer;
 extern PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers;
 extern PFNGLTEXIMAGE3DPROC glTexImage3D;
-extern PFNGLTEXIMAGE3DPROC glTexImage3D;
+extern PFNGLTEXSUBIMAGE3DPROC glTexSubImage3D;
 extern PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer;
-extern PFNGLTEXIMAGE3DPROC glTexImage3D;
 
 typedef void (APIENTRYP PFNGLTEXSTORAGE2DPROC) (GLenum target, GLsizei levels, GLenum internalformat, GLsizei width, GLsizei height);
 extern PFNGLTEXSTORAGE2DPROC glTexStorage2D;
@@ -369,6 +386,14 @@ extern PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData;
 
 typedef void (APIENTRYP PFNGLCLEARBUFFERDATAPROC) (GLenum target, GLenum internalformat, GLenum format, GLenum type, const void *data);
 extern PFNGLCLEARBUFFERDATAPROC glClearBufferData;
+
+typedef void (APIENTRYP PFNGLCLEARTEXIMAGEPROC) (GLuint texture, GLint level, GLenum format, GLenum type, const void *data);
+extern PFNGLCLEARTEXIMAGEPROC glClearTexImage;
+
+typedef void (APIENTRYP PFNGLDEBUGMESSAGEINSERTPROC) (GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *buf);
+extern PFNGLDEBUGMESSAGEINSERTPROC glDebugMessageInsert;
+
+extern bool GLAD_GL_KHR_debug;
 
 // Function to load OpenGL extensions
 bool LoadGLExtensions();

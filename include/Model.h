@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Mesh.h"
-#include "MaterialNew.h"
+#include "Material.h"
 #include "Shader.h"
 #include "TextureManager.h"
 #include <vector>

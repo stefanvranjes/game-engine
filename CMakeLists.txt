@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 project(GameEngine VERSION 0.1.0 LANGUAGES CXX C)
 
@@ -11,6 +12,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_compile_definitions(NOMINMAX)
 add_compile_definitions(WIN32_LEAN_AND_MEAN)
+add_compile_definitions(TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION)
+add_compile_definitions(TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION)
 
 # Build type defaults
 if(NOT CMAKE_BUILD_TYPE)
@@ -126,13 +129,12 @@ if(NOT miniaudio_populated)
 endif()
 
 # Fetch ENet
-# Fetch ENet - DISABLED
-# FetchContent_Declare(
-#     enet
-#     GIT_REPOSITORY https://github.com/lsalzman/enet.git
-#     GIT_TAG v7.19
-# )
-# FetchContent_MakeAvailable(enet)
+FetchContent_Declare(
+    enet
+    GIT_REPOSITORY https://github.com/lsalzman/enet.git
+    GIT_TAG v1.3.17
+)
+FetchContent_MakeAvailable(enet)
 
 # Fetch Assimp (Open Asset Import Library)
 FetchContent_Declare(
@@ -295,7 +297,14 @@ FetchContent_MakeAvailable(pybind11)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 # Find Mono
-# find_package(Mono REQUIRED)
+find_package(Mono)
+if(MONO_FOUND)
+    message(STATUS "Found Mono: ${MONO_LIBRARIES}")
+    set(HAS_MONO TRUE)
+else()
+    message(STATUS "Mono not found, C# scripting will be disabled")
+    set(HAS_MONO FALSE)
+endif()
 set(IMGUI_SOURCES
     src/imgui/imgui.cpp
     src/imgui/imgui_draw.cpp
@@ -340,14 +349,37 @@ add_executable(GameEngine
     src/PreviewRenderer.cpp
     src/Material.cpp
     src/Decal.cpp
-    # Animation system - DISABLED
-    # src/Animator.cpp
-    # src/Animation.cpp
-    # src/AnimationStateMachine.cpp
-    # src/BlendTree.cpp
-    # src/BlendTreeEditor.cpp
+    # Animation system
+    src/Animator.cpp
+    src/Animation.cpp
+    src/AnimationStateMachine.cpp
+    src/BlendTree.cpp
+    src/BlendCurve.cpp
+    src/Bone.cpp
+    src/BoneMask.cpp
+    src/ECS/EntityManager.cpp
+    src/ECS/Systems.cpp
+    src/ECS/GameSystems.cpp
+    src/ECS/Components.cpp
+    src/AssetHotReloadManager.cpp
+    src/Profiler.cpp
+    src/PerformanceMonitor.cpp
+    src/GpuProfiler.cpp
+    src/Tools/PerformanceProfiler.cpp
+    src/TelemetryServer.cpp
+    src/IK.cpp
+    src/FileWatcher.cpp
+    src/BlendTreeEditor.cpp
+)
+
+# Force tinygltf to not include STB implementation again
+if(TARGET tinygltf)
+    target_compile_definitions(tinygltf PRIVATE TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION)
+endif()
+
+set(SOURCES ${SOURCES}
     src/CollisionShape.cpp
-    # src/CollisionDemo.cpp
+    src/CollisionDemo.cpp
     src/ParticleTrail.cpp
     src/ParticleEmitter.cpp
     src/ParticleSystem.cpp
@@ -363,26 +395,25 @@ add_executable(GameEngine
     src/AudioSystem.cpp
     src/AudioSource.cpp
     # Global Illumination system
-    # Global Illumination system
-    # src/GlobalIllumination.cpp
-    # src/VoxelGrid.cpp
-    # src/LightPropagationVolume.cpp
-    # src/ProbeGrid.cpp
-    # src/ProbeBaker.cpp
-    # Advanced audio features - DISABLED
-    # src/AudioMixer.cpp
+    src/GlobalIllumination.cpp
+    src/VoxelGrid.cpp
+    src/LightPropagationVolume.cpp
+    src/ProbeGrid.cpp
+    src/ProbeBaker.cpp
+    # Advanced audio features
+    src/AudioMixer.cpp
     src/AudioSpatializer.cpp
     src/AudioOcclusion.cpp
     src/ImpactAudioSystem.cpp
     src/ContinuousAudioSystem.cpp
     src/ClothAudioSystem.cpp
-    # Resource streaming and virtual filesystem - DISABLED
-    # src/VirtualFileSystem.cpp
-    # src/ResourceStreamingManager.cpp
-    # src/AssetPackage.cpp
-    # Profiling and telemetry - DISABLED due to missing dependencies
-    # src/Profiler.cpp
-    # src/TelemetryServer.cpp
+    # Resource streaming and virtual filesystem
+    src/VirtualFileSystem.cpp
+    src/ResourceStreamingManager.cpp
+    src/AssetPackage.cpp
+    # Profiling and telemetry
+    src/Profiler.cpp
+    src/TelemetryServer.cpp
     # Physics system
     src/PhysicsSystem.cpp
     src/RigidBody.cpp
@@ -402,26 +433,26 @@ add_executable(GameEngine
     # Scripting System
     src/ScriptSystem.cpp
     src/PythonScriptSystem.cpp
-    # src/CSharpScriptSystem.cpp
+    src/CSharpScriptSystem.cpp
     src/CustomScriptSystem.cpp
     src/VirtualMachine.cpp
     src/ScriptComponent.cpp
-    # Asset pipeline - incremental builds, hashing, and conversion - DISABLED
-    # src/AssetHash.cpp
-    # src/AssetDatabase.cpp
-    # src/AssetConverter.cpp
-    # src/AssetPipeline.cpp
-    # Networking layer - integrated into main engine (DISABLED)
-    # game-engine-multiplayer/src/NetworkManager.cpp
-    # game-engine-multiplayer/src/Server.cpp
-    # game-engine-multiplayer/src/Client.cpp
-    # game-engine-multiplayer/src/Message.cpp
-    # game-engine-multiplayer/src/Peer.cpp
-    # game-engine-multiplayer/src/serialization/Serializer.cpp
-    # Hybrid deferred+forward rendering with GPU culling - DISABLED
-    # src/RenderPass.cpp
-    # src/HybridRenderer.cpp
-    # src/GPUCullingSystem.cpp
+    # Asset pipeline - incremental builds, hashing, and conversion
+    src/AssetHash.cpp
+    src/AssetDatabase.cpp
+    src/AssetConverter.cpp
+    src/AssetPipeline.cpp
+    # Networking layer - integrated into main engine
+    game-engine-multiplayer/src/NetworkManager.cpp
+    game-engine-multiplayer/src/Server.cpp
+    game-engine-multiplayer/src/Client.cpp
+    game-engine-multiplayer/src/Message.cpp
+    game-engine-multiplayer/src/Peer.cpp
+    game-engine-multiplayer/src/serialization/Serializer.cpp
+    # Hybrid deferred+forward rendering with GPU culling
+    src/RenderPass.cpp
+    src/HybridRenderer.cpp
+    src/GPUCullingSystem.cpp
     # Adaptive Quality System
     src/PerformanceMonitor.cpp
     src/AdaptiveQualityController.cpp
@@ -444,15 +475,15 @@ add_executable(GameEngine
     src/NetworkManagerASIO.cpp
     src/NetworkManagerReliability.cpp
     src/NetworkManagerBandwidth.cpp
-    # src/DistributedBatchManager.cpp
-    # src/DistributedBatchManagerFaultTolerance.cpp
-    # src/DistributedBatchManagerFailover.cpp
-    # src/DistributedBatchManagerSync.cpp
-    # src/DistributedBatchManagerResults.cpp
-    # src/DistributedBatchManagerRegistration.cpp
-    # src/DistributedBatchManagerHierarchical.cpp
+    src/DistributedBatchManager.cpp
+    src/DistributedBatchManagerFaultTolerance.cpp
+    src/DistributedBatchManagerFailover.cpp
+    src/DistributedBatchManagerSync.cpp
+    src/DistributedBatchManagerResults.cpp
+    src/DistributedBatchManagerRegistration.cpp
+    src/DistributedBatchManagerHierarchical.cpp
     src/CloudProvider.cpp
-    # src/StateSerializer.cpp
+    src/StateSerializer.cpp
     src/ProtobufSerializer.cpp
     src/SoftBodyLOD.cpp
     src/SoftBodyLODManager.cpp
@@ -475,6 +506,16 @@ set(SOURCES ${SOURCES}
 
 # Add ImGui sources to GameEngine target
 target_sources(GameEngine PRIVATE ${IMGUI_SOURCES})
+
+# Add the rest of the engine sources
+target_sources(GameEngine PRIVATE ${SOURCES})
+
+# Force tinygltf to not include STB implementation again again
+if(TARGET tinygltf)
+    target_compile_definitions(tinygltf PUBLIC TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION)
+endif()
+add_compile_definitions(TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION)
+add_compile_definitions(TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION)
 
 
 # Find PhysX
@@ -699,6 +740,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         PhysXExtensions
         PhysXCharacterKinematic
         PhysXVehicle
+        enet
     )
     
     # Link CUDA runtime if available
@@ -751,6 +793,7 @@ elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
         lua 
         pybind11::embed 
         glm::glm
+        enet
     )
 else()
     target_link_libraries(GameEngine PRIVATE 
@@ -767,7 +810,14 @@ else()
         lua 
         pybind11::embed 
         glm::glm
+        enet
     )
+endif()
+
+# Optional Mono support
+if(HAS_MONO)
+    target_compile_definitions(GameEngine PRIVATE HAS_MONO)
+    target_link_libraries(GameEngine PRIVATE ${MONO_LIBRARIES})
 endif()
 
 # Copy assets to build directory

@@ -2,6 +2,7 @@
 
 #include "Vec3.h"
 #include "Vec4.h"
+#include "Quat.h"
 #include <cmath>
 #include <cstring>
 
@@ -21,6 +22,41 @@ public:
     static Mat4 Identity() {
         Mat4 result;
         result.SetIdentity();
+        return result;
+    }
+
+    static Mat4 FromQuaternion(const struct Quat& q) {
+        Mat4 result;
+        float xx = q.x * q.x;
+        float yy = q.y * q.y;
+        float zz = q.z * q.z;
+        float xy = q.x * q.y;
+        float xz = q.x * q.z;
+        float yz = q.y * q.z;
+        float wx = q.w * q.x;
+        float wy = q.w * q.y;
+        float wz = q.w * q.z;
+
+        result.m[0] = 1.0f - 2.0f * (yy + zz);
+        result.m[1] = 2.0f * (xy + wz);
+        result.m[2] = 2.0f * (xz - wy);
+        result.m[3] = 0.0f;
+
+        result.m[4] = 2.0f * (xy - wz);
+        result.m[5] = 1.0f - 2.0f * (xx + zz);
+        result.m[6] = 2.0f * (yz + wx);
+        result.m[7] = 0.0f;
+
+        result.m[8] = 2.0f * (xz + wy);
+        result.m[9] = 2.0f * (yz - wx);
+        result.m[10] = 1.0f - 2.0f * (xx + yy);
+        result.m[11] = 0.0f;
+
+        result.m[12] = 0.0f;
+        result.m[13] = 0.0f;
+        result.m[14] = 0.0f;
+        result.m[15] = 1.0f;
+
         return result;
     }
 
@@ -289,11 +325,11 @@ public:
                   m[12] * m[3] * m[5];
 
         inv[14] = -m[0]  * m[5] * m[14] + 
-                   m[0]  * m[6] * m[13] + 
-                   m[4]  * m[1] * m[14] - 
-                   m[4]  * m[2] * m[13] - 
-                   m[12] * m[1] * m[6] + 
-                   m[12] * m[2] * m[5];
+                    m[0]  * m[6] * m[13] + 
+                    m[4]  * m[1] * m[14] - 
+                    m[4]  * m[2] * m[13] - 
+                    m[12] * m[1] * m[6] + 
+                    m[12] * m[2] * m[5];
 
         inv[3] = -m[1] * m[6] * m[11] + 
                   m[1] * m[7] * m[10] + 

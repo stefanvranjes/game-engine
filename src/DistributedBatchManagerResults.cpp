@@ -318,20 +318,6 @@ void DistributedBatchManager::ParseBatchResultMessage(const NetworkManager::Mess
     }
 }
 
-// Update HandleMasterMessage to process batch results
-void DistributedBatchManager::HandleMasterMessage(int nodeId, const NetworkManager::Message& msg) {
-    switch (msg.type) {
-        case NetworkManager::MessageType::BATCH_RESULT:
-            ParseBatchResultMessage(msg);
-            break;
-            
-        // ... existing cases ...
-        
-        default:
-            break;
-    }
-}
-
 // Result timeout monitoring
 void DistributedBatchManager::MonitorResultTimeouts() {
     while (m_Impl->running) {

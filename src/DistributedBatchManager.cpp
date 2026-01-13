@@ -153,8 +153,8 @@ void DistributedBatchManager::RemoveSoftBody(PhysXSoftBody* softBody) {
 
 void DistributedBatchManager::ProcessBatches(float deltaTime) {
     if (m_Impl->role == NodeRole::STANDALONE) {
-        m_Impl->localBatchManager->BatchCopyData();
-        m_Impl->localBatchManager->BatchApplyData();
+        m_Impl->localBatchManager->BatchCopyData(nullptr);
+        m_Impl->localBatchManager->BatchApplyData(nullptr);
         return;
     }
     
@@ -419,7 +419,7 @@ void DistributedBatchManager::PerformBatchMigration(uint32_t batchId,
     // Track migration
     std::lock_guard<std::mutex> lock(m_Impl->migrationMutex);
     
-    Impl::MigrationRecord record;
+    MigrationRecord record;
     record.batchId = batchId;
     record.sourceNode = sourceNode;
     record.targetNode = targetNode;
@@ -509,33 +509,73 @@ DistributedBatchManager::NodeRole DistributedBatchManager::GetNodeRole() const {
     return m_Impl->role;
 }
 
-// Message handlers (to be implemented)
+// Message handlers
 void DistributedBatchManager::HandleMasterMessage(int nodeId, const NetworkManager::Message& msg) {
-    // Handle messages received by master
+    if (m_Impl->role != NodeRole::MASTER) return;
+
     switch (msg.type) {
         case NetworkManager::MessageType::NODE_REGISTER:
-            // Register new worker
+            HandleNodeRegistration(nodeId, msg);
             break;
+            
+        case NetworkManager::MessageType::NODE_UNREGISTER:
+            HandleNodeUnregistration(nodeId, msg);
+            break;
+
         case NetworkManager::MessageType::BATCH_RESULT:
-            // Handle batch completion
+            ParseBatchResultMessage(msg);
             break;
+            
+        case NetworkManager::MessageType::HEARTBEAT:
+            HandleHeartbeat(nodeId, msg);
+            break;
+            
         case NetworkManager::MessageType::LOAD_REPORT:
-            // Update worker load
+            // Extract load from message and update
+            UpdateWorkerLoad(nodeId, 0.5f); // Placeholder
             break;
+
+        case NetworkManager::MessageType::STATE_SYNC_FULL:
+            HandleStateSyncFull(nodeId, msg);
+            break;
+
+        case NetworkManager::MessageType::STATE_SYNC_DELTA:
+            HandleStateSyncDelta(nodeId, msg);
+            break;
+
+        case NetworkManager::MessageType::VOTE_REQUEST:
+            HandleVoteRequest(nodeId, msg);
+            break;
+
+        case NetworkManager::MessageType::VOTE_RESPONSE:
+            HandleVoteResponse(nodeId, msg);
+            break;
+
         default:
             break;
     }
 }
 
 void DistributedBatchManager::HandleWorkerMessage(int nodeId, const NetworkManager::Message& msg) {
-    // Handle messages received by worker
+    if (m_Impl->role != NodeRole::WORKER) return;
+
     switch (msg.type) {
         case NetworkManager::MessageType::BATCH_ASSIGN:
             // Process assigned batch
             break;
+            
         case NetworkManager::MessageType::MIGRATION:
             // Handle soft body migration
             break;
+
+        case NetworkManager::MessageType::STATE_SYNC_FULL:
+            HandleStateSyncFull(nodeId, msg);
+            break;
+
+        case NetworkManager::MessageType::LEADER_ANNOUNCEMENT:
+            HandleLeaderAnnouncement(nodeId, msg);
+            break;
+
         default:
             break;
     }

@@ -44,6 +44,13 @@ Renderer::Renderer()
     m_Root = std::make_shared<GameObject>("Root");
 }
 
+void Renderer::ClearScene() {
+    if (m_Root) {
+        m_Root->GetChildren().clear();
+    }
+    m_Lights.clear();
+}
+
 Renderer::~Renderer() {
     Shutdown();
 }
