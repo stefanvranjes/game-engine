@@ -1,0 +1,24 @@
+# Rust Scripting Module Template
+# Copy this as `Cargo.toml` in a Rust project to compile game script libraries
+
+[package]
+name = "game-engine-scripts"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]  # Compile as shared library (.dll/.so)
+
+[dependencies]
+# No external dependencies for minimal size
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
+
+# Example usage: cargo build --release
+# Output: target/release/game_engine_scripts.dll (Windows)
+#         target/release/libgame_engine_scripts.so (Linux)
+#         target/release/libgame_engine_scripts.dylib (macOS)
