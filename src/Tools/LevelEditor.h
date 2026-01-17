@@ -57,6 +57,8 @@ private:
     void SerializeScene(const std::string& filepath);
     std::shared_ptr<GameObject> DeserializeGameObject(const std::string& data);
     void SaveUndoState();
+    void ExportSceneAsJSON(const std::string& filepath);
+    void ExportSceneAsYAML(const std::string& filepath);
 };
 
 } // namespace Tools

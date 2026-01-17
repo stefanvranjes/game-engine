@@ -58,6 +58,13 @@ void Application::Shutdown() {
     if (m_PhysicsSystem) {
         m_PhysicsSystem->Shutdown();
     }
+    
+    // Shutdown Asset Pipeline
+    if (m_AssetPipeline) {
+        m_AssetPipeline->Shutdown();
+        m_AssetPipeline.reset();
+    }
+    
     AudioSystem::Get().Shutdown();
     RemoteProfiler::Instance().Shutdown();
     // LuaScriptSystem::GetInstance().Shutdown();
@@ -172,6 +179,36 @@ bool Application::Init() {
     m_HotReloadManager->WatchTextureDirectory("assets/");
     std::cout << "Asset Hot-Reload Manager initialized" << std::endl;
 
+    // Initialize Asset Pipeline
+    m_AssetPipeline = std::make_unique<AssetPipeline>();
+    AssetPipeline::Config config;
+    config.assetSourceDir = "assets";
+    config.assetOutputDir = "assets_processed";
+    config.databasePath = "asset_database.json";
+    config.maxThreads = 4;
+    config.verbose = true;
+    
+    if (!m_AssetPipeline->Initialize(config)) {
+        std::cerr << "Failed to initialize Asset Pipeline" << std::endl;
+        return false;
+    }
+    
+    // Scan and process assets
+    if (!m_AssetPipeline->ScanAssetDirectory(config.assetSourceDir)) {
+        std::cerr << "Failed to scan asset directory" << std::endl;
+        return false;
+    }
+    
+    // Set up progress callback for UI display
+    m_AssetPipeline->SetProgressCallback([this](float progress, const std::string& desc) {
+        // Can be used for UI progress display
+        if (progress >= 1.0f) {
+            std::cout << "Asset Pipeline: " << desc << " [Complete]" << std::endl;
+        }
+    });
+    
+    std::cout << "Asset Pipeline initialized" << std::endl;
+
     m_Running = true;
     return true;
 }
@@ -206,6 +243,15 @@ void Application::Update(float deltaTime) {
     // Update hot-reload system
     if (m_HotReloadManager) {
         m_HotReloadManager->Update();
+    }
+    
+    // Update asset pipeline (non-blocking, processes queued assets)
+    if (m_AssetPipeline) {
+        {
+            SCOPED_PROFILE("AssetPipeline::Update");
+            // Process dirty assets incrementally (this will return immediately if no assets to process)
+            m_AssetPipeline->Update();
+        }
     }
     
     // Calculate FPS

@@ -19,6 +19,7 @@
 #endif
 #include "ECS.h"
 #include "AssetHotReloadManager.h"
+#include "AssetPipeline.h"
 #include <memory>
 
 class Application {
@@ -67,6 +68,9 @@ private:
     
     // Asset Hot-Reload
     std::unique_ptr<AssetHotReloadManager> m_HotReloadManager;
+    
+    // Asset Pipeline
+    std::unique_ptr<AssetPipeline> m_AssetPipeline;
     
     // ECS Architecture
     std::unique_ptr<EntityManager> m_EntityManager;

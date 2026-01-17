@@ -141,27 +141,28 @@ option(GRAPHICS_BACKEND "Graphics backend for NVRHI: D3D12, D3D11, VULKAN" "D3D1
 message(STATUS "Graphics Backend: ${GRAPHICS_BACKEND}")
 
 # Fetch NVRHI (NVIDIA Rendering Hardware Interface)
-FetchContent_Declare(
-    nvrhi
-    GIT_REPOSITORY https://github.com/NVIDIA-Omniverse/nvrhi.git
-    GIT_TAG main
-)
-FetchContent_GetProperties(nvrhi)
-if(NOT nvrhi_populated)
-    FetchContent_Populate(nvrhi)
-    set(NVRHI_SOURCE_DIR ${nvrhi_SOURCE_DIR})
-    
-    # Build NVRHI backends based on platform
-    if(WIN32)
-        set(NVRHI_WITH_DX12 ON CACHE BOOL "" FORCE)
-        set(NVRHI_WITH_DX11 ON CACHE BOOL "" FORCE)
-    endif()
-    set(NVRHI_WITH_VULKAN ON CACHE BOOL "" FORCE)
-    set(NVRHI_WITH_OPENGL OFF CACHE BOOL "" FORCE)
-    
-    # Add NVRHI subdirectory
-    add_subdirectory(${NVRHI_SOURCE_DIR} nvrhi_build EXCLUDE_FROM_ALL)
-endif()
+# TEMPORARILY DISABLED - causing git clone failures
+# FetchContent_Declare(
+#     nvrhi
+#     GIT_REPOSITORY https://github.com/NVIDIA-Omniverse/nvrhi.git
+#     GIT_TAG main
+# )
+# FetchContent_GetProperties(nvrhi)
+# if(NOT nvrhi_populated)
+#     FetchContent_Populate(nvrhi)
+#     set(NVRHI_SOURCE_DIR ${nvrhi_SOURCE_DIR})
+#     
+#     # Build NVRHI backends based on platform
+#     if(WIN32)
+#         set(NVRHI_WITH_DX12 ON CACHE BOOL "" FORCE)
+#         set(NVRHI_WITH_DX11 ON CACHE BOOL "" FORCE)
+#     endif()
+#     set(NVRHI_WITH_VULKAN ON CACHE BOOL "" FORCE)
+#     set(NVRHI_WITH_OPENGL OFF CACHE BOOL "" FORCE)
+#    
+#     # Add NVRHI subdirectory
+#     add_subdirectory(${NVRHI_SOURCE_DIR} nvrhi_build EXCLUDE_FROM_ALL)
+# endif()
 
 # Fetch Assimp (Open Asset Import Library)
 FetchContent_Declare(
@@ -310,6 +311,35 @@ if(NOT lua_populated)
     
     # Lua needs to be compiled as C++ if being linked into C++ project with C++ exceptions potential
     target_compile_definitions(lua PUBLIC LUA_USE_WINDOWS) 
+endif()
+
+# Fetch Wren - lightweight scripting language for gameplay logic
+FetchContent_Declare(
+    wren
+    GIT_REPOSITORY https://github.com/wren-lang/wren.git
+    GIT_TAG 0.4.0
+)
+FetchContent_GetProperties(wren)
+if(NOT wren_populated)
+    FetchContent_Populate(wren)
+    
+    # Build Wren as a static library
+    file(GLOB WREN_SOURCES
+        "${wren_SOURCE_DIR}/src/vm/*.c"
+        "${wren_SOURCE_DIR}/src/compiler/*.c"
+        "${wren_SOURCE_DIR}/src/optional/*.c"
+    )
+    
+    add_library(wren STATIC ${WREN_SOURCES})
+    target_include_directories(wren PUBLIC 
+        "${wren_SOURCE_DIR}/src/include"
+    )
+    
+    # Wren configuration
+    target_compile_definitions(wren PRIVATE 
+        WREN_OPT_RANDOM=1
+        WREN_OPT_META=1
+    )
 endif()
 
 # Fetch pybind11
@@ -472,6 +502,8 @@ set(SOURCES ${SOURCES}
     src/CustomScriptSystem.cpp
     src/VirtualMachine.cpp
     src/ScriptComponent.cpp
+    src/WrenScriptSystem.cpp
+    src/WrenScriptComponent.cpp
     # Asset pipeline - incremental builds, hashing, and conversion
     src/AssetHash.cpp
     src/AssetDatabase.cpp
@@ -744,6 +776,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         ${PHYSX_ROOT_DIR}/include
         ${PXSHARED_ROOT_DIR}/include
         ${nvrhi_SOURCE_DIR}/include
+        ${wren_SOURCE_DIR}/src/include
     )
     
     # Add CUDA includes if available
@@ -763,6 +796,7 @@ elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
         ${assimp_SOURCE_DIR}/include 
         ${MONO_INCLUDE_DIRS}
         ${nvrhi_SOURCE_DIR}/include
+        ${wren_SOURCE_DIR}/src/include
     )
 else()
     target_include_directories(GameEngine PUBLIC 
@@ -774,6 +808,7 @@ else()
         ${assimp_SOURCE_DIR}/include 
         ${MONO_INCLUDE_DIRS}
         ${nvrhi_SOURCE_DIR}/include
+        ${wren_SOURCE_DIR}/src/include
     )
 endif()
 
@@ -798,6 +833,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         PhysXVehicle
         enet
         nvrhi
+        wren
     )
     
     # Add Vulkan if available
