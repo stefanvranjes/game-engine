@@ -24,12 +24,14 @@
 #include "WaterSprayEmitter.h"
 #include "Terrain.h"
 #include "Vegetation.h"
+#include "RenderBackend.h"
 #include <memory>
 #include <vector>
 #include <string>
 
 class Camera;
 class Material;
+class RenderBackend;
 
 class Renderer {
 public:
@@ -76,6 +78,7 @@ public:
     MaterialLibrary* GetMaterialLibrary() { return m_MaterialLibrary.get(); }
     ParticleSystem* GetParticleSystem() { return m_ParticleSystem.get(); }
     PostProcessing* GetPostProcessing() { return m_PostProcessing.get(); }
+    RenderBackend* GetRenderBackend() const { return m_RenderBackend.get(); }
     
     // Debug
     void SetShowCascades(bool show) { m_ShowCascades = show; }
@@ -214,6 +217,9 @@ private:
     bool m_VolumetricFogEnabled;
     std::unique_ptr<ParticleSystem> m_ParticleSystem;
     bool m_BatchedRenderingEnabled;
+    
+    // Graphics Backend (OpenGL or Vulkan)
+    std::unique_ptr<RenderBackend> m_RenderBackend;
     
     // Planar Reflections
     std::unique_ptr<PlanarReflection> m_PlanarReflection;

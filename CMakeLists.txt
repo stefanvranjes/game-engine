@@ -136,6 +136,33 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(enet)
 
+# Graphics Backend Selection (NVRHI)
+option(GRAPHICS_BACKEND "Graphics backend for NVRHI: D3D12, D3D11, VULKAN" "D3D12")
+message(STATUS "Graphics Backend: ${GRAPHICS_BACKEND}")
+
+# Fetch NVRHI (NVIDIA Rendering Hardware Interface)
+FetchContent_Declare(
+    nvrhi
+    GIT_REPOSITORY https://github.com/NVIDIA-Omniverse/nvrhi.git
+    GIT_TAG main
+)
+FetchContent_GetProperties(nvrhi)
+if(NOT nvrhi_populated)
+    FetchContent_Populate(nvrhi)
+    set(NVRHI_SOURCE_DIR ${nvrhi_SOURCE_DIR})
+    
+    # Build NVRHI backends based on platform
+    if(WIN32)
+        set(NVRHI_WITH_DX12 ON CACHE BOOL "" FORCE)
+        set(NVRHI_WITH_DX11 ON CACHE BOOL "" FORCE)
+    endif()
+    set(NVRHI_WITH_VULKAN ON CACHE BOOL "" FORCE)
+    set(NVRHI_WITH_OPENGL OFF CACHE BOOL "" FORCE)
+    
+    # Add NVRHI subdirectory
+    add_subdirectory(${NVRHI_SOURCE_DIR} nvrhi_build EXCLUDE_FROM_ALL)
+endif()
+
 # Fetch Assimp (Open Asset Import Library)
 FetchContent_Declare(
     assimp
@@ -322,11 +349,19 @@ add_executable(GameEngine
     src/Texture.cpp
     src/Mesh.cpp
     src/Renderer.cpp
+    src/RenderBackend.cpp
+    src/OpenGLBackend.cpp
+    src/VulkanBackend.cpp
+    src/VulkanShaderCompiler.cpp
+    src/VulkanDebugUtils.cpp
+    src/GPUScheduler.cpp
+    src/EngineConfig.cpp
     src/Camera.cpp
     src/Quat.cpp
     src/Text.cpp
     src/GLExtensions.cpp
     src/ImGuiManager.cpp
+    src/NVRHIBackend.cpp
     src/Skybox.cpp
     src/ShadowMap.cpp
     src/TextureManager.cpp
@@ -586,6 +621,24 @@ else()
     endif()
 endif()
 
+# Vulkan SDK (Optional - for Vulkan backend support)
+option(ENABLE_VULKAN "Enable Vulkan backend support" ON)
+if(ENABLE_VULKAN)
+    find_package(Vulkan QUIET)
+    if(Vulkan_FOUND)
+        message(STATUS "Found Vulkan: ${Vulkan_VERSION}")
+        set(HAS_VULKAN TRUE)
+        add_compile_definitions(ENABLE_VULKAN)
+    else()
+        message(STATUS "Vulkan SDK not found - Vulkan backend disabled (OpenGL will be used)")
+        set(HAS_VULKAN FALSE)
+        set(ENABLE_VULKAN OFF)
+    endif()
+else()
+    message(STATUS "Vulkan support disabled by user")
+    set(HAS_VULKAN FALSE)
+endif()
+
 # OpenGL
 # Add PhysX backend sources if using PhysX
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
@@ -690,6 +743,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         ${MONO_INCLUDE_DIRS}
         ${PHYSX_ROOT_DIR}/include
         ${PXSHARED_ROOT_DIR}/include
+        ${nvrhi_SOURCE_DIR}/include
     )
     
     # Add CUDA includes if available
@@ -708,6 +762,7 @@ elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
         ${box2d_SOURCE_DIR}/include 
         ${assimp_SOURCE_DIR}/include 
         ${MONO_INCLUDE_DIRS}
+        ${nvrhi_SOURCE_DIR}/include
     )
 else()
     target_include_directories(GameEngine PUBLIC 
@@ -718,6 +773,7 @@ else()
         ${bullet3_SOURCE_DIR}/src 
         ${assimp_SOURCE_DIR}/include 
         ${MONO_INCLUDE_DIRS}
+        ${nvrhi_SOURCE_DIR}/include
     )
 endif()
 
@@ -741,7 +797,14 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         PhysXCharacterKinematic
         PhysXVehicle
         enet
+        nvrhi
     )
+    
+    # Add Vulkan if available
+    if(HAS_VULKAN)
+        target_link_libraries(GameEngine PRIVATE Vulkan::Vulkan)
+        target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
+    endif()
     
     # Link CUDA runtime if available
     if(CUDAToolkit_FOUND)
@@ -794,7 +857,14 @@ elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
         pybind11::embed 
         glm::glm
         enet
+        nvrhi
     )
+    
+    # Add Vulkan if available
+    if(HAS_VULKAN)
+        target_link_libraries(GameEngine PRIVATE Vulkan::Vulkan)
+        target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
+    endif()
 else()
     target_link_libraries(GameEngine PRIVATE 
         glfw 
@@ -811,7 +881,14 @@ else()
         pybind11::embed 
         glm::glm
         enet
+        nvrhi
     )
+    
+    # Add Vulkan if available
+    if(HAS_VULKAN)
+        target_link_libraries(GameEngine PRIVATE Vulkan::Vulkan)
+        target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
+    endif()
 endif()
 
 # Optional Mono support

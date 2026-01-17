@@ -7,6 +7,7 @@
 #include "Decal.h"
 #include "PlanarReflection.h"
 #include "Shader.h"
+#include "RenderBackend.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -538,6 +539,21 @@ void Renderer::SetPhysXBackend(PhysXBackend* backend) {
 #endif
 
 bool Renderer::Init() {
+    // Initialize Graphics Backend (OpenGL or Vulkan)
+    m_RenderBackend = CreateRenderBackend(RenderBackend::API::OpenGL);
+    if (!m_RenderBackend) {
+        std::cerr << "Failed to create render backend" << std::endl;
+        return false;
+    }
+    
+    // Initialize backend with window dimensions
+    if (!m_RenderBackend->Init(800, 600, nullptr)) {
+        std::cerr << "Failed to initialize render backend" << std::endl;
+        return false;
+    }
+    
+    std::cout << "Render Backend Initialized: " << m_RenderBackend->GetAPIName() << std::endl;
+    
     // Create and load shader
     m_Shader = std::make_unique<Shader>();
     if (!m_Shader->LoadFromFiles("shaders/textured.vert", "shaders/textured.frag")) {
@@ -1861,6 +1877,12 @@ void Renderer::RenderCube() {
 }
 
 void Renderer::Shutdown() {
+    // Shutdown graphics backend
+    if (m_RenderBackend) {
+        m_RenderBackend->Shutdown();
+        m_RenderBackend.reset();
+    }
+    
     if (m_QuadVAO) {
         glDeleteVertexArrays(1, &m_QuadVAO);
         m_QuadVAO = 0;
