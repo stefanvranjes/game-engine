@@ -23,10 +23,12 @@ public:
      * @brief Node role in distributed system
      */
     enum class NodeRole {
-        MASTER,      // Coordinates work distribution
-        WORKER,      // Processes assigned batches
-        CANDIDATE,   // Participating in leader election
-        STANDALONE   // Single-node mode (no distribution)
+        MASTER,          // Coordinates work distribution
+        WORKER,          // Processes assigned batches
+        CANDIDATE,       // Participating in leader election
+        STANDALONE,      // Single-node mode (no distribution)
+        GLOBAL_MASTER,   // Top-level master in hierarchy
+        REGIONAL_MASTER  // Regional master in hierarchy
     };
     
     /**
@@ -365,6 +367,10 @@ public:
      */
     void BroadcastToAllRegions(const NetworkManager::Message& msg);
 
+    // State Synchronization
+    void SetSyncInterval(uint32_t intervalMs);
+    void EnableDeltaSync(bool enable);
+
 private:
     struct Impl;
     std::unique_ptr<Impl> m_Impl;
@@ -413,6 +419,12 @@ private:
     void HandleStateSyncFull(int nodeId, const NetworkManager::Message& msg);
     void HandleStateSyncDelta(int nodeId, const NetworkManager::Message& msg);
     void BroadcastStateUpdate(PhysXSoftBody* softBody);
+    void ResolveStateConflict(PhysXSoftBody* softBody, 
+                              const StateSerializer::SoftBodyState& workerState, 
+                              const StateSerializer::SoftBodyState& masterState);
+    size_t EstimateSyncBandwidth() const;
+    void OptimizeSyncBandwidth();
+    void SyncHighPriorityFirst();
     
     // Result handling
     std::vector<uint8_t> SerializeBatchResults(const std::vector<PhysXSoftBody*>& softBodies);

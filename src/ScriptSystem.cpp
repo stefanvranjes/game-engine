@@ -49,6 +49,14 @@ bool LuaScriptSystem::RunScript(const std::string& filepath) {
     return status == LUA_OK;
 }
 
+bool LuaScriptSystem::ExecuteString(const std::string& source) {
+    if (!L) return false;
+
+    int status = luaL_dostring(L, source.c_str());
+    ReportError(L, status);
+    return status == LUA_OK;
+}
+
 // ... rest of bindings ...
 
 // Vec3 Bindings

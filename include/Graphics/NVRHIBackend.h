@@ -9,7 +9,7 @@ namespace Graphics {
 
 class NVRHIBuffer : public Buffer {
 public:
-    NVRHIBuffer(nvrhi::IBuffer* nvrhi_buffer, const BufferDesc& desc);
+    NVRHIBuffer(nvrhi::IBuffer* nvrhi_buffer, nvrhi::IDevice* device, const BufferDesc& desc);
     ~NVRHIBuffer() override;
 
     size_t GetSize() const override { return m_Desc.size; }
@@ -21,6 +21,7 @@ public:
 
 private:
     nvrhi::IBuffer* m_NVRHIBuffer;
+    nvrhi::IDevice* m_Device;
     BufferDesc m_Desc;
     void* m_MappedPtr = nullptr;
 };
@@ -127,6 +128,8 @@ public:
 private:
     nvrhi::ICommandList* m_CommandList;
     nvrhi::IDevice* m_Device;
+    nvrhi::GraphicsState m_GraphicsState;
+    nvrhi::ComputeState m_ComputeState;
     uint32_t m_TimestampCounter = 0;
     std::unordered_map<uint32_t, uint64_t> m_Timestamps;
 };

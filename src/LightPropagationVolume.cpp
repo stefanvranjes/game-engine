@@ -271,8 +271,9 @@ void LightPropagationVolume::GenerateRSM(const Light& light, Camera* camera)
     float orthoSize = 50.0f;
     glm::mat4 lightProjection = glm::ortho(-orthoSize, orthoSize, -orthoSize, orthoSize, 0.1f, 200.0f);
 
+    glm::mat4 lightViewProjection = lightProjection * lightView;
     m_RSMShader->Use();
-    m_RSMShader->SetMat4("lightViewProjection", lightProjection * lightView);
+    m_RSMShader->SetMat4("lightViewProjection", &lightViewProjection[0][0]);
     m_RSMShader->SetVec3("lightColor", glm::vec3(light.color.x, light.color.y, light.color.z));
     m_RSMShader->SetFloat("lightIntensity", light.intensity);
 

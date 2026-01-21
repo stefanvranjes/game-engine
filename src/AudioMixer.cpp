@@ -122,7 +122,24 @@ AudioMixer::ChannelGroup* AudioMixer::GetGroup(ChannelGroupType type) {
     return nullptr;
 }
 
+const AudioMixer::ChannelGroup* AudioMixer::GetGroup(ChannelGroupType type) const {
+    auto it = m_standardGroups.find(static_cast<int>(type));
+    if (it != m_standardGroups.end()) {
+        return it->second;
+    }
+    return nullptr;
+}
+
 AudioMixer::ChannelGroup* AudioMixer::GetGroupByName(const std::string& name) {
+    for (auto* group : m_allGroups) {
+        if (group->name == name) {
+            return group;
+        }
+    }
+    return nullptr;
+}
+
+const AudioMixer::ChannelGroup* AudioMixer::GetGroupByName(const std::string& name) const {
     for (auto* group : m_allGroups) {
         if (group->name == name) {
             return group;
@@ -240,7 +257,7 @@ void AudioMixer::MuteGroup(AudioMixer::ChannelGroupType type, bool mute) {
 }
 
 bool AudioMixer::IsGroupMuted(AudioMixer::ChannelGroupType type) const {
-    auto* group = GetGroup(type);
+    const auto* group = GetGroup(type);
     return group ? group->muted : false;
 }
 

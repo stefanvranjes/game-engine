@@ -78,6 +78,13 @@ bool CSharpScriptSystem::RunScript(const std::string& filepath) {
     return false;
 }
 
+bool CSharpScriptSystem::ExecuteString(const std::string& source) {
+    // C# doesn't easily support executing raw strings without a lot of compiler infrastructure
+    // For now we'll just log that it's not supported dynamically
+    std::cerr << "ExecuteString not supported for C# directly (requires runtime compilation)" << std::endl;
+    return false;
+}
+
 void CSharpScriptSystem::LoadAssembly(const std::string& path) {
 #ifdef HAS_MONO
     if (!std::filesystem::exists(path)) {
@@ -135,5 +142,7 @@ MonoObject* CSharpScriptSystem::CreateObject(const std::string& namespaceName, c
     MonoObject* obj = mono_object_new(m_Domain, monoClass);
     mono_runtime_object_init(obj);
     return obj;
+}
+#endif
 }
 #endif

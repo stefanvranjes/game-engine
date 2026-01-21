@@ -7,11 +7,9 @@
 #include <functional>
 #include <vector>
 
-// Forward declare Wren types
-struct WrenVM;
-struct WrenHandle;
+#include <wren.h>
 
-// Forward declarations
+// Forward declarations of game engine types
 class GameObject;
 class Transform;
 
@@ -75,7 +73,13 @@ public:
      * @param source The Wren source code to execute
      * @return true if successful, false on error
      */
-    bool ExecuteString(const std::string& source);
+    bool ExecuteString(const std::string& source) override;
+
+    // Language metadata
+    ScriptLanguage GetLanguage() const override { return ScriptLanguage::Wren; }
+    ScriptExecutionMode GetExecutionMode() const override { return ScriptExecutionMode::Interpreted; }
+    std::string GetLanguageName() const override { return "Wren"; }
+    std::string GetFileExtension() const override { return ".wren"; }
 
     /**
      * Call a global Wren function with arguments

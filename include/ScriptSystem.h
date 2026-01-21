@@ -28,6 +28,13 @@ public:
     void Shutdown() override;
     void Update(float deltaTime) override;
     bool RunScript(const std::string& filepath) override;
+    bool ExecuteString(const std::string& source) override;
+
+    // Language metadata
+    ScriptLanguage GetLanguage() const override { return ScriptLanguage::Lua; }
+    ScriptExecutionMode GetExecutionMode() const override { return ScriptExecutionMode::Interpreted; }
+    std::string GetLanguageName() const override { return "Lua"; }
+    std::string GetFileExtension() const override { return ".lua"; }
 
     lua_State* GetLuaState() const { return L; }
 

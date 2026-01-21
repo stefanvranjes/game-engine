@@ -61,6 +61,20 @@ bool CustomScriptSystem::RunScript(const std::string& filepath) {
     return true;
 }
 
+bool CustomScriptSystem::ExecuteString(const std::string& source) {
+    std::vector<Instruction> program = Assemble(source);
+    if (program.empty()) {
+        std::cerr << "Script assembled to empty program or error" << std::endl;
+        return false;
+    }
+
+    // std::cout << "Executing string script (" << program.size() << " instructions)" << std::endl;
+    m_VM.LoadProgram(program);
+    m_VM.Run();
+    
+    return true;
+}
+
 std::vector<Instruction> CustomScriptSystem::Assemble(const std::string& source) {
     std::vector<Instruction> program;
     std::stringstream ss(source);

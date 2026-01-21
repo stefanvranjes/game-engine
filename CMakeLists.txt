@@ -99,12 +99,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/nlohmann/json.git
     GIT_TAG v3.11.2
 )
-FetchContent_GetProperties(json)
-if(NOT json_populated)
-    FetchContent_Populate(json)
-    add_library(nlohmann_json INTERFACE)
-    target_include_directories(nlohmann_json INTERFACE ${json_SOURCE_DIR}/include)
-endif()
+FetchContent_MakeAvailable(json)
 
 # Fetch tinygltf
 FetchContent_Declare(
@@ -123,10 +118,7 @@ FetchContent_Declare(
     GIT_REPOSITORY https://github.com/mackron/miniaudio.git
     GIT_TAG 0.11.21
 )
-FetchContent_GetProperties(miniaudio)
-if(NOT miniaudio_populated)
-    FetchContent_Populate(miniaudio)
-endif()
+FetchContent_MakeAvailable(miniaudio)
 
 # Fetch ENet
 FetchContent_Declare(
@@ -136,33 +128,36 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(enet)
 
+# Fetch spdlog
+FetchContent_Declare(
+    spdlog
+    GIT_REPOSITORY https://github.com/gabime/spdlog.git
+    GIT_TAG v1.12.0
+)
+FetchContent_MakeAvailable(spdlog)
+
 # Graphics Backend Selection (NVRHI)
 option(GRAPHICS_BACKEND "Graphics backend for NVRHI: D3D12, D3D11, VULKAN" "D3D12")
 message(STATUS "Graphics Backend: ${GRAPHICS_BACKEND}")
 
 # Fetch NVRHI (NVIDIA Rendering Hardware Interface)
-# TEMPORARILY DISABLED - causing git clone failures
-# FetchContent_Declare(
-#     nvrhi
-#     GIT_REPOSITORY https://github.com/NVIDIA-Omniverse/nvrhi.git
-#     GIT_TAG main
-# )
-# FetchContent_GetProperties(nvrhi)
-# if(NOT nvrhi_populated)
-#     FetchContent_Populate(nvrhi)
-#     set(NVRHI_SOURCE_DIR ${nvrhi_SOURCE_DIR})
-#     
-#     # Build NVRHI backends based on platform
-#     if(WIN32)
-#         set(NVRHI_WITH_DX12 ON CACHE BOOL "" FORCE)
-#         set(NVRHI_WITH_DX11 ON CACHE BOOL "" FORCE)
-#     endif()
-#     set(NVRHI_WITH_VULKAN ON CACHE BOOL "" FORCE)
-#     set(NVRHI_WITH_OPENGL OFF CACHE BOOL "" FORCE)
-#    
-#     # Add NVRHI subdirectory
-#     add_subdirectory(${NVRHI_SOURCE_DIR} nvrhi_build EXCLUDE_FROM_ALL)
-# endif()
+# https://github.com/NVIDIA-RTX/NVRHI.git
+FetchContent_Declare(
+    nvrhi
+    GIT_REPOSITORY https://github.com/NVIDIA-RTX/NVRHI.git
+    GIT_TAG main
+)
+
+# Build NVRHI backends based on platform
+if(WIN32)
+    set(NVRHI_WITH_DX12 ON CACHE BOOL "" FORCE)
+    set(NVRHI_WITH_DX11 ON CACHE BOOL "" FORCE)
+endif()
+set(NVRHI_WITH_VULKAN ON CACHE BOOL "" FORCE)
+set(NVRHI_WITH_OPENGL OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(nvrhi)
+set(NVRHI_SOURCE_DIR ${nvrhi_SOURCE_DIR})
 
 # Fetch Assimp (Open Asset Import Library)
 FetchContent_Declare(
@@ -381,9 +376,6 @@ add_executable(GameEngine
     src/Renderer.cpp
     src/RenderBackend.cpp
     src/OpenGLBackend.cpp
-    src/VulkanBackend.cpp
-    src/VulkanShaderCompiler.cpp
-    src/VulkanDebugUtils.cpp
     src/GPUScheduler.cpp
     src/EngineConfig.cpp
     src/Camera.cpp
@@ -542,15 +534,7 @@ set(SOURCES ${SOURCES}
     src/NetworkManagerASIO.cpp
     src/NetworkManagerReliability.cpp
     src/NetworkManagerBandwidth.cpp
-    src/DistributedBatchManager.cpp
-    src/DistributedBatchManagerFaultTolerance.cpp
-    src/DistributedBatchManagerFailover.cpp
-    src/DistributedBatchManagerSync.cpp
-    src/DistributedBatchManagerResults.cpp
-    src/DistributedBatchManagerRegistration.cpp
-    src/DistributedBatchManagerHierarchical.cpp
     src/CloudProvider.cpp
-    src/StateSerializer.cpp
     src/ProtobufSerializer.cpp
     src/SoftBodyLOD.cpp
     src/SoftBodyLODManager.cpp
@@ -661,6 +645,11 @@ if(ENABLE_VULKAN)
         message(STATUS "Found Vulkan: ${Vulkan_VERSION}")
         set(HAS_VULKAN TRUE)
         add_compile_definitions(ENABLE_VULKAN)
+        target_sources(GameEngine PRIVATE
+            src/VulkanBackend.cpp
+            src/VulkanShaderCompiler.cpp
+            src/VulkanDebugUtils.cpp
+        )
     else()
         message(STATUS "Vulkan SDK not found - Vulkan backend disabled (OpenGL will be used)")
         set(HAS_VULKAN FALSE)
@@ -777,6 +766,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         ${PXSHARED_ROOT_DIR}/include
         ${nvrhi_SOURCE_DIR}/include
         ${wren_SOURCE_DIR}/src/include
+        ${enet_SOURCE_DIR}/include
     )
     
     # Add CUDA includes if available
@@ -834,6 +824,7 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         enet
         nvrhi
         wren
+        spdlog::spdlog
     )
     
     # Add Vulkan if available

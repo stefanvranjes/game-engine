@@ -390,7 +390,7 @@ void ProbeGrid::RenderDebug(Camera* camera, Shader* shader)
 
     // Render probes as spheres or points
     shader->Use();
-    shader->SetMat4("u_ViewProjection", camera->GetProjectionMatrix() * camera->GetViewMatrix());
+    shader->SetMat4("u_ViewProjection", (camera->GetProjectionMatrix() * camera->GetViewMatrix()).m);
 
     // Simple point rendering for now
     std::vector<glm::vec3> positions;

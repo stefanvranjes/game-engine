@@ -147,17 +147,17 @@ void VoxelGrid::Voxelize(const std::vector<GameObject*>& objects, Camera* camera
 
             // TODO: AABB check against cascade bounds would go here
 
-            auto mesh = obj->GetComponent<Mesh>();
-            auto material = obj->GetComponent<Material>();
+            auto mesh = obj->GetMesh();
+            auto material = obj->GetMaterial();
             
             if (!mesh || !material) continue;
 
             m_VoxelizeShader->SetMat4("u_Model", obj->GetTransform().GetModelMatrix().m);
 
-            if (material->HasTexture()) {
+            if (material->GetTexture()) {
                 m_VoxelizeShader->SetInt("u_HasTexture", 1);
                 glActiveTexture(GL_TEXTURE0);
-                glBindTexture(GL_TEXTURE_2D, material->GetTextureID());
+                glBindTexture(GL_TEXTURE_2D, material->GetTexture()->GetID());
             } else {
                 m_VoxelizeShader->SetInt("u_HasTexture", 0);
                 m_VoxelizeShader->SetVec3("u_AlbedoColor", material->GetDiffuse());
@@ -240,7 +240,8 @@ void VoxelGrid::UpdateCascadeBounds(Camera* camera)
 {
     if (!camera) return;
 
-    glm::vec3 camPos = camera->GetPosition();
+    Vec3 p = camera->GetPosition();
+    glm::vec3 camPos(p.x, p.y, p.z);
 
     for(int i=0; i<MAX_CASCADES; ++i) {
         float extent = m_Cascades[i].extent;

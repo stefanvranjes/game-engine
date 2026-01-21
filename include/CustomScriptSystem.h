@@ -17,6 +17,13 @@ public:
     void Shutdown() override;
     void Update(float deltaTime) override;
     bool RunScript(const std::string& filepath) override;
+    bool ExecuteString(const std::string& source) override;
+
+    // Language metadata
+    ScriptLanguage GetLanguage() const override { return ScriptLanguage::Custom; }
+    ScriptExecutionMode GetExecutionMode() const override { return ScriptExecutionMode::Bytecode; }
+    std::string GetLanguageName() const override { return "Custom Bytecode"; }
+    std::string GetFileExtension() const override { return ".asm"; }
 
     // Helper to parse assembly text into bytecode
     std::vector<Instruction> Assemble(const std::string& source);

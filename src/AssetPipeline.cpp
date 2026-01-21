@@ -104,6 +104,11 @@ bool AssetPipeline::ScanAssetDirectory(const std::string& assetDir) {
     return true;
 }
 
+void AssetPipeline::Update() {
+    // Process main thread tasks, e.g., callbacks or status updates
+    // Currently, worker threads handle processing, so this just acts as a hook
+}
+
 bool AssetPipeline::ProcessAssets(bool incrementalOnly) {
     m_IsProcessing = true;
     m_Statistics.processedAssets = 0;

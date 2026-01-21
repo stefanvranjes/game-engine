@@ -6,7 +6,10 @@
 #ifdef _WIN32
 #include <d3d12.h>
 #include <dxgi1_4.h>
+#include <nvrhi/d3d12.h>
+#include <nvrhi/d3d11.h>
 #endif
+#include <nvrhi/vulkan.h>
 
 namespace Graphics {
 
@@ -17,8 +20,8 @@ static DevicePtr g_Device = nullptr;
 // NVRHIBuffer Implementation
 // ============================================================================
 
-NVRHIBuffer::NVRHIBuffer(nvrhi::IBuffer* nvrhi_buffer, const BufferDesc& desc)
-    : m_NVRHIBuffer(nvrhi_buffer), m_Desc(desc) {
+NVRHIBuffer::NVRHIBuffer(nvrhi::IBuffer* nvrhi_buffer, nvrhi::IDevice* device, const BufferDesc& desc)
+    : m_NVRHIBuffer(nvrhi_buffer), m_Device(device), m_Desc(desc) {
 }
 
 NVRHIBuffer::~NVRHIBuffer() {
@@ -28,15 +31,15 @@ NVRHIBuffer::~NVRHIBuffer() {
 }
 
 void* NVRHIBuffer::Map() {
-    if (!m_NVRHIBuffer) return nullptr;
+    if (!m_NVRHIBuffer || !m_Device) return nullptr;
     
-    m_MappedPtr = m_NVRHIBuffer->map(nvrhi::CpuAccessMode::Read);
+    m_MappedPtr = m_Device->mapBuffer(m_NVRHIBuffer, nvrhi::CpuAccessMode::Read);
     return m_MappedPtr;
 }
 
 void NVRHIBuffer::Unmap() {
-    if (!m_NVRHIBuffer || !m_MappedPtr) return;
-    m_NVRHIBuffer->unmap();
+    if (!m_NVRHIBuffer || !m_Device || !m_MappedPtr) return;
+    m_Device->unmapBuffer(m_NVRHIBuffer);
     m_MappedPtr = nullptr;
 }
 
@@ -164,7 +167,8 @@ void NVRHICommandList::SetViewport(const ViewportRect& viewport) {
     vp.minZ = viewport.minDepth;
     vp.maxZ = viewport.maxDepth;
     
-    m_CommandList->setViewports(&vp, 1);
+    m_GraphicsState.viewport.viewports.clear();
+    m_GraphicsState.viewport.viewports.push_back(vp);
 }
 
 void NVRHICommandList::SetScissorRect(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
@@ -172,11 +176,33 @@ void NVRHICommandList::SetScissorRect(uint32_t x, uint32_t y, uint32_t width, ui
     
     nvrhi::Rect rect{static_cast<int>(x), static_cast<int>(y), 
                     static_cast<int>(x + width), static_cast<int>(y + height)};
-    m_CommandList->setScissorRects(&rect, 1);
+    
+    m_GraphicsState.viewport.scissorRects.clear();
+    m_GraphicsState.viewport.scissorRects.push_back(rect);
 }
 
 void NVRHICommandList::SetRenderTargets(const std::vector<TexturePtr>& renderTargets, TexturePtr depthTarget) {
-    // Implementation for setting render targets
+    if (!m_Device) return;
+
+    nvrhi::FramebufferDesc fbDesc;
+    for (const auto& rt : renderTargets) {
+        auto nvrhiRT = std::dynamic_pointer_cast<NVRHITexture>(rt);
+        if (nvrhiRT) {
+            nvrhi::FramebufferAttachment attachment;
+            attachment.texture = nvrhiRT->GetNVRHITexture();
+            fbDesc.colorAttachments.push_back(attachment);
+        }
+    }
+
+    if (depthTarget) {
+        auto nvrhiDepth = std::dynamic_pointer_cast<NVRHITexture>(depthTarget);
+        if (nvrhiDepth) {
+            fbDesc.depthAttachment.texture = nvrhiDepth->GetNVRHITexture();
+        }
+    }
+
+    // Note: Creating a framebuffer here is suboptimal. A production engine should cache these.
+    m_GraphicsState.framebuffer = m_Device->createFramebuffer(fbDesc);
 }
 
 void NVRHICommandList::ClearRenderTarget(TexturePtr target, const ClearColor& color) {
@@ -191,7 +217,7 @@ void NVRHICommandList::SetPipeline(PipelinePtr pipeline) {
     if (!m_CommandList || !pipeline) return;
     auto nvrhiPipeline = std::dynamic_pointer_cast<NVRHIPipeline>(pipeline);
     if (nvrhiPipeline) {
-        m_CommandList->setPipeline(nvrhiPipeline->GetNVRHIPipeline());
+        m_GraphicsState.pipeline = nvrhiPipeline->GetNVRHIPipeline();
     }
 }
 
@@ -200,11 +226,36 @@ void NVRHICommandList::SetConstantBuffer(uint32_t slot, BufferPtr buffer) {
 }
 
 void NVRHICommandList::SetVertexBuffer(uint32_t slot, BufferPtr buffer, uint32_t stride) {
-    // Implementation for setting vertex buffer
+    if (!m_CommandList || !buffer) return;
+    auto nvrhiBuffer = std::dynamic_pointer_cast<NVRHIBuffer>(buffer);
+    if (nvrhiBuffer) {
+        nvrhi::VertexBufferBinding binding;
+        binding.buffer = static_cast<nvrhi::IBuffer*>(nvrhiBuffer->GetNativeHandle());
+        binding.slot = slot;
+        binding.offset = 0;
+        
+        bool found = false;
+        for (auto& existing : m_GraphicsState.vertexBuffers) {
+            if (existing.slot == slot) {
+                existing = binding;
+                found = true;
+                break;
+            }
+        }
+        if (!found) {
+            m_GraphicsState.vertexBuffers.push_back(binding);
+        }
+    }
 }
 
 void NVRHICommandList::SetIndexBuffer(BufferPtr buffer, bool is32Bit) {
-    // Implementation for setting index buffer
+    if (!m_CommandList || !buffer) return;
+    auto nvrhiBuffer = std::dynamic_pointer_cast<NVRHIBuffer>(buffer);
+    if (nvrhiBuffer) {
+        m_GraphicsState.indexBuffer.buffer = static_cast<nvrhi::IBuffer*>(nvrhiBuffer->GetNativeHandle());
+        m_GraphicsState.indexBuffer.format = is32Bit ? nvrhi::Format::R32_UINT : nvrhi::Format::R16_UINT;
+        m_GraphicsState.indexBuffer.offset = 0;
+    }
 }
 
 void NVRHICommandList::SetTexture(uint32_t slot, TexturePtr texture) {
@@ -217,26 +268,43 @@ void NVRHICommandList::SetSampler(uint32_t slot, uint32_t samplerHandle) {
 
 void NVRHICommandList::DrawIndexed(uint32_t indexCount, uint32_t startIndexLocation, int32_t baseVertexLocation) {
     if (!m_CommandList) return;
-    m_CommandList->drawIndexed(nvrhi::DrawArguments{indexCount, 1, startIndexLocation, baseVertexLocation, 0});
+    m_CommandList->setGraphicsState(m_GraphicsState);
+    nvrhi::DrawArguments args;
+    args.vertexCount = indexCount;
+    args.instanceCount = 1;
+    args.startIndexLocation = startIndexLocation;
+    args.baseVertexLocation = baseVertexLocation;
+    args.startInstanceLocation = 0;
+    m_CommandList->drawIndexed(args);
 }
 
 void NVRHICommandList::Draw(uint32_t vertexCount, uint32_t startVertexLocation) {
     if (!m_CommandList) return;
+    m_CommandList->setGraphicsState(m_GraphicsState);
     m_CommandList->draw(nvrhi::DrawArguments{vertexCount, 1, 0, 0, startVertexLocation});
 }
 
 void NVRHICommandList::DrawInstanced(uint32_t vertexCountPerInstance, uint32_t instanceCount, uint32_t startVertexLocation, uint32_t startInstanceLocation) {
     if (!m_CommandList) return;
+    m_CommandList->setGraphicsState(m_GraphicsState);
     m_CommandList->draw(nvrhi::DrawArguments{vertexCountPerInstance, instanceCount, 0, 0, startVertexLocation});
 }
 
 void NVRHICommandList::DrawIndexedInstanced(uint32_t indexCountPerInstance, uint32_t instanceCount, uint32_t startIndexLocation, int32_t baseVertexLocation, uint32_t startInstanceLocation) {
     if (!m_CommandList) return;
-    m_CommandList->drawIndexed(nvrhi::DrawArguments{indexCountPerInstance, instanceCount, startIndexLocation, baseVertexLocation, startInstanceLocation});
+    m_CommandList->setGraphicsState(m_GraphicsState);
+    nvrhi::DrawArguments args;
+    args.vertexCount = indexCountPerInstance;
+    args.instanceCount = instanceCount;
+    args.startIndexLocation = startIndexLocation;
+    args.baseVertexLocation = baseVertexLocation;
+    args.startInstanceLocation = startInstanceLocation;
+    m_CommandList->drawIndexed(args);
 }
 
 void NVRHICommandList::Dispatch(uint32_t threadGroupCountX, uint32_t threadGroupCountY, uint32_t threadGroupCountZ) {
     if (!m_CommandList) return;
+    m_CommandList->setComputeState(m_ComputeState);
     m_CommandList->dispatch(threadGroupCountX, threadGroupCountY, threadGroupCountZ);
 }
 
@@ -292,21 +360,22 @@ bool NVRHIDevice::Initialize(GraphicsBackend backend, uint32_t width, uint32_t h
     m_WindowHandle = windowHandle;
 
     // Determine which device factory to use based on backend
-    nvrhi::DeviceDesc deviceDesc;
-    
 #ifdef _WIN32
     if (backend == GraphicsBackend::D3D12) {
+        nvrhi::d3d12::DeviceDesc deviceDesc;
         // Initialize D3D12 device
-        m_Device = nvrhi::createDevice(nvrhi::GraphicsAPI::D3D12);
+        m_Device = nvrhi::d3d12::createDevice(deviceDesc);
     } else if (backend == GraphicsBackend::D3D11) {
+        nvrhi::d3d11::DeviceDesc deviceDesc;
         // Initialize D3D11 device
-        m_Device = nvrhi::createDevice(nvrhi::GraphicsAPI::D3D11);
+        m_Device = nvrhi::d3d11::createDevice(deviceDesc);
     }
 #endif
     
     if (backend == GraphicsBackend::Vulkan) {
+        nvrhi::vulkan::DeviceDesc deviceDesc;
         // Initialize Vulkan device
-        m_Device = nvrhi::createDevice(nvrhi::GraphicsAPI::VULKAN);
+        m_Device = nvrhi::vulkan::createDevice(deviceDesc);
     }
 
     if (!m_Device) {
@@ -346,19 +415,25 @@ BufferPtr NVRHIDevice::CreateBuffer(const BufferDesc& desc) {
 
     switch (desc.usage) {
         case BufferUsage::ConstantBuffer:
-            nvrhiDesc.initialData = desc.initialData;
+            nvrhiDesc.isConstantBuffer = true;
             break;
         case BufferUsage::VertexBuffer:
-            nvrhiDesc.initialData = desc.initialData;
+            nvrhiDesc.isVertexBuffer = true;
             break;
         case BufferUsage::IndexBuffer:
-            nvrhiDesc.initialData = desc.initialData;
+            nvrhiDesc.isIndexBuffer = true;
             break;
         case BufferUsage::StructuredBuffer:
-            nvrhiDesc.initialData = desc.initialData;
+            nvrhiDesc.structStride = 0; // Should be set if structured
             break;
         default:
             break;
+    }
+
+    if (desc.initialData) {
+        // In NVRHI v23, initial data must be uploaded via a command list using writeBuffer.
+        // For now, we only support initial data for dynamic buffers via Map/Unmap in NVRHIBuffer constructor if possible,
+        // or we need a proper upload strategy.
     }
 
     auto nvrhi_buffer = m_Device->createBuffer(nvrhiDesc);
@@ -367,7 +442,7 @@ BufferPtr NVRHIDevice::CreateBuffer(const BufferDesc& desc) {
         return nullptr;
     }
 
-    return std::make_shared<NVRHIBuffer>(nvrhi_buffer, desc);
+    return std::make_shared<NVRHIBuffer>(nvrhi_buffer, m_Device, desc);
 }
 
 TexturePtr NVRHIDevice::CreateTexture(const TextureDesc& desc) {
@@ -401,7 +476,7 @@ ShaderPtr NVRHIDevice::CreateShader(const ShaderDesc& desc) {
     // Handle different shader languages
     switch (desc.language) {
         case ShaderLanguage::HLSL:
-            nvrhiDesc.hlslEntry = desc.entryPoint.c_str();
+            nvrhiDesc.entryName = desc.entryPoint;
             break;
         case ShaderLanguage::GLSL:
             // GLSL compilation would require GLSL to SPIR-V conversion
@@ -424,7 +499,14 @@ PipelinePtr NVRHIDevice::CreatePipeline() {
     if (!m_Device) return nullptr;
 
     nvrhi::GraphicsPipelineDesc pipelineDesc = CreateGraphicsPipelineDesc();
-    auto nvrhiPipeline = m_Device->createGraphicsPipeline(pipelineDesc);
+    
+    // NVRHI v23 requires FramebufferInfo or IFramebuffer to create a pipeline.
+    // We'll create a default FramebufferInfo for now.
+    nvrhi::FramebufferInfo fbInfo;
+    fbInfo.colorFormats.push_back(nvrhi::Format::RGBA8_UNORM);
+    fbInfo.depthFormat = nvrhi::Format::D24S8;
+    
+    auto nvrhiPipeline = m_Device->createGraphicsPipeline(pipelineDesc, fbInfo);
 
     return std::make_shared<NVRHIPipeline>(nvrhiPipeline);
 }
@@ -469,8 +551,9 @@ uint32_t NVRHIDevice::CreateSampler(bool linearFilter, bool clampUVW) {
     if (!m_Device) return 0;
 
     nvrhi::SamplerDesc samplerDesc;
-    samplerDesc.magFilter = linearFilter ? nvrhi::SamplerFilter::Linear : nvrhi::SamplerFilter::Point;
-    samplerDesc.minFilter = linearFilter ? nvrhi::SamplerFilter::Linear : nvrhi::SamplerFilter::Point;
+    samplerDesc.magFilter = linearFilter;
+    samplerDesc.minFilter = linearFilter;
+    samplerDesc.mipFilter = linearFilter;
     samplerDesc.addressU = clampUVW ? nvrhi::SamplerAddressMode::Clamp : nvrhi::SamplerAddressMode::Wrap;
     samplerDesc.addressV = clampUVW ? nvrhi::SamplerAddressMode::Clamp : nvrhi::SamplerAddressMode::Wrap;
     samplerDesc.addressW = clampUVW ? nvrhi::SamplerAddressMode::Clamp : nvrhi::SamplerAddressMode::Wrap;

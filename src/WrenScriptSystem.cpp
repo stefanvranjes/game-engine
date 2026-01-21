@@ -7,58 +7,7 @@
 #include <sstream>
 #include <filesystem>
 
-// Wren C API declarations (minimal - we'll include wren.h via external dependency)
-extern "C" {
-    typedef struct WrenVM WrenVM;
-    typedef struct WrenHandle WrenHandle;
-    
-    // Core API
-    WrenVM* wrenNewVM();
-    void wrenFreeVM(WrenVM* vm);
-    void wrenCollectGarbage(WrenVM* vm);
-    
-    // Script execution
-    typedef enum {
-        WREN_RESULT_SUCCESS,
-        WREN_RESULT_COMPILE_ERROR,
-        WREN_RESULT_RUNTIME_ERROR
-    } WrenInterpretResult;
-    
-    WrenInterpretResult wrenInterpret(WrenVM* vm, const char* module, const char* source);
-    
-    // Value stack operations
-    void wrenEnsureSlots(WrenVM* vm, int numSlots);
-    void wrenSetSlotDouble(WrenVM* vm, int slot, double value);
-    void wrenSetSlotString(WrenVM* vm, int slot, const char* text);
-    void wrenSetSlotBool(WrenVM* vm, int slot, bool value);
-    void wrenSetSlotNull(WrenVM* vm, int slot);
-    
-    double wrenGetSlotDouble(WrenVM* vm, int slot);
-    const char* wrenGetSlotString(WrenVM* vm, int slot);
-    bool wrenGetSlotBool(WrenVM* vm, int slot);
-    void* wrenGetSlotForeign(WrenVM* vm, int slot);
-    
-    int wrenGetSlotType(WrenVM* vm, int slot);
-    
-    // Foreign objects
-    typedef void (*WrenFinalizeFn)(void* data);
-    void wrenSetSlotNewForeign(WrenVM* vm, int classSlot, int slot, size_t size);
-    
-    // Function calls
-    WrenHandle* wrenMakeCallHandle(WrenVM* vm, const char* signature);
-    typedef void (*WrenForeignMethodFn)(WrenVM* vm);
-    typedef void (*WrenForeignClassMethods)(WrenVM* vm, const char* className);
-    
-    WrenInterpretResult wrenCall(WrenVM* vm, WrenHandle* method);
-    void wrenReleaseHandle(WrenVM* vm, WrenHandle* handle);
-}
-
-// Configuration callback structure
-struct WrenConfig {
-    void (*writeFn)(WrenVM* vm, const char* text);
-    void (*errorFn)(WrenVM* vm, WrenErrorType errorType, const char* module, 
-                    int line, const char* message);
-};
+// Wren handles are already available via wren.h included in the header
 
 WrenScriptSystem::WrenScriptSystem() : m_VM(nullptr) {
     m_PrintHandler = [](const std::string& msg) {

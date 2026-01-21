@@ -42,6 +42,22 @@ public:
         }
     }
 
+    bool ExecuteString(const std::string& source) override {
+        try {
+            py::exec(source);
+            return true;
+        } catch (const py::error_already_set& e) {
+            std::cerr << "Python Error: " << e.what() << std::endl;
+            return false;
+        }
+    }
+
+    // Language metadata
+    ScriptLanguage GetLanguage() const override { return ScriptLanguage::Python; }
+    ScriptExecutionMode GetExecutionMode() const override { return ScriptExecutionMode::Interpreted; }
+    std::string GetLanguageName() const override { return "Python"; }
+    std::string GetFileExtension() const override { return ".py"; }
+
     void RegisterTypes(); // Implemented in cpp to avoid header clutter
 
 private:

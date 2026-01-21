@@ -6,6 +6,7 @@
 #include <memory>
 #include <map>
 #include <functional>
+#include "VirtualFileSystem.h"
 
 /**
  * @class AssetPackage

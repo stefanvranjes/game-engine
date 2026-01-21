@@ -3,6 +3,7 @@
 #include "Mesh.h"
 #include "Material.h"
 #include "Shader.h"
+#include "Light.h"
 #include <iostream>
 #include <cmath>
 #include <algorithm>
@@ -42,7 +43,8 @@ void ProbeBaker::InitializeGPUResources() {
     glGenBuffers(1, &m_GPUResources.probeDataSSBO);
     glGenBuffers(1, &m_GPUResources.bvhSSBO);
     glGenBuffers(1, &m_GPUResources.primIndexSSBO);
-    m_GPUResources.bakeShader = new Shader("shaders/probe_bake.comp");
+    m_GPUResources.bakeShader = new Shader();
+    m_GPUResources.bakeShader->LoadComputeShader("shaders/probe_bake.comp");
     m_GPUInitialized = true;
 }
 
@@ -69,26 +71,28 @@ ProbeBaker::SceneSnapshot ProbeBaker::CaptureScene(const std::vector<GameObject*
     
     for (GameObject* obj : scene) {
         if (!obj->IsActive()) continue;
-        auto mesh = obj->GetComponent<Mesh>();
+        auto mesh = obj->GetMesh();
         if (!mesh) continue;
         
         SceneSnapshot::MeshData meshData;
-        meshData.vertices = mesh->GetVerticesPositions(); // Need position only? No, need normals?
-        // Mesh class might not have convenient GetVerticesPositions.
-        // Copy manual:
         const auto& rawVerts = mesh->GetVertices();
-        meshData.vertices.reserve(rawVerts.size());
-        meshData.normals.reserve(rawVerts.size());
-        for(const auto& v : rawVerts) {
-            meshData.vertices.push_back(v.position);
-            meshData.normals.push_back(v.normal);
+        meshData.vertices.reserve(rawVerts.size() / 16);
+        meshData.normals.reserve(rawVerts.size() / 16);
+        for(size_t i = 0; i < rawVerts.size(); i += 16) {
+            meshData.vertices.push_back(glm::vec3(rawVerts[i], rawVerts[i+1], rawVerts[i+2]));
+            meshData.normals.push_back(glm::vec3(rawVerts[i+3], rawVerts[i+4], rawVerts[i+5]));
         }
         meshData.indices = mesh->GetIndices();
         
-        auto mat = obj->GetComponent<Material>();
-        meshData.albedo = mat ? mat->GetDiffuse() : glm::vec3(0.8f);
+        if (mat) {
+            Vec3 d = mat->GetDiffuse();
+            meshData.albedo = glm::vec3(d.x, d.y, d.z);
+        } else {
+            meshData.albedo = glm::vec3(0.8f);
+        }
         
-        meshData.worldMatrix = obj->GetTransform().GetWorldMatrix();
+        Mat4 worldMat = obj->GetTransform().GetModelMatrix();
+        std::memcpy(&meshData.worldMatrix[0][0], worldMat.m, 16 * sizeof(float));
         meshData.invWorldMatrix = glm::inverse(meshData.worldMatrix);
         
         snapshot.meshes.push_back(meshData);
@@ -127,7 +131,7 @@ void ProbeBaker::StartBakingAsync(ProbeGrid* grid, const std::vector<GameObject*
     // Case 2: GPU (Main Thread Progressive / Async Compute)
     if (m_Settings.useGPU) {
         InitializeGPUResources();
-        if (m_GPUResources.bakeShader && m_GPUResources.bakeShader->ID != 0) {
+        if (m_GPUResources.bakeShader && m_GPUResources.bakeShader->GetProgramID() != 0) {
             UploadSceneToGPU(scene);
             BuildBVHAndUpload(scene);
             UploadProbesToGPU(grid);
@@ -377,7 +381,7 @@ bool ProbeBaker::Raytrace(const glm::vec3& origin, const glm::vec3& direction, c
     hit.hit = false; hit.distance = FLT_MAX;
     for (GameObject* obj : scene) {
         if (!obj->IsActive()) continue;
-        auto mesh = obj->GetComponent<Mesh>();
+        auto mesh = obj->GetMesh();
         if (!mesh) continue;
         glm::mat4 invWorld = glm::inverse(obj->GetTransform().GetWorldMatrix());
         glm::vec3 localOrigin = glm::vec3(invWorld * glm::vec4(origin, 1.0f));
@@ -389,7 +393,7 @@ bool ProbeBaker::Raytrace(const glm::vec3& origin, const glm::vec3& direction, c
                 if(t>0.001f && t<hit.distance) {
                     hit.hit=true; hit.distance=t; hit.object=obj; hit.position=origin+direction*t;
                     hit.normal = glm::normalize(glm::vec3(glm::transpose(invWorld) * glm::vec4(verts[idxs[i]].normal, 0.0f)));
-                    auto mat = obj->GetComponent<Material>();
+                    auto mat = obj->GetMaterial();
                     hit.albedo = mat ? mat->GetDiffuse() : glm::vec3(0.8f);
                 }
             }

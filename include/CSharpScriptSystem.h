@@ -21,6 +21,13 @@ public:
     void Update(float deltaTime) override;
 
     bool RunScript(const std::string& filepath) override;
+    bool ExecuteString(const std::string& source) override;
+
+    // Language metadata
+    ScriptLanguage GetLanguage() const override { return ScriptLanguage::CSharp; }
+    ScriptExecutionMode GetExecutionMode() const override { return ScriptExecutionMode::JustInTime; }
+    std::string GetLanguageName() const override { return "C#"; }
+    std::string GetFileExtension() const override { return ".cs"; }
     
 #ifdef HAS_MONO
     // Create an object of a class from the loaded assembly

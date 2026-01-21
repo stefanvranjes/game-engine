@@ -212,7 +212,8 @@ std::vector<uint8_t> StateSerializer::SerializeSoftBody(const PhysXSoftBody* sof
 }
 
 bool StateSerializer::DeserializeSoftBody(PhysXSoftBody* softBody, 
-                                         const std::vector<uint8_t>& data) {
+                                         const std::vector<uint8_t>& data,
+                                         const SerializationOptions& options) {
     if (!softBody || data.empty()) {
         return false;
     }
@@ -351,7 +352,8 @@ std::vector<uint8_t> StateSerializer::SerializeDelta(const PhysXSoftBody* softBo
 }
 
 bool StateSerializer::ApplyDelta(PhysXSoftBody* softBody, 
-                                const std::vector<uint8_t>& delta) {
+                                const std::vector<uint8_t>& delta,
+                                const SerializationOptions& options) {
     if (!softBody || delta.empty()) {
         return false;
     }

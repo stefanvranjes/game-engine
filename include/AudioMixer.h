@@ -78,12 +78,14 @@ public:
      * @return Pointer to the ChannelGroup, or nullptr if not found
      */
     ChannelGroup* GetGroup(ChannelGroupType type);
+    const ChannelGroup* GetGroup(ChannelGroupType type) const;
     /**
      * @brief Get a channel group by name.
      * @param name The group's name
      * @return Pointer to the ChannelGroup, or nullptr if not found
      */
     ChannelGroup* GetGroupByName(const std::string& name);
+    const ChannelGroup* GetGroupByName(const std::string& name) const;
     /**
      * @brief Create a custom channel group.
      * @param name Unique name for the group

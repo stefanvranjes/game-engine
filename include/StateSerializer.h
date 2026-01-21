@@ -69,10 +69,12 @@ public:
      * @brief Deserialize complete soft body state
      * @param softBody Target soft body
      * @param data Serialized data
+     * @param options Serialization options
      * @return True if successful
      */
     bool DeserializeSoftBody(PhysXSoftBody* softBody, 
-                            const std::vector<uint8_t>& data);
+                            const std::vector<uint8_t>& data,
+                            const SerializationOptions& options = {});
     
     // Delta serialization
     
@@ -91,10 +93,12 @@ public:
      * @brief Apply delta to soft body
      * @param softBody Target soft body
      * @param delta Serialized delta data
+     * @param options Serialization options
      * @return True if successful
      */
     bool ApplyDelta(PhysXSoftBody* softBody, 
-                   const std::vector<uint8_t>& delta);
+                   const std::vector<uint8_t>& delta,
+                   const SerializationOptions& options = {});
     
     // State management
     

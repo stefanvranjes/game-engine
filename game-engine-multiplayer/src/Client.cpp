@@ -3,6 +3,19 @@
 #include <iostream>
 #include <cstring>
 
+#ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #define close closesocket
+    typedef int ssize_t;
+#else
+    #include <sys/types.h>
+    #include <sys/socket.h>
+    #include <netinet/in.h>
+    #include <arpa/inet.h>
+    #include <unistd.h>
+#endif
+
 Client::Client(const std::string& serverAddress, int serverPort)
     : serverAddress(serverAddress), serverPort(serverPort), socketFD(-1) {}
 

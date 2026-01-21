@@ -3,6 +3,7 @@
 #include "RenderBackend.h"
 #include <map>
 #include <queue>
+#include <chrono>
 
 /**
  * @brief OpenGL 3.3+ backend implementation

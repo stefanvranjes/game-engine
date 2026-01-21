@@ -94,7 +94,9 @@ private:
     SceneSnapshot CaptureScene(const std::vector<GameObject*>& scene, const std::vector<Light>& lights);
     void BakeProbe(int probeIndex, ProbeGrid* grid, const SceneSnapshot& sceneSnapshot);
     bool Raytrace(const glm::vec3& origin, const glm::vec3& direction, const SceneSnapshot& scene, RayHit& hit) const;
+    bool Raytrace(const glm::vec3& origin, const glm::vec3& direction, const std::vector<GameObject*>& scene, RayHit& hit) const;
     glm::vec3 ComputeDirectLighting(const RayHit& hit, const SceneSnapshot& scene) const;
+    glm::vec3 ComputeDirectLighting(const RayHit& hit, const std::vector<Light>& lights, const std::vector<GameObject*>& scene) const;
     bool RayTriangleIntersect(const glm::vec3& rayOrigin, const glm::vec3& rayDir,
                               const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2,
                               float& t, float& u, float& v) const;

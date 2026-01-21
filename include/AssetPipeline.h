@@ -99,6 +99,11 @@ public:
     bool ProcessAssets(bool incrementalOnly = true);
 
     /**
+     * @brief Process queued jobs and update callbacks (call once per frame)
+     */
+    void Update();
+
+    /**
      * @brief Process single asset
      * @param assetPath Relative path to asset
      * @param force Force reprocessing even if not dirty
