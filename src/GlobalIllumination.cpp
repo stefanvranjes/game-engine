@@ -100,11 +100,16 @@ bool GlobalIllumination::Initialize(int screenWidth, int screenHeight)
     CreateSSGIResources(screenWidth, screenHeight);
 
     // Load shaders
-    m_ConeTraceShader = std::make_unique<Shader>("shaders/fullscreen.vert", "shaders/cone_trace.frag");
-    m_SSGIShader = std::make_unique<Shader>("shaders/fullscreen.vert", "shaders/ssgi.frag");
-    m_SSGIBlurShader = std::make_unique<Shader>("shaders/fullscreen.vert", "shaders/ssgi_blur.frag");
-    m_TemporalShader = std::make_unique<Shader>("shaders/fullscreen.vert", "shaders/gi_temporal.frag");
-    m_VoxelDebugShader = std::make_unique<Shader>("shaders/voxel_debug.vert", "shaders/voxel_debug.frag");
+    m_ConeTraceShader = std::make_unique<Shader>();
+    m_ConeTraceShader->LoadFromFiles("shaders/fullscreen.vert", "shaders/cone_trace.frag");
+    m_SSGIShader = std::make_unique<Shader>();
+    m_SSGIShader->LoadFromFiles("shaders/fullscreen.vert", "shaders/ssgi.frag");
+    m_SSGIBlurShader = std::make_unique<Shader>();
+    m_SSGIBlurShader->LoadFromFiles("shaders/fullscreen.vert", "shaders/ssgi_blur.frag");
+    m_TemporalShader = std::make_unique<Shader>();
+    m_TemporalShader->LoadFromFiles("shaders/fullscreen.vert", "shaders/gi_temporal.frag");
+    m_VoxelDebugShader = std::make_unique<Shader>();
+    m_VoxelDebugShader->LoadFromFiles("shaders/voxel_debug.vert", "shaders/voxel_debug.frag");
 
     // Create debug visualization resources
     glGenVertexArrays(1, &m_DebugVAO);

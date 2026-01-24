@@ -188,12 +188,23 @@ bool NetworkManager::StartMasterServer(uint16_t port) {
 }
 
 void NetworkManager::DisconnectNode(int nodeId) {
-    std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
+    m_Impl->DisconnectNode(nodeId);
+}
+
+void NetworkManager::Impl::DisconnectNode(int nodeId) {
+    std::lock_guard<std::mutex> lock(connectionsMutex);
     
-    auto it = m_Impl->connections.find(nodeId);
-    if (it != m_Impl->connections.end()) {
+    auto it = connections.find(nodeId);
+    if (it != connections.end()) {
+#ifdef HAS_ASIO
+        if (it->second->socket) {
+            asio::error_code ec;
+            it->second->socket->close(ec);
+        }
+#else
         closesocket(it->second->socket);
-        m_Impl->connections.erase(it);
+#endif
+        connections.erase(it);
         std::cout << "Disconnected from node " << nodeId << std::endl;
     }
 }
@@ -202,27 +213,39 @@ void NetworkManager::Shutdown() {
     m_Impl->running = false;
     
     // Close server socket to unblock accept
+#ifndef HAS_ASIO
     if (m_Impl->serverSocket != INVALID_SOCKET_VALUE) {
         closesocket(m_Impl->serverSocket);
         m_Impl->serverSocket = INVALID_SOCKET_VALUE;
     }
+#endif
     
     // Wait for threads
+#ifndef HAS_ASIO
     if (m_Impl->acceptThread.joinable()) m_Impl->acceptThread.join();
     if (m_Impl->receiveThread.joinable()) m_Impl->receiveThread.join();
     if (m_Impl->heartbeatThread.joinable()) m_Impl->heartbeatThread.join();
+#endif
     
     // Close all connections
     std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
     for (auto& [id, conn] : m_Impl->connections) {
-        if (conn) closesocket(conn->socket);
+        if (conn) {
+#ifdef HAS_ASIO
+            if (conn->socket) {
+                asio::error_code ec;
+                conn->socket->close(ec);
+            }
+#else
+            closesocket(conn->socket);
+#endif
+        }
     }
     m_Impl->connections.clear();
     
     std::cout << "Network manager shutdown complete" << std::endl;
 }
 
-// Renamed to SendMessageInternal and moved to Impl scope
 bool NetworkManager::Impl::SendMessageInternal(int nodeId, const Message& msg) {
     std::lock_guard<std::mutex> lock(connectionsMutex);
     
@@ -231,17 +254,27 @@ bool NetworkManager::Impl::SendMessageInternal(int nodeId, const Message& msg) {
         return false;
     }
     
-    // Serialize message (simplified - would use proper serialization in production)
+    // Serialize message
     std::vector<uint8_t> buffer;
     buffer.push_back(static_cast<uint8_t>(msg.type));
     // TODO: Add full serialization
     
-    int sent = send(it->second->socket, (char*)buffer.data(), buffer.size(), 0);
-    
-    if (sent == SOCKET_ERROR_VALUE) {
+    size_t sent = 0;
+#ifdef HAS_ASIO
+    try {
+        sent = asio::write(*it->second->socket, asio::buffer(buffer));
+    } catch (const std::exception& e) {
+        std::cerr << "ASIO send failed to node " << nodeId << ": " << e.what() << std::endl;
+        return false;
+    }
+#else
+    int result = send(it->second->socket, (char*)buffer.data(), buffer.size(), 0);
+    if (result == SOCKET_ERROR_VALUE) {
         std::cerr << "Failed to send message to node " << nodeId << std::endl;
         return false;
     }
+    sent = static_cast<size_t>(result);
+#endif
     
     std::lock_guard<std::mutex> statsLock(statsMutex);
     stats.messagesSent++;
@@ -332,7 +365,14 @@ void NetworkManager::CleanupDeadConnections() {
     for (auto it = m_Impl->connections.begin(); it != m_Impl->connections.end();) {
         if (it->second && (now - it->second->lastHeartbeat > HEARTBEAT_TIMEOUT_MS)) {
             std::cout << "Node " << it->first << " timed out, disconnecting" << std::endl;
+#ifdef HAS_ASIO
+            if (it->second->socket) {
+                asio::error_code ec;
+                it->second->socket->close(ec);
+            }
+#else
             closesocket(it->second->socket);
+#endif
             it = m_Impl->connections.erase(it);
         } else {
             ++it;

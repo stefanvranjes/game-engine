@@ -2,7 +2,7 @@
 #include "PhysXSoftBody.h"
 #include "Camera.h"
 #include "Shader.h"
-#include <GL/glew.h>
+#include "GLExtensions.h"
 
 TearPatternGizmo::TearPatternGizmo() {
     m_Type = GizmoType::None;

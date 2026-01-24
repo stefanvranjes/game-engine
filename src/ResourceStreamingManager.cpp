@@ -14,6 +14,20 @@ Resource::Resource(const std::string& path)
     : m_Path(path), m_State(ResourceState::Unloaded) {
 }
 
+class GenericResource : public Resource {
+public:
+    GenericResource(const std::string& path) : Resource(path) {}
+    bool OnLoadComplete(const std::vector<uint8_t>& data) override {
+        m_MemoryUsage = data.size();
+        m_State = ResourceState::Loaded;
+        return true;
+    }
+    void OnUnload() override {
+        m_State = ResourceState::Unloaded;
+        m_MemoryUsage = 0;
+    }
+};
+
 // ============================================================================
 // ResourceStreamingManager Implementation
 // ============================================================================
@@ -136,7 +150,7 @@ void ResourceStreamingManager::PreloadResources(
     
     for (const auto& path : paths) {
         // Create generic resource wrapper
-        auto resource = std::make_shared<Resource>(path);
+        auto resource = std::make_shared<GenericResource>(path);
         RequestLoad(resource, priority);
     }
 }

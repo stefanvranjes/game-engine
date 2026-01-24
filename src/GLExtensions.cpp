@@ -50,6 +50,7 @@ PFNGLDELETERENDERBUFFERSPROC glDeleteRenderbuffers = nullptr;
 PFNGLTEXIMAGE3DPROC glTexImage3D = nullptr;
 PFNGLTEXSUBIMAGE3DPROC glTexSubImage3D = nullptr;
 PFNGLFRAMEBUFFERTEXTURELAYERPROC glFramebufferTextureLayer = nullptr;
+PFNGLBUFFERSTORAGEPROC glBufferStorage = nullptr;
 PFNGLTEXSTORAGE2DPROC glTexStorage2D = nullptr;
 
 // Query functions
@@ -58,6 +59,9 @@ PFNGLDELETEQUERIESPROC glDeleteQueries = nullptr;
 PFNGLBEGINQUERYPROC glBeginQuery = nullptr;
 PFNGLENDQUERYPROC glEndQuery = nullptr;
 PFNGLGETQUERYOBJECTUIVPROC glGetQueryObjectuiv = nullptr;
+PFNGLGETQUERYOBJECTUI64VPROC glGetQueryObjectui64v = nullptr;
+PFNGLDRAWELEMENTSINSTANCEDBASEVERTEXBASEINSTANCEPROC glDrawElementsInstancedBaseVertexBaseInstance = nullptr;
+PFNGLMULTIDRAWARRAYSINDIRECTPROC glMultiDrawArraysIndirect = nullptr;
 
 PFNGLDRAWARRAYSINSTANCEDPROC glDrawArraysInstanced = nullptr;
 PFNGLVERTEXATTRIBDIVISORPROC glVertexAttribDivisor = nullptr;
@@ -83,6 +87,7 @@ PFNGLGETBUFFERSUBDATAPROC glGetBufferSubData = nullptr;
 PFNGLCLEARBUFFERDATAPROC glClearBufferData = nullptr;
 PFNGLCLEARTEXIMAGEPROC glClearTexImage = nullptr;
 PFNGLDEBUGMESSAGEINSERTPROC glDebugMessageInsert = nullptr;
+PFNGLCOPYBUFFERSUBDATAPROC glCopyBufferSubData = nullptr;
 bool GLAD_GL_KHR_debug = false;
 
 
@@ -135,6 +140,7 @@ bool LoadGLExtensions() {
     glTexImage3D = (PFNGLTEXIMAGE3DPROC)wglGetProcAddress("glTexImage3D");
     glTexSubImage3D = (PFNGLTEXSUBIMAGE3DPROC)wglGetProcAddress("glTexSubImage3D");
     glFramebufferTextureLayer = (PFNGLFRAMEBUFFERTEXTURELAYERPROC)wglGetProcAddress("glFramebufferTextureLayer");
+    glBufferStorage = (PFNGLBUFFERSTORAGEPROC)wglGetProcAddress("glBufferStorage");
     glTexStorage2D = (PFNGLTEXSTORAGE2DPROC)wglGetProcAddress("glTexStorage2D");
     
     // Load Query functions
@@ -143,6 +149,9 @@ bool LoadGLExtensions() {
     glBeginQuery = (PFNGLBEGINQUERYPROC)wglGetProcAddress("glBeginQuery");
     glEndQuery = (PFNGLENDQUERYPROC)wglGetProcAddress("glEndQuery");
     glGetQueryObjectuiv = (PFNGLGETQUERYOBJECTUIVPROC)wglGetProcAddress("glGetQueryObjectuiv");
+    glGetQueryObjectui64v = (PFNGLGETQUERYOBJECTUI64VPROC)wglGetProcAddress("glGetQueryObjectui64v");
+    glDrawElementsInstancedBaseVertexBaseInstance = (PFNGLDRAWELEMENTSINSTANCEDBASEVERTEXBASEINSTANCEPROC)wglGetProcAddress("glDrawElementsInstancedBaseVertexBaseInstance");
+    glMultiDrawArraysIndirect = (PFNGLMULTIDRAWARRAYSINDIRECTPROC)wglGetProcAddress("glMultiDrawArraysIndirect");
 
     glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)wglGetProcAddress("glDrawArraysInstanced");
     glVertexAttribDivisor = (PFNGLVERTEXATTRIBDIVISORPROC)wglGetProcAddress("glVertexAttribDivisor");
@@ -168,6 +177,7 @@ bool LoadGLExtensions() {
     glClearBufferData = (PFNGLCLEARBUFFERDATAPROC)wglGetProcAddress("glClearBufferData");
     glClearTexImage = (PFNGLCLEARTEXIMAGEPROC)wglGetProcAddress("glClearTexImage");
     glDebugMessageInsert = (PFNGLDEBUGMESSAGEINSERTPROC)wglGetProcAddress("glDebugMessageInsert");
+    glCopyBufferSubData = (PFNGLCOPYBUFFERSUBDATAPROC)wglGetProcAddress("glCopyBufferSubData");
 
     if (glDebugMessageInsert) {
         GLAD_GL_KHR_debug = true;

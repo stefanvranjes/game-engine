@@ -430,7 +430,7 @@ public:
      * @brief Memory barrier for GPU synchronization
      * @param barrierType Type of barrier (shader-to-framebuffer, etc.)
      */
-    virtual void MemoryBarrier(uint32_t barrierType) = 0;
+    virtual void GPUMemoryBarrier(uint32_t barrierType) = 0;
 
     /**
      * @brief Framebuffer barrier for input attachments

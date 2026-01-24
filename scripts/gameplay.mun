@@ -1,0 +1,388 @@
+// Example Mun script demonstrating gameplay mechanics
+// Path: scripts/gameplay.mun
+
+// =============================================================================
+// CORE GAME LOGIC
+// =============================================================================
+
+pub fn calculate_damage(base_damage: f32, armor: f32, is_critical: bool) -> f32 {
+    let damage = (base_damage - armor * 0.5).max(1.0);
+    if is_critical {
+        damage * 1.5
+    } else {
+        damage
+    }
+}
+
+pub fn calculate_healing(base_heal: f32, wisdom: f32) -> f32 {
+    base_heal + wisdom * 0.2
+}
+
+// =============================================================================
+// PLAYER CHARACTER
+// =============================================================================
+
+pub struct Player {
+    name: String,
+    level: i32,
+    experience: i32,
+    health: f32,
+    max_health: f32,
+    mana: f32,
+    max_mana: f32,
+    attack_power: f32,
+    defense: f32,
+    is_alive: bool,
+}
+
+impl Player {
+    pub fn new(name: String) -> Player {
+        Player {
+            name,
+            level: 1,
+            experience: 0,
+            health: 100.0,
+            max_health: 100.0,
+            mana: 50.0,
+            max_mana: 50.0,
+            attack_power: 10.0,
+            defense: 5.0,
+            is_alive: true,
+        }
+    }
+
+    pub fn take_damage(self: &mut Self, damage: f32) {
+        self.health -= damage;
+        if self.health <= 0.0 {
+            self.health = 0.0;
+            self.is_alive = false;
+        }
+    }
+
+    pub fn heal(self: &mut Self, amount: f32) {
+        self.health = (self.health + amount).min(self.max_health);
+        if self.health > 0.0 {
+            self.is_alive = true;
+        }
+    }
+
+    pub fn use_mana(self: &mut Self, amount: f32) -> bool {
+        if self.mana >= amount {
+            self.mana -= amount;
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn restore_mana(self: &mut Self, amount: f32) {
+        self.mana = (self.mana + amount).min(self.max_mana);
+    }
+
+    pub fn gain_experience(self: &mut Self, amount: i32) {
+        self.experience += amount;
+        if self.experience >= self.level * 100 {
+            self.level_up();
+        }
+    }
+
+    fn level_up(self: &mut Self) {
+        self.level += 1;
+        self.max_health += 20.0;
+        self.health = self.max_health;
+        self.max_mana += 10.0;
+        self.mana = self.max_mana;
+        self.attack_power += 5.0;
+        self.defense += 2.0;
+    }
+
+    pub fn get_defense_rating(self: &Self) -> f32 {
+        self.defense
+    }
+
+    pub fn is_healthy(self: &Self) -> bool {
+        self.health > self.max_health * 0.75
+    }
+
+    pub fn health_percentage(self: &Self) -> f32 {
+        if self.max_health > 0.0 {
+            (self.health / self.max_health) * 100.0
+        } else {
+            0.0
+        }
+    }
+}
+
+// =============================================================================
+// ENEMY CHARACTER
+// =============================================================================
+
+pub enum EnemyType {
+    Goblin,
+    Orc,
+    Dragon,
+    Skeleton,
+}
+
+pub struct Enemy {
+    name: String,
+    enemy_type: EnemyType,
+    level: i32,
+    health: f32,
+    max_health: f32,
+    attack_power: f32,
+    defense: f32,
+    experience_reward: i32,
+}
+
+impl Enemy {
+    pub fn new(name: String, enemy_type: EnemyType, level: i32) -> Enemy {
+        let base_stats = match enemy_type {
+            EnemyType::Goblin => (30.0, 3.0, 5.0),
+            EnemyType::Orc => (50.0, 8.0, 3.0),
+            EnemyType::Dragon => (200.0, 20.0, 15.0),
+            EnemyType::Skeleton => (40.0, 7.0, 4.0),
+        };
+
+        let health = base_stats.0 + (level - 1) as f32 * 10.0;
+        let attack = base_stats.1 + (level - 1) as f32 * 2.0;
+        let defense = base_stats.2 + (level - 1) as f32 * 0.5;
+
+        Enemy {
+            name,
+            enemy_type,
+            level,
+            health,
+            max_health: health,
+            attack_power: attack,
+            defense,
+            experience_reward: level * 50,
+        }
+    }
+
+    pub fn take_damage(self: &mut Self, damage: f32) {
+        self.health -= damage;
+        if self.health < 0.0 {
+            self.health = 0.0;
+        }
+    }
+
+    pub fn is_defeated(self: &Self) -> bool {
+        self.health <= 0.0
+    }
+
+    pub fn get_experience_reward(self: &Self) -> i32 {
+        self.experience_reward
+    }
+}
+
+// =============================================================================
+// COMBAT SYSTEM
+// =============================================================================
+
+pub enum CombatResult {
+    Hit(f32),      // Damage dealt
+    Miss,
+    Critical(f32), // Critical damage
+}
+
+pub fn attack(attacker: &Player, defender: &Enemy) -> CombatResult {
+    let base_damage = attacker.attack_power;
+    let critical_chance = 0.15;  // 15% crit chance
+
+    // Simplified hit calculation
+    if base_damage > 0.0 {
+        let is_critical = critical_chance > 0.5;  // Simplified for demo
+        let damage = calculate_damage(base_damage, defender.defense, is_critical);
+
+        if is_critical {
+            CombatResult::Critical(damage)
+        } else {
+            CombatResult::Hit(damage)
+        }
+    } else {
+        CombatResult::Miss
+    }
+}
+
+pub fn defend(defender: &Enemy) -> f32 {
+    defender.defense
+}
+
+// =============================================================================
+// INVENTORY & ITEMS
+// =============================================================================
+
+pub enum ItemType {
+    Weapon,
+    Armor,
+    Potion,
+    Spell,
+}
+
+pub struct Item {
+    name: String,
+    item_type: ItemType,
+    value: i32,
+}
+
+impl Item {
+    pub fn new(name: String, item_type: ItemType, value: i32) -> Item {
+        Item { name, item_type, value }
+    }
+
+    pub fn get_value(self: &Self) -> i32 {
+        self.value
+    }
+}
+
+// =============================================================================
+// QUEST SYSTEM
+// =============================================================================
+
+pub enum QuestStatus {
+    Available,
+    Active,
+    Completed,
+    Failed,
+}
+
+pub struct Quest {
+    title: String,
+    description: String,
+    status: QuestStatus,
+    reward_experience: i32,
+    reward_gold: i32,
+}
+
+impl Quest {
+    pub fn new(
+        title: String,
+        description: String,
+        experience: i32,
+        gold: i32,
+    ) -> Quest {
+        Quest {
+            title,
+            description,
+            status: QuestStatus::Available,
+            reward_experience: experience,
+            reward_gold: gold,
+        }
+    }
+
+    pub fn accept(self: &mut Self) {
+        // match statement to change status
+    }
+
+    pub fn complete(self: &mut Self) {
+        // Update status to completed
+    }
+
+    pub fn get_rewards(self: &Self) -> (i32, i32) {
+        (self.reward_experience, self.reward_gold)
+    }
+}
+
+// =============================================================================
+// ABILITY SYSTEM
+// =============================================================================
+
+pub struct Ability {
+    name: String,
+    mana_cost: f32,
+    cooldown: f32,
+    damage_multiplier: f32,
+}
+
+impl Ability {
+    pub fn new(
+        name: String,
+        mana_cost: f32,
+        cooldown: f32,
+        damage_multiplier: f32,
+    ) -> Ability {
+        Ability {
+            name,
+            mana_cost,
+            cooldown,
+            damage_multiplier,
+        }
+    }
+
+    pub fn can_cast(self: &Self, player: &Player) -> bool {
+        player.mana >= self.mana_cost
+    }
+
+    pub fn calculate_damage(self: &Self, base_attack: f32) -> f32 {
+        base_attack * self.damage_multiplier
+    }
+}
+
+// =============================================================================
+// BUFF/DEBUFF SYSTEM
+// =============================================================================
+
+pub enum EffectType {
+    Strength,
+    Weakness,
+    Haste,
+    Slow,
+    Poison,
+}
+
+pub struct StatusEffect {
+    effect_type: EffectType,
+    duration: f32,
+    magnitude: f32,
+}
+
+impl StatusEffect {
+    pub fn new(
+        effect_type: EffectType,
+        duration: f32,
+        magnitude: f32,
+    ) -> StatusEffect {
+        StatusEffect {
+            effect_type,
+            duration,
+            magnitude,
+        }
+    }
+
+    pub fn update(self: &mut Self, delta_time: f32) {
+        self.duration -= delta_time;
+    }
+
+    pub fn is_active(self: &Self) -> bool {
+        self.duration > 0.0
+    }
+}
+
+// =============================================================================
+// UTILITY FUNCTIONS
+// =============================================================================
+
+pub fn clamp(value: f32, min: f32, max: f32) -> f32 {
+    if value < min {
+        min
+    } else if value > max {
+        max
+    } else {
+        value
+    }
+}
+
+pub fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    a + (b - a) * t
+}
+
+pub fn distance_squared(x1: f32, y1: f32, x2: f32, y2: f32) -> f32 {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    dx * dx + dy * dy
+}
+
+pub fn is_in_range(x1: f32, y1: f32, x2: f32, y2: f32, range: f32) -> bool {
+    distance_squared(x1, y1, x2, y2) <= range * range
+}

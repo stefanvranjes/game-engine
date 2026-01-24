@@ -4,7 +4,22 @@
 #ifdef HAS_ASIO
 
 #include "NetworkManager.h"
+#include "NetworkManagerImpl.h"
 #include <iostream>
+#include <mutex>
+#include <thread>
+#include <chrono>
+#include <vector>
+#include <memory>
+
+#ifdef ASIO_STANDALONE
+    #include <asio.hpp>
+#else
+    #include <boost/asio.hpp>
+    namespace asio = boost::asio;
+#endif
+
+using asio::ip::tcp;
 
 // ASIO-specific connection implementation
 void NetworkManager::Impl::StartAsyncAccept() {
@@ -21,21 +36,22 @@ void NetworkManager::Impl::StartAsyncAccept() {
             
             std::lock_guard<std::mutex> lock(connectionsMutex);
             
-            Connection conn;
-            conn.nodeId = nextNodeId++;
-            conn.socket = socket;
-            conn.address = address;
-            conn.port = port;
-            conn.lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+            auto conn = std::make_unique<Connection>();
+            conn->nodeId = nextNodeId++;
+            conn->socket = socket;
+            conn->address = address;
+            conn->port = port;
+            conn->lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
             
-            connections[conn.nodeId] = std::move(conn);
+            int nodeId = conn->nodeId;
+            connections[nodeId] = std::move(conn);
             
-            std::cout << "Worker node " << conn.nodeId << " connected from " 
+            std::cout << "Worker node " << nodeId << " connected from " 
                       << address << ":" << port << std::endl;
             
             // Start async read for this connection
-            StartAsyncRead(conn.nodeId);
+            StartAsyncRead(nodeId);
         }
         
         // Continue accepting
@@ -51,7 +67,7 @@ void NetworkManager::Impl::StartAsyncRead(int nodeId) {
     auto it = connections.find(nodeId);
     if (it == connections.end()) return;
     
-    auto& conn = it->second;
+    auto& conn = *it->second;
     
     conn.socket->async_read_some(
         asio::buffer(conn.readBuffer),
@@ -82,7 +98,7 @@ void NetworkManager::Impl::ProcessReceivedData(int nodeId, size_t bytes) {
     
     // TODO: Parse message from readBuffer
     // For now, just update heartbeat
-    it->second.lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+    it->second->lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     
     stats.messagesReceived++;
@@ -100,12 +116,12 @@ bool NetworkManager::ConnectToMasterASIO(const std::string& address, uint16_t po
         
         // Add master connection
         std::lock_guard<std::mutex> lock(m_Impl->connectionsMutex);
-        Impl::Connection conn;
-        conn.nodeId = 0;  // Master is always node 0
-        conn.socket = socket;
-        conn.address = address;
-        conn.port = port;
-        conn.lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
+        auto conn = std::make_unique<Impl::Connection>();
+        conn->nodeId = 0;  // Master is always node 0
+        conn->socket = socket;
+        conn->address = address;
+        conn->port = port;
+        conn->lastHeartbeat = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
         
         m_Impl->connections[0] = std::move(conn);
@@ -170,7 +186,7 @@ bool NetworkManager::SendMessageASIO(int nodeId, const Message& msg) {
     // TODO: Add full serialization
     
     try {
-        asio::write(*it->second.socket, asio::buffer(buffer));
+        asio::write(*it->second->socket, asio::buffer(buffer));
         
         std::lock_guard<std::mutex> statsLock(m_Impl->statsMutex);
         m_Impl->stats.messagesSent++;
@@ -199,7 +215,7 @@ void NetworkManager::SendMessageAsyncASIO(int nodeId, const Message& msg,
     buffer->push_back(static_cast<uint8_t>(msg.type));
     // TODO: Add full serialization
     
-    asio::async_write(*it->second.socket, asio::buffer(*buffer),
+    asio::async_write(*it->second->socket, asio::buffer(*buffer),
         [this, buffer, callback](const asio::error_code& error, std::size_t bytes_transferred) {
             if (!error) {
                 std::lock_guard<std::mutex> statsLock(m_Impl->statsMutex);

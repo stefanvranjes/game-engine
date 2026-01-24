@@ -1,11 +1,13 @@
-#include "GpuBatchManager.h"
+#ifdef USE_PHYSX
+#include "PhysXBackend.h"
+#endif
+
 #include "PhysXSoftBody.h"
 #include "GpuProfiler.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
-
-#ifdef USE_PHYSX
+#include <numeric>
 
 struct GpuBatchManager::Impl {
     std::vector<GpuBatchManager::SoftBodyEntry> entries;
@@ -86,6 +88,20 @@ GpuBatchManager::~GpuBatchManager() {
     Shutdown();
 }
 
+void GpuBatchManager::Shutdown() {
+    if (!m_Impl->initialized) {
+        return;
+    }
+    
+    // Synchronize before shutdown
+    Synchronize();
+    
+    m_Impl->entries.clear();
+    m_Impl->initialized = false;
+}
+
+#ifdef USE_PHYSX
+
 void GpuBatchManager::Initialize(size_t streamCount) {
     GPU_PROFILE_SCOPE("GpuBatchManager::Initialize");
     
@@ -124,17 +140,7 @@ void GpuBatchManager::Initialize(size_t streamCount) {
 #endif
 }
 
-void GpuBatchManager::Shutdown() {
-    if (!m_Impl->initialized) {
-        return;
-    }
-    
-    // Synchronize before shutdown
-    Synchronize();
-    
-    m_Impl->softBodies.clear();
-    m_Impl->initialized = false;
-}
+#endif // USE_PHYSX
 
 void GpuBatchManager::AddSoftBody(PhysXSoftBody* softBody) {
     if (!softBody) {

@@ -165,7 +165,7 @@ public:
         size_t offset) override;
 
     // Synchronization
-    void MemoryBarrier(uint32_t barrierType) override;
+    void GPUMemoryBarrier(uint32_t barrierType) override;
     void FramebufferBarrier() override;
 
     // Multi-GPU (no-op for OpenGL)

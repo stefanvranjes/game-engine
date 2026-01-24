@@ -8,6 +8,32 @@
 #include <filesystem>
 
 // Wren handles are already available via wren.h included in the header
+static void wrenWrite(WrenVM* vm, const char* text) {
+    // We skip single newlines as Wren often sends them separately
+    if (std::string(text) == "\n") return;
+    WrenScriptSystem::GetInstance().SetGlobalVariable("LastOutput", text); 
+    // Directly accessing private member because we are in the same compilation unit
+    // Actually, let's use the instance for simplicity
+    // Note: This assumes singleton usage
+}
+
+static void wrenError(WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) {
+    std::stringstream ss;
+    if (type == WREN_ERROR_COMPILE) {
+        ss << "[" << module << " line " << line << "] " << message;
+    } else if (type == WREN_ERROR_RUNTIME) {
+        ss << "Runtime Error: " << message;
+    } else if (type == WREN_ERROR_STACK_TRACE) {
+        ss << "  [line " << line << "] in " << message;
+    }
+    WrenScriptSystem::HandleError(ss.str());
+}
+
+static WrenLoadModuleResult wrenLoadModule(WrenVM* vm, const char* name) {
+    WrenLoadModuleResult result = {0};
+    // Basic module loading logic could go here
+    return result;
+}
 
 WrenScriptSystem::WrenScriptSystem() : m_VM(nullptr) {
     m_PrintHandler = [](const std::string& msg) {
@@ -25,7 +51,27 @@ WrenScriptSystem::~WrenScriptSystem() {
 void WrenScriptSystem::Init() {
     if (m_VM) return; // Already initialized
     
-    m_VM = wrenNewVM();
+    WrenConfiguration config;
+    wrenInitConfiguration(&config);
+    
+    config.writeFn = [](WrenVM* vm, const char* text) {
+        if (std::string(text) == "\n") return;
+        WrenScriptSystem::GetInstance().CallMessageHandler(text, false);
+    };
+    
+    config.errorFn = [](WrenVM* vm, WrenErrorType type, const char* module, int line, const char* message) {
+        std::stringstream ss;
+        if (type == WREN_ERROR_COMPILE) {
+            ss << "[" << module << " line " << line << "] " << message;
+        } else if (type == WREN_ERROR_RUNTIME) {
+            ss << "Runtime Error: " << message;
+        } else if (type == WREN_ERROR_STACK_TRACE) {
+            ss << "  [line " << line << "] in " << message;
+        }
+        WrenScriptSystem::GetInstance().CallMessageHandler(ss.str(), true);
+    };
+    
+    m_VM = wrenNewVM(&config);
     if (!m_VM) {
         std::cerr << "Failed to create Wren VM" << std::endl;
         return;
@@ -219,7 +265,7 @@ void WrenScriptSystem::RegisterGameObjectBindings() {
     if (!m_VM) return;
     
     // Define Wren class for GameObject binding
-    std::string gameObjectClass = R"(
+    std::string gameObjectClass = R"wren(
         foreign class GameObject {
             construct new(name) { }
             foreign name
@@ -233,7 +279,7 @@ void WrenScriptSystem::RegisterGameObjectBindings() {
             foreign tag
             foreign setTag(tag)
         }
-    )";
+    )wren";
     
     ExecuteString(gameObjectClass);
 }
@@ -241,7 +287,7 @@ void WrenScriptSystem::RegisterGameObjectBindings() {
 void WrenScriptSystem::RegisterTransformBindings() {
     if (!m_VM) return;
     
-    std::string transformClass = R"(
+    std::string transformClass = R"wren(
         foreign class Transform {
             foreign position
             foreign rotation
@@ -259,7 +305,7 @@ void WrenScriptSystem::RegisterTransformBindings() {
             foreign translate(x, y, z)
             foreign rotate(x, y, z)
         }
-    )";
+    )wren";
     
     ExecuteString(transformClass);
 }
@@ -267,7 +313,7 @@ void WrenScriptSystem::RegisterTransformBindings() {
 void WrenScriptSystem::RegisterVec3Bindings() {
     if (!m_VM) return;
     
-    std::string vec3Class = R"(
+    std::string vec3Class = R"wren(
         foreign class Vec3 {
             construct new(x, y, z) { }
             foreign x
@@ -280,7 +326,7 @@ void WrenScriptSystem::RegisterVec3Bindings() {
             foreign distance(other)
             foreign toString
         }
-    )";
+    )wren";
     
     ExecuteString(vec3Class);
 }
@@ -288,7 +334,7 @@ void WrenScriptSystem::RegisterVec3Bindings() {
 void WrenScriptSystem::RegisterPhysicsBindings() {
     if (!m_VM) return;
     
-    std::string physicsClass = R"(
+    std::string physicsClass = R"wren(
         foreign class RigidBody {
             foreign mass
             foreign velocity
@@ -314,7 +360,7 @@ void WrenScriptSystem::RegisterPhysicsBindings() {
             foreign onCollisionStay
             foreign onCollisionExit
         }
-    )";
+    )wren";
     
     ExecuteString(physicsClass);
 }
@@ -322,7 +368,7 @@ void WrenScriptSystem::RegisterPhysicsBindings() {
 void WrenScriptSystem::RegisterAudioBindings() {
     if (!m_VM) return;
     
-    std::string audioClass = R"(
+    std::string audioClass = R"wren(
         foreign class AudioSource {
             foreign clip
             foreign volume
@@ -336,7 +382,7 @@ void WrenScriptSystem::RegisterAudioBindings() {
             foreign playOneShotAtPoint(clip, x, y, z, volume)
             foreign isPlaying
         }
-    )";
+    )wren";
     
     ExecuteString(audioClass);
 }
@@ -344,7 +390,7 @@ void WrenScriptSystem::RegisterAudioBindings() {
 void WrenScriptSystem::RegisterParticleBindings() {
     if (!m_VM) return;
     
-    std::string particleClass = R"(
+    std::string particleClass = R"wren(
         foreign class ParticleSystem {
             foreign emission
             foreign emissionRate
@@ -357,7 +403,7 @@ void WrenScriptSystem::RegisterParticleBindings() {
             foreign pause()
             foreign emit(count)
         }
-    )";
+    )wren";
     
     ExecuteString(particleClass);
 }
@@ -365,7 +411,7 @@ void WrenScriptSystem::RegisterParticleBindings() {
 void WrenScriptSystem::RegisterTimeBindings() {
     if (!m_VM) return;
     
-    std::string timeClass = R"(
+    std::string timeClass = R"wren(
         class Time {
             static deltaTime { __deltaTime }
             static time { __time }
@@ -376,7 +422,7 @@ void WrenScriptSystem::RegisterTimeBindings() {
                 __timeScale = scale
             }
         }
-    )";
+    )wren";
     
     ExecuteString(timeClass);
 }
@@ -384,7 +430,7 @@ void WrenScriptSystem::RegisterTimeBindings() {
 void WrenScriptSystem::RegisterInputBindings() {
     if (!m_VM) return;
     
-    std::string inputClass = R"(
+    std::string inputClass = R"wren(
         class Input {
             static getKey(keyCode) { false }
             static getKeyDown(keyCode) { false }
@@ -396,7 +442,7 @@ void WrenScriptSystem::RegisterInputBindings() {
             static mousePosition { Vec3.new(0, 0, 0) }
             static isInputActive { true }
         }
-    )";
+    )wren";
     
     ExecuteString(inputClass);
 }
@@ -404,7 +450,7 @@ void WrenScriptSystem::RegisterInputBindings() {
 void WrenScriptSystem::RegisterUtilityBindings() {
     if (!m_VM) return;
     
-    std::string utilityClass = R"(
+    std::string utilityClass = R"wren(
         class Debug {
             static log(message) {
                 System.print("[DEBUG] %(message)")
@@ -440,7 +486,7 @@ void WrenScriptSystem::RegisterUtilityBindings() {
                 return t * t * (3 - 2 * t)
             }
         }
-    )";
+    )wren";
     
     ExecuteString(utilityClass);
 }

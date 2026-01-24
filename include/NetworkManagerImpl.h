@@ -97,6 +97,11 @@ struct NetworkManager::Impl {
     std::unique_ptr<tcp::acceptor> acceptor;
     std::thread ioThread;
     
+    // Connection state
+    bool isMaster = false;
+    int localNodeId = -1;
+    int nextNodeId = 1;
+    
     struct Connection {
         int nodeId;
         std::shared_ptr<tcp::socket> socket;
@@ -202,6 +207,7 @@ struct NetworkManager::Impl {
     
     // From NetworkManager.cpp (renamed from SendMessage)
     bool SendMessageInternal(int nodeId, const Message& msg);
+    void DisconnectNode(int nodeId);
 
     // From NetworkManagerReliability.cpp
     uint32_t CalculateRetryDelay(uint32_t retryCount);
@@ -209,4 +215,11 @@ struct NetworkManager::Impl {
     void HandleAck(uint32_t ackSeqNum);
     bool IsDuplicate(uint32_t seqNum);
     void SendAck(int nodeId, uint32_t seqNum);
+    
+#ifdef HAS_ASIO
+    // ASIO-specific methods (defined in NetworkManagerASIO.cpp)
+    void StartAsyncAccept();
+    void StartAsyncRead(int nodeId);
+    void ProcessReceivedData(int nodeId, size_t bytes);
+#endif
 };

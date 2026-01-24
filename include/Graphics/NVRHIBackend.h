@@ -39,6 +39,7 @@ public:
     void* GetData(uint32_t mipLevel = 0, uint32_t arrayIndex = 0) override;
     void GenerateMipMaps() override;
     void* GetNativeHandle() override { return m_NVRHITexture; }
+    nvrhi::ITexture* GetNVRHITexture() const { return m_NVRHITexture; }
 
 private:
     nvrhi::ITexture* m_NVRHITexture;

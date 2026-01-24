@@ -9,7 +9,9 @@
 #include <nvrhi/d3d12.h>
 #include <nvrhi/d3d11.h>
 #endif
+#ifdef VULKAN_ENABLED
 #include <nvrhi/vulkan.h>
+#endif
 
 namespace Graphics {
 
@@ -167,7 +169,7 @@ void NVRHICommandList::SetViewport(const ViewportRect& viewport) {
     vp.minZ = viewport.minDepth;
     vp.maxZ = viewport.maxDepth;
     
-    m_GraphicsState.viewport.viewports.clear();
+    m_GraphicsState.viewport.viewports.resize(0);
     m_GraphicsState.viewport.viewports.push_back(vp);
 }
 
@@ -177,7 +179,7 @@ void NVRHICommandList::SetScissorRect(uint32_t x, uint32_t y, uint32_t width, ui
     nvrhi::Rect rect{static_cast<int>(x), static_cast<int>(y), 
                     static_cast<int>(x + width), static_cast<int>(y + height)};
     
-    m_GraphicsState.viewport.scissorRects.clear();
+    m_GraphicsState.viewport.scissorRects.resize(0);
     m_GraphicsState.viewport.scissorRects.push_back(rect);
 }
 
@@ -273,7 +275,7 @@ void NVRHICommandList::DrawIndexed(uint32_t indexCount, uint32_t startIndexLocat
     args.vertexCount = indexCount;
     args.instanceCount = 1;
     args.startIndexLocation = startIndexLocation;
-    args.baseVertexLocation = baseVertexLocation;
+    args.startVertexLocation = baseVertexLocation;
     args.startInstanceLocation = 0;
     m_CommandList->drawIndexed(args);
 }
@@ -297,7 +299,7 @@ void NVRHICommandList::DrawIndexedInstanced(uint32_t indexCountPerInstance, uint
     args.vertexCount = indexCountPerInstance;
     args.instanceCount = instanceCount;
     args.startIndexLocation = startIndexLocation;
-    args.baseVertexLocation = baseVertexLocation;
+    args.startVertexLocation = baseVertexLocation;
     args.startInstanceLocation = startInstanceLocation;
     m_CommandList->drawIndexed(args);
 }
@@ -372,11 +374,13 @@ bool NVRHIDevice::Initialize(GraphicsBackend backend, uint32_t width, uint32_t h
     }
 #endif
     
+#ifdef VULKAN_ENABLED
     if (backend == GraphicsBackend::Vulkan) {
         nvrhi::vulkan::DeviceDesc deviceDesc;
         // Initialize Vulkan device
         m_Device = nvrhi::vulkan::createDevice(deviceDesc);
     }
+#endif
 
     if (!m_Device) {
         std::cerr << "Failed to create NVRHI device with backend: " << static_cast<int>(backend) << std::endl;

@@ -19,7 +19,10 @@ enum class ScriptLanguage {
     Custom,     // Custom bytecode VM
     TypeScript, // TypeScript/JavaScript - V8/QuickJS
     Rust,       // Rust - Safe, compiled scripting
-    Squirrel    // Squirrel - C-like syntax for games
+    Squirrel,   // Squirrel - C-like syntax for games
+    Go,         // Go - Native concurrency with goroutines & channels
+    Kotlin,     // Kotlin - JVM-based with full OOP and null safety
+    Mun         // Mun - Compiled hot-reload scripting language
 };
 
 /**
@@ -61,13 +64,13 @@ public:
 
     // Type registration and interop
     virtual void RegisterTypes() {}
-    virtual bool HasType(const std::string& typeName) const { return false; }
+    virtual bool HasType(const std::string& typeName) const { (void)typeName; return false; }
     virtual std::any CallFunction(const std::string& functionName, 
-                                   const std::vector<std::any>& args) { return std::any(); }
+                                   const std::vector<std::any>& args) { (void)functionName; (void)args; return std::any(); }
 
     // Hot-reload support
     virtual bool SupportsHotReload() const { return false; }
-    virtual void ReloadScript(const std::string& filepath) {}
+    virtual void ReloadScript(const std::string& filepath) { (void)filepath; }
 
     // Performance profiling
     virtual uint64_t GetMemoryUsage() const { return 0; }

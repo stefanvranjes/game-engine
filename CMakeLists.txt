@@ -15,6 +15,20 @@ add_compile_definitions(WIN32_LEAN_AND_MEAN)
 add_compile_definitions(TINYGLTF_NO_STB_IMAGE_IMPLEMENTATION)
 add_compile_definitions(TINYGLTF_NO_STB_IMAGE_WRITE_IMPLEMENTATION)
 
+# Go language support
+option(ENABLE_GO_SUPPORT "Enable Go language scripting support" ON)
+if(ENABLE_GO_SUPPORT)
+    # Check for Go installation
+    find_program(GO_EXECUTABLE go)
+    if(GO_EXECUTABLE)
+        message(STATUS "Go found: ${GO_EXECUTABLE}")
+        add_compile_definitions(GO_LANGUAGE_SUPPORT)
+    else()
+        message(WARNING "Go not found - Go scripting support disabled")
+        set(ENABLE_GO_SUPPORT OFF)
+    endif()
+endif()
+
 # Build type defaults
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
@@ -321,13 +335,16 @@ if(NOT wren_populated)
     # Build Wren as a static library
     file(GLOB WREN_SOURCES
         "${wren_SOURCE_DIR}/src/vm/*.c"
-        "${wren_SOURCE_DIR}/src/compiler/*.c"
         "${wren_SOURCE_DIR}/src/optional/*.c"
     )
     
     add_library(wren STATIC ${WREN_SOURCES})
     target_include_directories(wren PUBLIC 
         "${wren_SOURCE_DIR}/src/include"
+    )
+    target_include_directories(wren PRIVATE
+        "${wren_SOURCE_DIR}/src/vm"
+        "${wren_SOURCE_DIR}/src/optional"
     )
     
     # Wren configuration
@@ -496,13 +513,14 @@ set(SOURCES ${SOURCES}
     src/ScriptComponent.cpp
     src/WrenScriptSystem.cpp
     src/WrenScriptComponent.cpp
+    src/GoScriptSystem.cpp
+    src/GoRuntime.cpp
     # Asset pipeline - incremental builds, hashing, and conversion
     src/AssetHash.cpp
     src/AssetDatabase.cpp
     src/AssetConverter.cpp
     src/AssetPipeline.cpp
     # Networking layer - integrated into main engine
-    game-engine-multiplayer/src/NetworkManager.cpp
     game-engine-multiplayer/src/Server.cpp
     game-engine-multiplayer/src/Client.cpp
     game-engine-multiplayer/src/Message.cpp
@@ -754,167 +772,121 @@ endif()
 
 
 # Configure include directories based on physics backend
+# Common include directories for all build configurations
+set(COMMON_INCLUDES
+    include
+    include/imgui
+    game-engine-multiplayer/include
+    ${miniaudio_SOURCE_DIR}
+    ${assimp_SOURCE_DIR}/include
+    ${nvrhi_SOURCE_DIR}/include
+    ${nvrhi_SOURCE_DIR}/thirdparty/DirectX-Headers/include
+    ${wren_SOURCE_DIR}/src/include
+    ${enet_SOURCE_DIR}/include
+)
+
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
-    target_include_directories(GameEngine PUBLIC 
-        include 
-        include/imgui 
-        game-engine-multiplayer/include 
-        ${miniaudio_SOURCE_DIR} 
-        ${assimp_SOURCE_DIR}/include 
-        ${MONO_INCLUDE_DIRS}
+    list(APPEND COMMON_INCLUDES
         ${PHYSX_ROOT_DIR}/include
         ${PXSHARED_ROOT_DIR}/include
-        ${nvrhi_SOURCE_DIR}/include
-        ${wren_SOURCE_DIR}/src/include
-        ${enet_SOURCE_DIR}/include
     )
-    
-    # Add CUDA includes if available
     if(CUDAToolkit_FOUND)
-        target_include_directories(GameEngine PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
-    endif()
-    if(CUDAToolkit_FOUND)
-        target_include_directories(GameEngine PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+        list(APPEND COMMON_INCLUDES ${CUDAToolkit_INCLUDE_DIRS})
     endif()
 elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
-    target_include_directories(GameEngine PUBLIC 
-        include 
-        include/imgui 
-        game-engine-multiplayer/include 
-        ${miniaudio_SOURCE_DIR} 
-        ${box2d_SOURCE_DIR}/include 
-        ${assimp_SOURCE_DIR}/include 
-        ${MONO_INCLUDE_DIRS}
-        ${nvrhi_SOURCE_DIR}/include
-        ${wren_SOURCE_DIR}/src/include
-    )
+    list(APPEND COMMON_INCLUDES ${box2d_SOURCE_DIR}/include)
 else()
-    target_include_directories(GameEngine PUBLIC 
-        include 
-        include/imgui 
-        game-engine-multiplayer/include 
-        ${miniaudio_SOURCE_DIR} 
-        ${bullet3_SOURCE_DIR}/src 
-        ${assimp_SOURCE_DIR}/include 
-        ${MONO_INCLUDE_DIRS}
-        ${nvrhi_SOURCE_DIR}/include
-        ${wren_SOURCE_DIR}/src/include
-    )
+    list(APPEND COMMON_INCLUDES ${bullet3_SOURCE_DIR}/src)
 endif()
 
+if(MONO_FOUND)
+    list(APPEND COMMON_INCLUDES ${MONO_INCLUDE_DIRS})
+endif()
+
+target_include_directories(GameEngine PUBLIC ${COMMON_INCLUDES})
+
 # Configure link libraries based on physics backend
+# Common link libraries for all build configurations
+set(COMMON_LIBS
+    glfw
+    opengl32
+    nlohmann_json
+    tinygltf
+    assimp
+    ws2_32
+    winmm
+    lua
+    pybind11::embed
+    glm::glm
+    enet
+    nvrhi
+    nvrhi_d3d11
+    nvrhi_d3d12
+    nvrhi_vk
+    wren
+    spdlog::spdlog
+)
+
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
-    target_link_libraries(GameEngine PRIVATE 
-        glfw 
-        opengl32 
-        nlohmann_json 
-        tinygltf 
-        assimp 
-        ws2_32 
-        winmm 
-        lua 
-        pybind11::embed 
-        glm::glm
+    list(APPEND COMMON_LIBS
         PhysX
         PhysXCommon
         PhysXFoundation
         PhysXExtensions
         PhysXCharacterKinematic
         PhysXVehicle
-        enet
-        nvrhi
-        wren
-        spdlog::spdlog
     )
-    
-    # Add Vulkan if available
-    if(HAS_VULKAN)
-        target_link_libraries(GameEngine PRIVATE Vulkan::Vulkan)
-        target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
-    endif()
-    
-    # Link CUDA runtime if available
-    if(CUDAToolkit_FOUND)
-        target_compile_definitions(GameEngine PRIVATE HAS_CUDA_TOOLKIT)
-        target_include_directories(GameEngine PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-        target_link_libraries(GameEngine PRIVATE CUDA::cudart)
-    endif()
-
-    # Link LZ4 if available
-    if(HAS_LZ4)
-        target_compile_definitions(GameEngine PRIVATE HAS_LZ4)
-        target_include_directories(GameEngine PRIVATE ${LZ4_INCLUDE_DIRS})
-        target_link_libraries(GameEngine PRIVATE ${LZ4_LIBRARIES})
-    endif()
-    
-    # Link Protocol Buffers if available
-    if(HAS_PROTOBUF)
-        target_compile_definitions(GameEngine PRIVATE HAS_PROTOBUF)
-        target_include_directories(GameEngine PRIVATE ${Protobuf_INCLUDE_DIRS})
-        target_include_directories(GameEngine PRIVATE ${CMAKE_CURRENT_BINARY_DIR})  # For generated headers
-        target_link_libraries(GameEngine PRIVATE ${Protobuf_LIBRARIES})
-    endif()
-    
-    # Link ASIO if available
-    if(HAS_ASIO)
-        target_compile_definitions(GameEngine PRIVATE HAS_ASIO)
-        if(ASIO_STANDALONE)
-            target_compile_definitions(GameEngine PRIVATE ASIO_STANDALONE)
-            target_include_directories(GameEngine PRIVATE ${ASIO_INCLUDE_DIR})
-        else()
-            target_include_directories(GameEngine PRIVATE ${Boost_INCLUDE_DIRS})
-            target_link_libraries(GameEngine PRIVATE ${Boost_LIBRARIES})
-        endif()
-        # Disable deprecated warnings for ASIO
-        if(MSVC)
-            target_compile_definitions(GameEngine PRIVATE _WIN32_WINNT=0x0601)  # Windows 7+
-        endif()
-    endif()
 elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
-    target_link_libraries(GameEngine PRIVATE 
-        glfw 
-        opengl32 
-        nlohmann_json 
-        tinygltf 
-        assimp 
-        ws2_32 
-        winmm 
-        box2d 
-        lua 
-        pybind11::embed 
-        glm::glm
-        enet
-        nvrhi
-    )
-    
-    # Add Vulkan if available
-    if(HAS_VULKAN)
-        target_link_libraries(GameEngine PRIVATE Vulkan::Vulkan)
-        target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
-    endif()
+    list(APPEND COMMON_LIBS box2d)
 else()
-    target_link_libraries(GameEngine PRIVATE 
-        glfw 
-        opengl32 
-        nlohmann_json 
-        tinygltf 
-        assimp 
-        ws2_32 
-        winmm 
-        BulletDynamics 
-        BulletCollision 
-        LinearMath 
-        lua 
-        pybind11::embed 
-        glm::glm
-        enet
-        nvrhi
-    )
-    
-    # Add Vulkan if available
-    if(HAS_VULKAN)
-        target_link_libraries(GameEngine PRIVATE Vulkan::Vulkan)
-        target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
+    list(APPEND COMMON_LIBS BulletDynamics BulletCollision LinearMath)
+endif()
+
+if(HAS_VULKAN)
+    list(APPEND COMMON_LIBS Vulkan::Vulkan)
+    target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
+endif()
+
+target_link_libraries(GameEngine PRIVATE ${COMMON_LIBS})
+
+# Global library configurations (CUDA, LZ4, Protobuf, ASIO)
+# These should be applied regardless of the physics backend
+
+# Link CUDA runtime if available
+if(CUDAToolkit_FOUND)
+    target_compile_definitions(GameEngine PRIVATE HAS_CUDA_TOOLKIT)
+    target_include_directories(GameEngine PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
+    target_link_libraries(GameEngine PRIVATE CUDA::cudart)
+endif()
+
+# Link LZ4 if available
+if(HAS_LZ4)
+    target_compile_definitions(GameEngine PRIVATE HAS_LZ4)
+    target_include_directories(GameEngine PRIVATE ${LZ4_INCLUDE_DIRS})
+    target_link_libraries(GameEngine PRIVATE ${LZ4_LIBRARIES})
+endif()
+
+# Link Protocol Buffers if available
+if(HAS_PROTOBUF)
+    target_compile_definitions(GameEngine PRIVATE HAS_PROTOBUF)
+    target_include_directories(GameEngine PRIVATE ${Protobuf_INCLUDE_DIRS})
+    target_include_directories(GameEngine PRIVATE ${CMAKE_CURRENT_BINARY_DIR})  # For generated headers
+    target_link_libraries(GameEngine PRIVATE ${Protobuf_LIBRARIES})
+endif()
+
+# Link ASIO if available
+if(HAS_ASIO)
+    target_compile_definitions(GameEngine PRIVATE HAS_ASIO)
+    if(ASIO_STANDALONE)
+        target_compile_definitions(GameEngine PRIVATE ASIO_STANDALONE)
+        target_include_directories(GameEngine PRIVATE ${ASIO_INCLUDE_DIR})
+    else()
+        target_include_directories(GameEngine PRIVATE ${Boost_INCLUDE_DIRS})
+        target_link_libraries(GameEngine PRIVATE ${Boost_LIBRARIES})
+    endif()
+    # Disable deprecated warnings for ASIO
+    if(MSVC)
+        target_compile_definitions(GameEngine PRIVATE _WIN32_WINNT=0x0601)  # Windows 7+
     endif()
 endif()
 

@@ -42,17 +42,18 @@ bool Client::connectToServer() {
 }
 
 void Client::sendMessage(const Message& message) {
-    // Serialize and send the message
-    // Implementation of serialization is assumed to be handled in the Message class
-    send(socketFD, message.serialize().c_str(), message.serialize().size(), 0);
+    auto data = message.serialize();
+    send(socketFD, reinterpret_cast<const char*>(data.data()), data.size(), 0);
 }
 
 Message Client::receiveMessage() {
     char buffer[1024];
     ssize_t bytesReceived = recv(socketFD, buffer, sizeof(buffer) - 1, 0);
     if (bytesReceived > 0) {
-        buffer[bytesReceived] = '\0';
-        return Message::deserialize(buffer); // Assuming a deserialize method exists
+        // Convert char buffer to vector<uint8_t> for deserialization
+        std::vector<uint8_t> data(reinterpret_cast<uint8_t*>(buffer), 
+                                   reinterpret_cast<uint8_t*>(buffer) + bytesReceived);
+        return Message::deserialize(data);
     }
     return Message(); // Return an empty message on failure
 }

@@ -654,7 +654,7 @@ void VulkanBackend::DispatchIndirect(
     vkCmdDispatchIndirect(m_CommandBuffer, vkBuffer, static_cast<VkDeviceSize>(offset));
 }
 
-void VulkanBackend::MemoryBarrier(uint32_t barrierType) {
+void VulkanBackend::GPUMemoryBarrier(uint32_t barrierType) {
     if (!m_CommandBuffer) return;
     
     VkMemoryBarrier barrier{};

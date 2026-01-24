@@ -7,7 +7,9 @@
 #include <functional>
 #include <vector>
 
+extern "C" {
 #include <wren.h>
+}
 
 // Forward declarations of game engine types
 class GameObject;
@@ -175,6 +177,9 @@ public:
      * @return true if variable exists, false otherwise
      */
     bool HasVariable(const std::string& variableName);
+    
+    // Internal error handler (Static for use in C callbacks)
+    static void HandleError(const std::string& error);
 
 private:
     WrenScriptSystem();
@@ -203,8 +208,11 @@ private:
                                  bool isStatic,
                                  WrenForeignFunction function);
 
-    // Internal error handler
-    static void HandleError(const std::string& error);
+    
+    void CallMessageHandler(const std::string& msg, bool isError) {
+        if (isError && m_ErrorHandler) m_ErrorHandler(msg);
+        else if (!isError && m_PrintHandler) m_PrintHandler(msg);
+    }
 };
 
 /**

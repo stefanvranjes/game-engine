@@ -38,9 +38,12 @@ bool LightPropagationVolume::Initialize()
     CreateRSMResources();
 
     // Load shaders
-    m_RSMShader = std::make_unique<Shader>("shaders/rsm.vert", "shaders/rsm.frag");
-    m_InjectShader = std::make_unique<Shader>("shaders/lpv_inject.comp");
-    m_PropagateShader = std::make_unique<Shader>("shaders/lpv_propagate.comp");
+    m_RSMShader = std::make_unique<Shader>();
+    m_RSMShader->LoadFromFiles("shaders/rsm.vert", "shaders/rsm.frag");
+    m_InjectShader = std::make_unique<Shader>();
+    m_InjectShader->LoadComputeShader("shaders/lpv_inject.comp");
+    m_PropagateShader = std::make_unique<Shader>();
+    m_PropagateShader->LoadComputeShader("shaders/lpv_propagate.comp");
 
     std::cout << "[LPV] LPV initialized successfully!" << std::endl;
     return true;

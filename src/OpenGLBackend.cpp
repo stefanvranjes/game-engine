@@ -1,8 +1,14 @@
 #include "OpenGLBackend.h"
-#include "glm/glm.hpp"
-#include <GL/gl.h>
+#include "GLExtensions.h"
+#include <glm/glm.hpp>
 #include <spdlog/spdlog.h>
 #include <chrono>
+
+// Compatibility flags for GLExtensions.h
+#define GLAD_GL_ARB_tessellation_shader false
+#define GLAD_GL_ARB_geometry_shader4 false
+#define GLAD_GL_ARB_compute_shader (glDispatchCompute != nullptr)
+#define GLAD_GL_ARB_compute_variable_group_size false
 
 OpenGLBackend::OpenGLBackend() = default;
 
@@ -439,7 +445,7 @@ void OpenGLBackend::DispatchIndirect(
     glDispatchComputeIndirect(offset);
 }
 
-void OpenGLBackend::MemoryBarrier(uint32_t barrierType) {
+void OpenGLBackend::GPUMemoryBarrier(uint32_t barrierType) {
     glMemoryBarrier(GL_ALL_BARRIER_BITS);
 }
 
@@ -484,7 +490,7 @@ float OpenGLBackend::GetGPUUtilization(uint32_t deviceIndex) const {
 
 uint64_t OpenGLBackend::GetGPUMemoryUsage(uint32_t deviceIndex) const {
     GLint memoryUsage = 0;
-    glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_MEMORY_NVX, &memoryUsage);
+    glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &memoryUsage);
     return memoryUsage * 1024; // Convert KB to bytes
 }
 

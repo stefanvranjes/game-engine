@@ -84,6 +84,7 @@ ProbeBaker::SceneSnapshot ProbeBaker::CaptureScene(const std::vector<GameObject*
         }
         meshData.indices = mesh->GetIndices();
         
+        auto mat = obj->GetMaterial();
         if (mat) {
             Vec3 d = mat->GetDiffuse();
             meshData.albedo = glm::vec3(d.x, d.y, d.z);
@@ -92,7 +93,8 @@ ProbeBaker::SceneSnapshot ProbeBaker::CaptureScene(const std::vector<GameObject*
         }
         
         Mat4 worldMat = obj->GetTransform().GetModelMatrix();
-        std::memcpy(&meshData.worldMatrix[0][0], worldMat.m, 16 * sizeof(float));
+        glm::mat4 glmWorldMat = glm::make_mat4(worldMat.m);
+        meshData.worldMatrix = glmWorldMat;
         meshData.invWorldMatrix = glm::inverse(meshData.worldMatrix);
         
         snapshot.meshes.push_back(meshData);
@@ -314,7 +316,7 @@ bool ProbeBaker::Raytrace(const glm::vec3& origin, const glm::vec3& direction, c
         for (size_t i = 0; i < indices.size(); i += 3) {
             float t, u, v;
             // Use same RayTriangleIntersect logic
-            if (RayTriangleIntersect(localOrigin, localDir, verts[indices[i]], verts[indices[i+1]], verts[indices[i+2]], t, u, v)) {
+            if (PerformRayTriangleIntersection(localOrigin, localDir, verts[indices[i]], verts[indices[i+1]], verts[indices[i+2]], t, u, v)) {
                 if(t>0.001f && t<hit.distance) {
                     hit.hit=true; hit.distance=t; hit.position=origin+direction*t;
                     // Interpolate normal
@@ -338,8 +340,12 @@ glm::vec3 ProbeBaker::ComputeDirectLighting(const RayHit& hit, const SceneSnapsh
     for(const auto& light : snapshot.lights) {
         // ... simple lambert ...
         // Shadow ray
-        glm::vec3 lightDir = glm::normalize(light.position - hit.position); // Point light approx
-        if(light.type == LightType::Directional) lightDir = -light.direction;
+        glm::vec3 lightPos(light.position.x, light.position.y, light.position.z);
+        glm::vec3 lightDir = glm::normalize(lightPos - hit.position); // Point light approx
+        if(light.type == LightType::Directional) {
+            glm::vec3 lightDirection(light.direction.x, light.direction.y, light.direction.z);
+            lightDir = -lightDirection;
+        }
         
         RayHit shadowHit;
         // Offset origin
@@ -347,7 +353,8 @@ glm::vec3 ProbeBaker::ComputeDirectLighting(const RayHit& hit, const SceneSnapsh
              // Shadowed
         } else {
              float ndotl = glm::max(glm::dot(hit.normal, lightDir), 0.0f);
-             totalLight += hit.albedo * light.color * light.intensity * ndotl;
+             glm::vec3 lightColor(light.color.x, light.color.y, light.color.z);
+             totalLight += hit.albedo * lightColor * light.intensity * ndotl;
         }
     }
     return totalLight;
@@ -359,22 +366,22 @@ glm::vec3 ProbeBaker::ComputeDirectLighting(const RayHit& hit, const SceneSnapsh
 // The code below is just validating logic.
 
 // ... (Reuse existing methods) ...
-void ProbeBaker::UploadSceneToGPU(const std::vector<GameObject*>& scene) { /*...*/ }
-void ProbeBaker::BuildBVHAndUpload(const std::vector<GameObject*>& scene) { /*...*/ }
-void ProbeBaker::UploadProbesToGPU(ProbeGrid* grid) { /*...*/ }
-void ProbeBaker::AllocateOutputBuffer(int numProbes) { /*...*/ }
-void ProbeBaker::BakeProbesGPUChunk(ProbeGrid* grid, int startProbe, int count) { /*...*/ }
-void ProbeBaker::DownloadProbeDataChunk(ProbeGrid* grid, int startProbe, int count) { /*...*/ }
-void ProbeBaker::BakeProbesGPU(ProbeGrid* g, const std::vector<GameObject*>& s, const std::vector<Light>& l) { /*...*/ }
-void ProbeBaker::DownloadProbeData(ProbeGrid* grid) { /*...*/ }
-bool ProbeBaker::InitializeRTX() { /*...*/ }
-void ProbeBaker::CleanupRTX() { /*...*/ }
-void ProbeBaker::BakeProbesRTX(ProbeGrid* grid, const std::vector<GameObject*>& scene, const std::vector<Light>& lights) { /*...*/ }
-void ProbeBaker::BuildBLAS(const std::vector<GameObject*>& scene) { /*...*/ }
-void ProbeBaker::BuildTLAS(const std::vector<GameObject*>& scene) { /*...*/ }
-void ProbeBaker::StartMultiGPU(ProbeGrid* grid, const std::vector<GameObject*>& scene, const std::vector<Light>& lights) { /*...*/ }
-void ProbeBaker::UpdateMultiGPU() { /*...*/ }
-void ProbeBaker::BakeProbes(ProbeGrid* grid, const std::vector<GameObject*>& scene, const std::vector<Light>& lights, const BakeSettings& settings) { /*...*/ }
+void ProbeBaker::UploadSceneToGPU(const std::vector<GameObject*>& scene) { }
+void ProbeBaker::BuildBVHAndUpload(const std::vector<GameObject*>& scene) { }
+void ProbeBaker::UploadProbesToGPU(ProbeGrid* grid) { }
+void ProbeBaker::AllocateOutputBuffer(int numProbes) { }
+void ProbeBaker::BakeProbesGPUChunk(ProbeGrid* grid, int startProbe, int count) { }
+void ProbeBaker::DownloadProbeDataChunk(ProbeGrid* grid, int startProbe, int count) { }
+void ProbeBaker::BakeProbesGPU(ProbeGrid* g, const std::vector<GameObject*>& s, const std::vector<Light>& l) { }
+void ProbeBaker::DownloadProbeData(ProbeGrid* grid) { }
+bool ProbeBaker::InitializeRTX() { return false; }
+void ProbeBaker::CleanupRTX() { }
+void ProbeBaker::BakeProbesRTX(ProbeGrid* grid, const std::vector<GameObject*>& scene, const std::vector<Light>& lights) { }
+void ProbeBaker::BuildBLAS(const std::vector<GameObject*>& scene) { }
+void ProbeBaker::BuildTLAS(const std::vector<GameObject*>& scene) { }
+void ProbeBaker::StartMultiGPU(ProbeGrid* grid, const std::vector<GameObject*>& scene, const std::vector<Light>& lights) { }
+void ProbeBaker::UpdateMultiGPU() { }
+void ProbeBaker::BakeProbes(ProbeGrid* grid, const std::vector<GameObject*>& scene, const std::vector<Light>& lights, const BakeSettings& settings) { }
 
 // ... Helper implementations for CPU (Original) ...
 bool ProbeBaker::Raytrace(const glm::vec3& origin, const glm::vec3& direction, const std::vector<GameObject*>& scene, RayHit& hit) const {
@@ -383,25 +390,50 @@ bool ProbeBaker::Raytrace(const glm::vec3& origin, const glm::vec3& direction, c
         if (!obj->IsActive()) continue;
         auto mesh = obj->GetMesh();
         if (!mesh) continue;
-        glm::mat4 invWorld = glm::inverse(obj->GetTransform().GetWorldMatrix());
+        
+        Mat4 worldMat = obj->GetTransform().GetModelMatrix();
+        glm::mat4 glmWorldMat = glm::make_mat4(worldMat.m);
+        glm::mat4 invWorld = glm::inverse(glmWorldMat);
+        
         glm::vec3 localOrigin = glm::vec3(invWorld * glm::vec4(origin, 1.0f));
         glm::vec3 localDir = glm::vec3(invWorld * glm::vec4(direction, 0.0f));
         const auto& idxs = mesh->GetIndices(); const auto& verts = mesh->GetVertices();
         for (size_t i = 0; i < idxs.size(); i += 3) {
             float t, u, v;
-            if (RayTriangleIntersect(localOrigin, localDir, verts[idxs[i]].position, verts[idxs[i+1]].position, verts[idxs[i+2]].position, t, u, v)) {
+            
+            // Stride is 16: Position(3), Normal(3), TexCoord(2), Tangent(3), Bitangent(3), Color(2)
+            uint32_t i0 = idxs[i] * 16;
+            uint32_t i1 = idxs[i+1] * 16;
+            uint32_t i2 = idxs[i+2] * 16;
+            
+            glm::vec3 v0(verts[i0], verts[i0+1], verts[i0+2]);
+            glm::vec3 v1(verts[i1], verts[i1+1], verts[i1+2]);
+            glm::vec3 v2(verts[i2], verts[i2+1], verts[i2+2]);
+            
+            if (PerformRayTriangleIntersection(localOrigin, localDir, v0, v1, v2, t, u, v)) {
                 if(t>0.001f && t<hit.distance) {
                     hit.hit=true; hit.distance=t; hit.object=obj; hit.position=origin+direction*t;
-                    hit.normal = glm::normalize(glm::vec3(glm::transpose(invWorld) * glm::vec4(verts[idxs[i]].normal, 0.0f)));
+                    
+                    glm::vec3 n0(verts[i0+3], verts[i0+4], verts[i0+5]);
+                    glm::vec3 n1(verts[i1+3], verts[i1+4], verts[i1+5]);
+                    glm::vec3 n2(verts[i2+3], verts[i2+4], verts[i2+5]);
+                    glm::vec3 localN = n0*(1-u-v) + n1*u + n2*v;
+                    
+                    hit.normal = glm::normalize(glm::vec3(glm::transpose(invWorld) * glm::vec4(localN, 0.0f)));
                     auto mat = obj->GetMaterial();
-                    hit.albedo = mat ? mat->GetDiffuse() : glm::vec3(0.8f);
+                    if (mat) {
+                        Vec3 d = mat->GetDiffuse();
+                        hit.albedo = glm::vec3(d.x, d.y, d.z);
+                    } else {
+                        hit.albedo = glm::vec3(0.8f);
+                    }
                 }
             }
         }
     }
     return hit.hit;
 }
-bool ProbeBaker::RayTriangleIntersect(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float& t, float& u, float& v) const {
+bool ProbeBaker::PerformRayTriangleIntersection(const glm::vec3& rayOrigin, const glm::vec3& rayDir, const glm::vec3& v0, const glm::vec3& v1, const glm::vec3& v2, float& t, float& u, float& v) const {
     const float EPSILON = 0.0000001f;
     glm::vec3 edge1 = v1 - v0; glm::vec3 edge2 = v2 - v0; glm::vec3 h = glm::cross(rayDir, edge2);
     float a = glm::dot(edge1, h); if (a > -EPSILON && a < EPSILON) return false;

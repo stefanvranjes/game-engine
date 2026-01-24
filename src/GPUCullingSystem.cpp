@@ -1,6 +1,7 @@
 #include "GPUCullingSystem.h"
-#include <GL/glew.h>
+#include "GLExtensions.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <algorithm>
 #include <cmath>
 
@@ -18,13 +19,13 @@ GPUCullingSystem::~GPUCullingSystem() {
 
 bool GPUCullingSystem::Initialize() {
     // Create shader programs
-    m_FrustumCullingShader = std::make_unique<Shader>("shaders/gpu_cull_frustum.comp");
-    if (!m_FrustumCullingShader->Compile()) {
+    m_FrustumCullingShader = std::make_unique<Shader>();
+    if (!m_FrustumCullingShader->LoadComputeShader("shaders/gpu_cull_frustum.comp")) {
         return false;
     }
 
-    m_OcclusionCullingShader = std::make_unique<Shader>("shaders/gpu_cull_occlusion.comp");
-    if (!m_OcclusionCullingShader->Compile()) {
+    m_OcclusionCullingShader = std::make_unique<Shader>();
+    if (!m_OcclusionCullingShader->LoadComputeShader("shaders/gpu_cull_occlusion.comp")) {
         return false;
     }
 
@@ -39,28 +40,28 @@ bool GPUCullingSystem::Initialize() {
     // Allocate buffer storage
     size_t cullDataSize = m_MaxInstances * sizeof(CullData);
     glBindBuffer(GL_COPY_READ_BUFFER, m_CullDataSSBO);
-    glBufferStorage(GL_COPY_READ_BUFFER, cullDataSize, nullptr, GL_DYNAMIC_DRAW);
+    glBufferStorage(GL_COPY_READ_BUFFER, cullDataSize, nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     size_t visibilitySize = m_MaxInstances * sizeof(uint32_t);
     glBindBuffer(GL_COPY_WRITE_BUFFER, m_VisibilitySSBO);
-    glBufferStorage(GL_COPY_WRITE_BUFFER, visibilitySize, nullptr, GL_DYNAMIC_DRAW);
+    glBufferStorage(GL_COPY_WRITE_BUFFER, visibilitySize, nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     size_t indirectSize = m_MaxInstances * sizeof(IndirectDrawCommand);
     glBindBuffer(GL_DRAW_INDIRECT_BUFFER, m_IndirectCommandBuffer);
-    glBufferStorage(GL_DRAW_INDIRECT_BUFFER, indirectSize, nullptr, GL_DYNAMIC_DRAW);
+    glBufferStorage(GL_DRAW_INDIRECT_BUFFER, indirectSize, nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, m_CounterBuffer);
-    glBufferStorage(GL_ATOMIC_COUNTER_BUFFER, sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+    glBufferStorage(GL_ATOMIC_COUNTER_BUFFER, sizeof(uint32_t), nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     glBindBuffer(GL_COPY_WRITE_BUFFER, m_LODLevelSSBO);
-    glBufferStorage(GL_COPY_WRITE_BUFFER, m_MaxInstances * sizeof(uint32_t), nullptr, GL_DYNAMIC_DRAW);
+    glBufferStorage(GL_COPY_WRITE_BUFFER, m_MaxInstances * sizeof(uint32_t), nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     glBindBuffer(GL_UNIFORM_BUFFER, m_CullingConstantsUBO);
     glBufferStorage(GL_UNIFORM_BUFFER, 
         sizeof(glm::vec4) * 6 +      // 6 frustum planes
         sizeof(glm::mat4) * 2 +      // view and projection matrices
         sizeof(glm::vec3) + sizeof(float) * 4, // camera data
-        nullptr, GL_DYNAMIC_DRAW);
+        nullptr, GL_DYNAMIC_STORAGE_BIT);
 
     glBindBuffer(GL_COPY_READ_BUFFER, 0);
     glBindBuffer(GL_COPY_WRITE_BUFFER, 0);

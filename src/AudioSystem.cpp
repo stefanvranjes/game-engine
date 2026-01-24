@@ -143,6 +143,19 @@ void AudioSystem::SetListenerVelocity(const Vec3& velocity) {
     ma_engine_listener_set_velocity(&m_engine, 0, velocity.x, velocity.y, velocity.z);
 }
 
+void AudioSystem::SetReverbProperties(const ReverbProperties& props) {
+    if (!m_initialized) return;
+    
+    // verblib_set_room_size(&m_reverbNode.reverb, props.roomSize);
+    // verblib_set_damping(&m_reverbNode.reverb, props.damping);
+    // ma_node_set_output_bus_volume(&m_reverbNode, 0, props.wetVolume);
+    // ma_node_set_output_bus_volume(&m_worldGroup, 0, props.dryVolume);
+    
+    // For now, since reverb is partially disabled in Initialize(), we just store the intention
+    // Or print for debug if needed.
+    (void)props;
+}
+
 // Accessors for Spatializer
 Vec3 AudioSystem::GetListenerPosition() const { return m_ListenerPos; }
 Vec3 AudioSystem::GetListenerForward() const { return m_ListenerForward; }

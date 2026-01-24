@@ -3,7 +3,9 @@
 #include "GameObject.h"
 #include "PostProcessing.h"
 #include "ParticleSystem.h"
-#include <GL/glew.h>
+#include "GlobalIllumination.h"
+#include "GLExtensions.h"
+#include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
@@ -123,9 +125,9 @@ void HybridRenderer::ExecuteGPUCulling() {
 
     // Setup culling parameters
     m_CullingSystem->SetupCulling(
-        m_Camera->GetViewMatrix(),
-        m_Camera->GetProjectionMatrix(),
-        m_Camera->GetPosition(),
+        glm::make_mat4(m_Camera->GetViewMatrix().m),
+        glm::make_mat4(m_Camera->GetProjectionMatrix().m),
+        glm::vec3(m_Camera->GetPosition().x, m_Camera->GetPosition().y, m_Camera->GetPosition().z),
         m_RenderableObjects.size()
     );
 
@@ -142,7 +144,7 @@ void HybridRenderer::ExecuteGPUCulling() {
 
             // Extract bounding volume
             GPUCullingSystem::CullData data = {};
-            data.modelMatrix = obj->GetTransform().GetTransformMatrix();
+            data.modelMatrix = glm::make_mat4(obj->GetTransform().GetModelMatrix().m);
             
             // Placeholder bounding sphere/AABB
             data.boundingSphere = glm::vec4(0, 0, 0, 1.0f);
@@ -176,8 +178,8 @@ void HybridRenderer::ExecuteGeometryPass() {
     m_GeometryShader->Use();
 
     // Set uniforms
-    m_GeometryShader->SetMat4("u_View", glm::value_ptr(m_Camera->GetViewMatrix()));
-    m_GeometryShader->SetMat4("u_Projection", glm::value_ptr(m_Camera->GetProjectionMatrix()));
+    m_GeometryShader->SetMat4("u_View", m_Camera->GetViewMatrix().m);
+    m_GeometryShader->SetMat4("u_Projection", m_Camera->GetProjectionMatrix().m);
 
     // Render visible objects
     if (m_SceneRoot) {
@@ -207,7 +209,7 @@ void HybridRenderer::ExecuteLightingPass() {
     m_DeferredLightingShader->SetInt("u_GBufferNormal", 1);
 
     glActiveTexture(GL_TEXTURE2);
-    glBindTexture(GL_TEXTURE_2D, m_GBuffer->GetAlbedoTexture());
+    glBindTexture(GL_TEXTURE_2D, m_GBuffer->GetAlbedoSpecTexture());
     m_DeferredLightingShader->SetInt("u_GBufferAlbedo", 2);
 
     // Full-screen quad rendering for lighting computation
@@ -223,8 +225,8 @@ void HybridRenderer::ExecuteTransparentPass() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     m_TransparentShader->Use();
-    m_TransparentShader->SetMat4("u_View", glm::value_ptr(m_Camera->GetViewMatrix()));
-    m_TransparentShader->SetMat4("u_Projection", glm::value_ptr(m_Camera->GetProjectionMatrix()));
+    m_TransparentShader->SetMat4("u_View", m_Camera->GetViewMatrix().m);
+    m_TransparentShader->SetMat4("u_Projection", m_Camera->GetProjectionMatrix().m);
 
     // Render transparent objects (particles, billboards, etc.)
     if (m_ParticleSystem) {
@@ -269,7 +271,7 @@ void HybridRenderer::CollectRenderableObjects() {
         if (obj) {
             RenderableObject renderObj = {};
             renderObj.gameObject = obj.get();
-            renderObj.worldMatrix = obj->GetTransform().GetTransformMatrix();
+            renderObj.worldMatrix = glm::make_mat4(obj->GetTransform().GetModelMatrix().m);
             renderObj.lodLevel = 0;  // TODO: Get from culling results
             renderObj.isVisible = true;
 
@@ -296,10 +298,10 @@ void HybridRenderer::UpdateLightData() {
     std::vector<LightData> lightData;
     for (const auto& light : m_Lights) {
         LightData ld = {};
-        ld.position = glm::vec4(light.position, static_cast<float>(light.type));
-        ld.direction = glm::vec4(light.direction, 0.0f);
-        ld.colorIntensity = glm::vec4(light.color, light.intensity);
-        ld.params = glm::vec4(light.range, light.spotAngle, light.attenuation, 0.0f);
+        ld.position = glm::vec4(light.position.x, light.position.y, light.position.z, static_cast<float>(light.type));
+        ld.direction = glm::vec4(light.direction.x, light.direction.y, light.direction.z, 0.0f);
+        ld.colorIntensity = glm::vec4(light.color.x, light.color.y, light.color.z, light.intensity);
+        ld.params = glm::vec4(light.range, light.cutOff, light.outerCutOff, light.linear);
         lightData.push_back(ld);
     }
 
@@ -324,12 +326,18 @@ void HybridRenderer::RenderDebugVis() {
 
 void HybridRenderer::SetupDefaultShaders() {
     // Load shader programs
-    m_GeometryShader = std::make_unique<Shader>("shaders/geometry.vert", "shaders/geometry.frag");
-    m_DeferredLightingShader = std::make_unique<Shader>("shaders/deferred_lighting.comp");
-    m_TransparentShader = std::make_unique<Shader>("shaders/transparent.vert", "shaders/transparent.frag");
-    m_CompositeShader = std::make_unique<Shader>("shaders/composite.vert", "shaders/composite.frag");
-    m_ShadowShader = std::make_unique<Shader>("shaders/shadow.vert", "shaders/shadow.frag");
-    m_DebugVisShader = std::make_unique<Shader>("shaders/debug_vis.vert", "shaders/debug_vis.frag");
+    m_GeometryShader = std::make_unique<Shader>();
+    m_GeometryShader->LoadFromFiles("shaders/geometry.vert", "shaders/geometry.frag");
+    m_DeferredLightingShader = std::make_unique<Shader>();
+    m_DeferredLightingShader->LoadComputeShader("shaders/deferred_lighting.comp");
+    m_TransparentShader = std::make_unique<Shader>();
+    m_TransparentShader->LoadFromFiles("shaders/transparent.vert", "shaders/transparent.frag");
+    m_CompositeShader = std::make_unique<Shader>();
+    m_CompositeShader->LoadFromFiles("shaders/composite.vert", "shaders/composite.frag");
+    m_ShadowShader = std::make_unique<Shader>();
+    m_ShadowShader->LoadFromFiles("shaders/shadow.vert", "shaders/shadow.frag");
+    m_DebugVisShader = std::make_unique<Shader>();
+    m_DebugVisShader->LoadFromFiles("shaders/debug_vis.vert", "shaders/debug_vis.frag");
 }
 
 void HybridRenderer::SetupGPUBuffers() {

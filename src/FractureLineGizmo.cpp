@@ -4,7 +4,7 @@
 #include "FractureLinePatternLibrary.h"
 #include "Camera.h"
 #include "Shader.h"
-#include <GL/glew.h>
+#include "GLExtensions.h"
 #include <algorithm>
 #include <cmath>
 

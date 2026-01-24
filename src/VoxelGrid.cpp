@@ -40,9 +40,10 @@ bool VoxelGrid::Initialize()
     CreateVoxelizationResources();
 
     // Load voxelization shader
-    m_VoxelizeShader = std::make_unique<Shader>("shaders/voxelize.vert", 
-                                                  "shaders/voxelize.frag",
-                                                  "shaders/voxelize.geom");
+    m_VoxelizeShader = std::make_unique<Shader>();
+    m_VoxelizeShader->LoadFromFiles("shaders/voxelize.vert", 
+                                       "shaders/voxelize.frag",
+                                       "shaders/voxelize.geom");
 
     std::cout << "[VoxelGrid] Voxel grid initialized successfully!" << std::endl;
     return true;

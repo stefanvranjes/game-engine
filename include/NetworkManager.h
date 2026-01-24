@@ -312,6 +312,14 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_Impl;
     
+    // ASIO-specific methods
+#ifdef HAS_ASIO
+    bool ConnectToMasterASIO(const std::string& address, uint16_t port);
+    bool StartMasterServerASIO(uint16_t port);
+    bool SendMessageASIO(int nodeId, const Message& msg);
+    void SendMessageAsyncASIO(int nodeId, const Message& msg, std::function<void(bool)> callback);
+#endif
+    
     // Internal helpers
     void ProcessIncomingMessages();
     void UpdateHeartbeats();
