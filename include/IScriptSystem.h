@@ -23,7 +23,8 @@ enum class ScriptLanguage {
     Squirrel,   // Squirrel - C-like syntax for games
     Go,         // Go - Native concurrency with goroutines & channels
     Kotlin,     // Kotlin - JVM-based with full OOP and null safety
-    Mun         // Mun - Compiled hot-reload scripting language
+    Mun,        // Mun - Compiled hot-reload scripting language
+    GDScript    // GDScript - Godot engine native language
 };
 
 /**

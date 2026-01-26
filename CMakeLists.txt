@@ -565,6 +565,8 @@ set(SOURCES ${SOURCES}
     src/WrenScriptComponent.cpp
     src/GoScriptSystem.cpp
     src/GoRuntime.cpp
+    src/GDScriptSystem.cpp
+    src/ScriptLanguageRegistry.cpp
     # Asset pipeline - incremental builds, hashing, and conversion
     src/AssetHash.cpp
     src/AssetDatabase.cpp

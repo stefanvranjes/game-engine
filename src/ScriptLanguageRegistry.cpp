@@ -9,6 +9,7 @@
 #include "RustScriptSystem.h"
 #include "SquirrelScriptSystem.h"
 #include "GoScriptSystem.h"
+#include "GDScriptSystem.h"
 #include <iostream>
 #include <algorithm>
 
@@ -231,6 +232,7 @@ std::string ScriptLanguageRegistry::GetLanguageName(ScriptLanguage language) con
         case ScriptLanguage::Rust: return "Rust";
         case ScriptLanguage::Squirrel: return "Squirrel";
         case ScriptLanguage::Go: return "Go";
+        case ScriptLanguage::GDScript: return "GDScript";
         default: return "Unknown";
     }
 }
@@ -339,6 +341,7 @@ void ScriptLanguageRegistry::InitializeExtensionMap()
     m_ExtensionMap[".dylib"] = ScriptLanguage::Rust;
     m_ExtensionMap[".nut"] = ScriptLanguage::Squirrel;
     m_ExtensionMap[".go"] = ScriptLanguage::Go;
+    m_ExtensionMap[".gd"] = ScriptLanguage::GDScript;
     m_ExtensionMap[".asm"] = ScriptLanguage::Custom;
     m_ExtensionMap[".bc"] = ScriptLanguage::Custom;
 }
@@ -380,4 +383,7 @@ void ScriptLanguageRegistry::RegisterDefaultSystems()
     
     RegisterScriptSystem(ScriptLanguage::Go,
                         std::make_shared<GoScriptSystem>());
+    
+    RegisterScriptSystem(ScriptLanguage::GDScript,
+                        std::make_shared<GDScriptSystem>());
 }
