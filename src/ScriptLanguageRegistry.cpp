@@ -10,6 +10,7 @@
 #include "SquirrelScriptSystem.h"
 #include "GoScriptSystem.h"
 #include "GDScriptSystem.h"
+#include "AngelScriptSystem.h"
 #include <iostream>
 #include <algorithm>
 
@@ -386,4 +387,7 @@ void ScriptLanguageRegistry::RegisterDefaultSystems()
     
     RegisterScriptSystem(ScriptLanguage::GDScript,
                         std::make_shared<GDScriptSystem>());
+    
+    RegisterScriptSystem(ScriptLanguage::AngelScript,
+                        std::make_shared<AngelScriptSystem>());
 }

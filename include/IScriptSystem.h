@@ -24,7 +24,8 @@ enum class ScriptLanguage {
     Go,         // Go - Native concurrency with goroutines & channels
     Kotlin,     // Kotlin - JVM-based with full OOP and null safety
     Mun,        // Mun - Compiled hot-reload scripting language
-    GDScript    // GDScript - Godot engine native language
+    GDScript,   // GDScript - Godot engine native language
+    AngelScript // AngelScript - Lightweight, C++-like syntax for games
 };
 
 /**

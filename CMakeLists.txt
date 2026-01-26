@@ -403,6 +403,46 @@ if(NOT wren_populated)
     )
 endif()
 
+# Fetch AngelScript - lightweight, C++-like scripting language
+option(ENABLE_ANGELSCRIPT "Enable AngelScript language support" ON)
+if(ENABLE_ANGELSCRIPT)
+    FetchContent_Declare(
+        angelscript
+        GIT_REPOSITORY https://github.com/codecat/angelscript-mirror.git
+        GIT_TAG 2.36.0
+    )
+    FetchContent_GetProperties(angelscript)
+    if(NOT angelscript_populated)
+        FetchContent_Populate(angelscript)
+        
+        # Build AngelScript as a static library
+        file(GLOB ANGELSCRIPT_SOURCES
+            "${angelscript_SOURCE_DIR}/angelscript/source/*.cpp"
+        )
+        
+        add_library(angelscript STATIC ${ANGELSCRIPT_SOURCES})
+        target_include_directories(angelscript PUBLIC 
+            "${angelscript_SOURCE_DIR}/angelscript/include"
+        )
+        
+        # AngelScript configuration
+        if(MSVC)
+            target_compile_definitions(angelscript PRIVATE 
+                AS_WINDOWS
+            )
+        endif()
+        
+        # Disable exceptions by default (AngelScript handles errors internally)
+        set_target_properties(angelscript PROPERTIES
+            CXX_STANDARD 11
+            CXX_STANDARD_REQUIRED ON
+        )
+    endif()
+    set(ANGELSCRIPT_AVAILABLE TRUE)
+else()
+    set(ANGELSCRIPT_AVAILABLE FALSE)
+endif()
+
 # Fetch pybind11
 FetchContent_Declare(
     pybind11
@@ -566,6 +606,7 @@ set(SOURCES ${SOURCES}
     src/GoScriptSystem.cpp
     src/GoRuntime.cpp
     src/GDScriptSystem.cpp
+    src/AngelScriptSystem.cpp
     src/ScriptLanguageRegistry.cpp
     # Asset pipeline - incremental builds, hashing, and conversion
     src/AssetHash.cpp
@@ -878,6 +919,7 @@ set(COMMON_LIBS
     nvrhi_vk
     wren
     spdlog::spdlog
+    $<$<BOOL:${ANGELSCRIPT_AVAILABLE}>:angelscript>
 )
 
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
