@@ -1,7 +1,7 @@
 #ifdef USE_PHYSX
 #include "PhysXBackend.h"
-#endif
 
+#include "GpuBatchManager.h"
 #include "PhysXSoftBody.h"
 #include "GpuProfiler.h"
 #include <algorithm>
@@ -44,8 +44,10 @@ struct GpuBatchManager::Impl {
         size_t totalMemoryMB;
         size_t freeMemoryMB;
         int computeCapability;
+#ifdef HAS_CUDA_TOOLKIT
         std::vector<cudaStream_t> streams;
         std::vector<cudaEvent_t> events;
+#endif
         size_t batchesProcessed;
         float currentLoad;
     };
@@ -100,8 +102,6 @@ void GpuBatchManager::Shutdown() {
     m_Impl->initialized = false;
 }
 
-#ifdef USE_PHYSX
-
 void GpuBatchManager::Initialize(size_t streamCount) {
     GPU_PROFILE_SCOPE("GpuBatchManager::Initialize");
     
@@ -140,7 +140,7 @@ void GpuBatchManager::Initialize(size_t streamCount) {
 #endif
 }
 
-#endif // USE_PHYSX
+
 
 void GpuBatchManager::AddSoftBody(PhysXSoftBody* softBody) {
     if (!softBody) {

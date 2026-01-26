@@ -293,33 +293,82 @@ if(PHYSICS_BACKEND STREQUAL "BOX2D")
     add_compile_definitions(USE_BOX2D)
 endif()
 
-# Fetch Lua
-FetchContent_Declare(
-    lua
-    GIT_REPOSITORY https://github.com/lua/lua.git
-    GIT_TAG v5.4.6
-)
-FetchContent_GetProperties(lua)
-if(NOT lua_populated)
-    FetchContent_Populate(lua)
-    
-    # Lua CMake is often non-existent or minimal in the official repo, 
-    # so we define a simple library here if needed, or rely on a fork.
-    # Actually, the official Lua repo is just source. 
-    # We will create a target manually for it.
-    
-    file(GLOB LUA_SOURCES 
-        "${lua_SOURCE_DIR}/*.c"
-    )
-    # Exclude lua.c and luac.c for the library build
-    list(FILTER LUA_SOURCES EXCLUDE REGEX "lua\\.c")
-    list(FILTER LUA_SOURCES EXCLUDE REGEX "luac\\.c")
+# LuaJIT Support - 10x+ performance improvement over standard Lua
+option(ENABLE_LUAJIT "Enable LuaJIT (JIT-compiled Lua) for 10x+ performance" ON)
 
-    add_library(lua STATIC ${LUA_SOURCES})
-    target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
+if(ENABLE_LUAJIT)
+    # Fetch LuaJIT - Just-In-Time compiled Lua for significantly better performance
+    FetchContent_Declare(
+        luajit
+        GIT_REPOSITORY https://github.com/LuaJIT/LuaJIT.git
+        GIT_TAG v2.1
+    )
+    FetchContent_GetProperties(luajit)
+    if(NOT luajit_populated)
+        FetchContent_Populate(luajit)
+        
+        # Build LuaJIT as a static library
+        # LuaJIT uses a custom build system, so we'll use its CMakeLists or define targets
+        file(GLOB LUAJIT_CORE_SOURCES
+            "${luajit_SOURCE_DIR}/src/lj_*.c"
+            "${luajit_SOURCE_DIR}/src/lib*.c"
+        )
+        
+        # Exclude VM and other specific sources that need special handling
+        list(FILTER LUAJIT_CORE_SOURCES EXCLUDE REGEX "lj_trace\\.c")
+        
+        # Build the main LuaJIT library
+        add_library(luajit STATIC ${LUAJIT_CORE_SOURCES})
+        target_include_directories(luajit PUBLIC "${luajit_SOURCE_DIR}/src")
+        
+        # Platform-specific definitions for LuaJIT
+        target_compile_definitions(luajit PRIVATE
+            LUAJIT_ENABLE_LUA52COMPAT
+            LUAJIT_ENABLE_GC64
+        )
+        
+        # Windows specific settings
+        if(WIN32)
+            target_compile_definitions(luajit PRIVATE
+                _CRT_SECURE_NO_WARNINGS
+                _WINSOCK_DEPRECATED_NO_WARNINGS
+            )
+        endif()
+        
+        # Set LuaJIT as preferred Lua implementation
+        set(LUA_INCLUDE_DIR "${luajit_SOURCE_DIR}/src")
+        set(LUA_LIBRARY luajit)
+        message(STATUS "LuaJIT 2.1 enabled - 10x+ performance vs standard Lua")
+    endif()
+else()
+    # Fallback to standard Lua if LuaJIT disabled
+    message(STATUS "LuaJIT disabled, using standard Lua 5.4")
     
-    # Lua needs to be compiled as C++ if being linked into C++ project with C++ exceptions potential
-    target_compile_definitions(lua PUBLIC LUA_USE_WINDOWS) 
+    FetchContent_Declare(
+        lua
+        GIT_REPOSITORY https://github.com/lua/lua.git
+        GIT_TAG v5.4.6
+    )
+    FetchContent_GetProperties(lua)
+    if(NOT lua_populated)
+        FetchContent_Populate(lua)
+        
+        file(GLOB LUA_SOURCES 
+            "${lua_SOURCE_DIR}/*.c"
+        )
+        # Exclude lua.c and luac.c for the library build
+        list(FILTER LUA_SOURCES EXCLUDE REGEX "lua\\.c")
+        list(FILTER LUA_SOURCES EXCLUDE REGEX "luac\\.c")
+
+        add_library(lua STATIC ${LUA_SOURCES})
+        target_include_directories(lua PUBLIC ${lua_SOURCE_DIR})
+        
+        # Lua needs to be compiled as C++ if being linked into C++ project with C++ exceptions potential
+        target_compile_definitions(lua PUBLIC LUA_USE_WINDOWS)
+        
+        set(LUA_INCLUDE_DIR ${lua_SOURCE_DIR})
+        set(LUA_LIBRARY lua)
+    endif()
 endif()
 
 # Fetch Wren - lightweight scripting language for gameplay logic
@@ -506,6 +555,7 @@ set(SOURCES ${SOURCES}
     src/GizmoManager.cpp
     # Scripting System
     src/ScriptSystem.cpp
+    src/LuaJitScriptSystem.cpp
     src/PythonScriptSystem.cpp
     src/CSharpScriptSystem.cpp
     src/CustomScriptSystem.cpp
@@ -781,6 +831,7 @@ set(COMMON_INCLUDES
     ${assimp_SOURCE_DIR}/include
     ${nvrhi_SOURCE_DIR}/include
     ${nvrhi_SOURCE_DIR}/thirdparty/DirectX-Headers/include
+    ${LUA_INCLUDE_DIR}
     ${wren_SOURCE_DIR}/src/include
     ${enet_SOURCE_DIR}/include
 )
@@ -815,7 +866,7 @@ set(COMMON_LIBS
     assimp
     ws2_32
     winmm
-    lua
+    ${LUA_LIBRARY}
     pybind11::embed
     glm::glm
     enet

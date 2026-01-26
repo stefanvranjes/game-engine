@@ -5,6 +5,23 @@
 #include <algorithm>
 #include <fstream>
 
+// Go bridge fallback stubs
+extern "C" {
+    void* GoScriptInit() { return nullptr; }
+    void GoScriptShutdown(void* handle) { }
+    int GoScriptLoadFile(void* handle, const char* filepath) { return -1; }
+    int GoScriptExecuteString(void* handle, const char* source) { return -1; }
+    int GoScriptStartGoroutine(void* handle, const char* functionName, void* userData) { return -1; }
+    int GoScriptWaitGoroutine(void* handle, int goroutineId) { return -1; }
+    int GoScriptKillGoroutine(void* handle, int goroutineId) { return -1; }
+    int GoScriptChannelSend(void* handle, const char* channelName, const char* jsonData) { return -1; }
+    const char* GoScriptChannelReceive(void* handle, const char* channelName, int timeoutMs) { return nullptr; }
+    const char* GoScriptCallFunction(void* handle, const char* functionName, const char* jsonArgs) { return nullptr; }
+    uint64_t GoScriptGetMemoryUsage(void* handle) { return 0; }
+    double GoScriptGetLastExecutionTime(void* handle) { return 0.0; }
+    const char* GoScriptGetLastError(void* handle) { return nullptr; }
+}
+
 GoScriptSystem::GoScriptSystem()
     : goHandle(nullptr),
       lastExecutionTime(0.0),

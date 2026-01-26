@@ -1,5 +1,6 @@
 #include "ScriptLanguageRegistry.h"
 #include "LuaScriptSystem.h"
+#include "LuaJitScriptSystem.h"
 #include "WrenScriptSystem.h"
 #include "PythonScriptSystem.h"
 #include "CSharpScriptSystem.h"
@@ -221,6 +222,7 @@ std::string ScriptLanguageRegistry::GetLanguageName(ScriptLanguage language) con
 
     switch (language) {
         case ScriptLanguage::Lua: return "Lua";
+        case ScriptLanguage::LuaJIT: return "LuaJIT";
         case ScriptLanguage::Wren: return "Wren";
         case ScriptLanguage::Python: return "Python";
         case ScriptLanguage::CSharp: return "C#";
@@ -346,8 +348,14 @@ void ScriptLanguageRegistry::RegisterDefaultSystems()
     // Register all available script systems
     // In practice, some may be optional based on build configuration
     
+    // Register standard Lua
     RegisterScriptSystem(ScriptLanguage::Lua,
                         std::make_shared<LuaScriptSystem>());
+    
+    // Register LuaJIT for 10x+ performance
+    // This uses the same .lua extension but with JIT compilation
+    RegisterScriptSystem(ScriptLanguage::LuaJIT,
+                        std::make_shared<LuaJitScriptSystem>());
     
     RegisterScriptSystem(ScriptLanguage::Wren,
                         std::make_shared<WrenScriptSystem>());

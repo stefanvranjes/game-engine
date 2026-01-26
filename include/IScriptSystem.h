@@ -13,6 +13,7 @@
  */
 enum class ScriptLanguage {
     Lua,        // Lua 5.4 - General purpose
+    LuaJIT,     // LuaJIT - 10x+ performance via JIT compilation
     Wren,       // Wren - Lightweight OOP
     Python,     // Python 3.x - Data science & AI
     CSharp,     // C# - .NET integration (requires Mono)

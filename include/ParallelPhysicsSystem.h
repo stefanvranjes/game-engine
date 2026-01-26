@@ -3,7 +3,9 @@
 #include "ScenePartitionManager.h"
 #include "AdaptiveQualityIntegration.h"
 #include "ParallelSoftBodyManager.h"
+#ifdef USE_PHYSX
 #include "GpuBatchManager.h"
+#endif
 #include <memory>
 
 /**
@@ -85,7 +87,9 @@ private:
     std::unique_ptr<ScenePartitionManager> m_SceneManager;
     std::unique_ptr<AdaptiveQualityIntegration> m_QualitySystem;
     std::unique_ptr<ParallelSoftBodyManager> m_LODManager;
+#ifdef USE_PHYSX
     std::unique_ptr<GpuBatchManager> m_BatchManager;
+#endif
     
     physx::PxPhysics* m_Physics;
     bool m_ParallelPhysicsEnabled;
