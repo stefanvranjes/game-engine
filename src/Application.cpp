@@ -137,6 +137,11 @@ bool Application::Init() {
     ScriptDebugger::GetInstance().Init();
     std::cout << "Script Debugger initialized" << std::endl;
 
+    // Initialize Scripting Profiler UI
+    m_ScriptingProfilerUI = std::make_unique<ScriptingProfilerUI>();
+    m_ScriptingProfilerUI->Init();
+    std::cout << "Scripting Profiler UI initialized" << std::endl;
+
     // Initialize Blend Tree Editor
     // m_BlendTreeEditor = std::make_unique<BlendTreeEditor>();
 
@@ -624,6 +629,11 @@ void Application::RenderEditorUI() {
             if (ImGui::MenuItem("Script Debugger", "Ctrl+Shift+D")) {
                 if (m_ScriptDebuggerUI) {
                     m_ScriptDebuggerUI->Toggle();
+                }
+            }
+            if (ImGui::MenuItem("Scripting Profiler", "Ctrl+Shift+P")) {
+                if (m_ScriptingProfilerUI) {
+                    m_ScriptingProfilerUI->Toggle();
                 }
             }
             ImGui::EndMenu();
@@ -1468,6 +1478,12 @@ void Application::RenderEditorUI() {
     if (m_ScriptDebuggerUI) {
         m_ScriptDebuggerUI->Update(m_LastFrameTime);
         m_ScriptDebuggerUI->Render();
+    }
+
+    // Render Scripting Profiler UI
+    if (m_ScriptingProfilerUI) {
+        m_ScriptingProfilerUI->Update(m_LastFrameTime);
+        m_ScriptingProfilerUI->Render();
     }
 }
 
