@@ -10,6 +10,7 @@
 #include "Profiler.h"
 #include "TelemetryServer.h"
 #include "PhysicsSystem.h"
+#include "ScriptDebuggerUI.h"
 #ifdef USE_PHYSX
 #include "PhysXBackend.h"
 #endif
@@ -58,6 +59,7 @@ private:
     std::unique_ptr<ImGuiManager> m_ImGui;
     std::unique_ptr<PreviewRenderer> m_PreviewRenderer;
     std::unique_ptr<PhysicsSystem> m_PhysicsSystem;
+    std::unique_ptr<ScriptDebuggerUI> m_ScriptDebuggerUI;
 #ifdef USE_PHYSX
     std::unique_ptr<class PhysXBackend> m_PhysXBackend;
 #endif

@@ -8,6 +8,7 @@
 #include "ScriptSystem.h" // Defines LuaScriptSystem (should be renamed ideally)
 #include "PythonScriptSystem.h"
 #include "CustomScriptSystem.h"
+#include "ScriptDebugger.h"
 #include <iostream>
 #include <algorithm>
 #include <GLFW/glfw3.h>
@@ -129,6 +130,12 @@ bool Application::Init() {
         std::cerr << "Failed to initialize PreviewRenderer" << std::endl;
         return false;
     }
+
+    // Initialize Script Debugger UI
+    m_ScriptDebuggerUI = std::make_unique<ScriptDebuggerUI>();
+    m_ScriptDebuggerUI->Init();
+    ScriptDebugger::GetInstance().Init();
+    std::cout << "Script Debugger initialized" << std::endl;
 
     // Initialize Blend Tree Editor
     // m_BlendTreeEditor = std::make_unique<BlendTreeEditor>();
@@ -611,6 +618,19 @@ void Application::Render() {
 }
 
 void Application::RenderEditorUI() {
+    // Main Menu Bar
+    if (ImGui::BeginMainMenuBar()) {
+        if (ImGui::BeginMenu("Tools")) {
+            if (ImGui::MenuItem("Script Debugger", "Ctrl+Shift+D")) {
+                if (m_ScriptDebuggerUI) {
+                    m_ScriptDebuggerUI->Toggle();
+                }
+            }
+            ImGui::EndMenu();
+        }
+        ImGui::EndMainMenuBar();
+    }
+
     // Scene Hierarchy Panel
     ImGui::Begin("Scene Hierarchy");
     
@@ -1443,7 +1463,16 @@ void Application::RenderEditorUI() {
 #endif
     
     ImGui::End();
+
+    // Render Script Debugger UI
+    if (m_ScriptDebuggerUI) {
+        m_ScriptDebuggerUI->Update(m_LastFrameTime);
+        m_ScriptDebuggerUI->Render();
+    }
 }
+
+// Helper function to toggle script debugger
+static bool g_ShowScriptDebugger = false;
 
 #ifdef USE_PHYSX
 void Application::LoadGpuTestScene() {
