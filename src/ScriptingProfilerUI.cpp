@@ -6,7 +6,6 @@
 #include "GDScriptSystem.h"
 #include "IScriptSystem.h"
 #include <imgui.h>
-#include <imgui_stdlib.h>
 #include <algorithm>
 #include <sstream>
 #include <fstream>
@@ -174,7 +173,7 @@ void ScriptingProfilerUI::ExportToJSON(const std::string& filepath)
             file << output.dump(2);
             file.close();
         }
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         // Handle error silently
     }
 }
@@ -205,7 +204,7 @@ void ScriptingProfilerUI::ExportToCSV(const std::string& filepath)
         }
 
         file.close();
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         // Handle error silently
     }
 }
@@ -242,7 +241,7 @@ void ScriptingProfilerUI::SampleLanguageMetrics(const std::string& language)
             if (stats.executionTimeHistory.size() >= m_MaxHistorySamples) {
                 stats.executionTimeHistory.erase(stats.executionTimeHistory.begin());
             }
-            stats.executionTimeHistory.push_back(stats.totalExecutionTime);
+            stats.executionTimeHistory.push_back(static_cast<float>(stats.totalExecutionTime));
         } catch (...) {
             stats.isAvailable = false;
         }
@@ -430,7 +429,7 @@ void ScriptingProfilerUI::RenderLuaJitStats()
         return;
     }
 
-    auto& stats = it->second;
+
 
     ImGui::TextColored(ImVec4(0.8f, 0.8f, 0.2f, 1.0f), "LuaJIT Performance Metrics");
     ImGui::Separator();
@@ -448,10 +447,10 @@ void ScriptingProfilerUI::RenderLuaJitStats()
         ImGui::TextColored(ImVec4(0.2f, 0.8f, 0.2f, 1.0f), "JIT Statistics");
         ImGui::Text("Active Traces: %u", profStats.activeTraces);
         ImGui::Text("JIT Compiled Functions: %u", profStats.jitCompiledFunctions);
-        ImGui::ProgressBar(profStats.jitCoveragePercent / 100.0f, ImVec2(-1.0f, 0.0f));
+        ImGui::ProgressBar(static_cast<float>(profStats.jitCoveragePercent) / 100.0f, ImVec2(-1.0f, 0.0f));
         ImGui::SameLine();
         ImGui::Text("JIT Coverage: %.1f%%", profStats.jitCoveragePercent);
-    } catch (const std::exception& e) {
+    } catch (const std::exception&) {
         ImGui::TextColored(ImVec4(0.8f, 0.2f, 0.2f, 1.0f), "Error reading stats");
     }
 }
@@ -718,7 +717,7 @@ void ScriptingProfilerUI::UpdateHistoryData(const std::string& language)
     if (stats.executionTimeHistory.size() >= m_MaxHistorySamples) {
         stats.executionTimeHistory.erase(stats.executionTimeHistory.begin());
     }
-    stats.executionTimeHistory.push_back(stats.totalExecutionTime);
+    stats.executionTimeHistory.push_back(static_cast<float>(stats.totalExecutionTime));
 
     if (stats.memoryHistory.size() >= m_MaxHistorySamples) {
         stats.memoryHistory.erase(stats.memoryHistory.begin());

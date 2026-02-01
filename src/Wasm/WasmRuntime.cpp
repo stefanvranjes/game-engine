@@ -6,7 +6,7 @@
 #include <chrono>
 
 // wasm3 includes - will be added via CMakeLists.txt FetchContent
-#include <m3.h>
+#include <wasm3.h>
 #include <m3_env.h>
 #include <m3_api_wasi.h>
 
@@ -23,19 +23,13 @@ bool WasmRuntime::Initialize() {
             return false;
         }
 
-        // Initialize environment
-        M3Result result = m3_EnvCreateRuntime((M3Environment*)m_Environment, m_MaxMemorySizeMB * 1024, nullptr);
-        if (result != m3Err_none) {
-            m_LastError = std::string("Failed to create M3 runtime: ") + result;
-            m3_FreeEnvironment((M3Environment*)m_Environment);
+        // Initialize runtime
+        m_Runtime = (void*)m3_NewRuntime((IM3Environment)m_Environment, m_MaxMemorySizeMB * 1024, nullptr);
+        if (!m_Runtime) {
+            m_LastError = "Failed to create M3 runtime";
+            m3_FreeEnvironment((IM3Environment)m_Environment);
             m_Environment = nullptr;
             return false;
-        }
-
-        // Set up WASI compatibility if needed
-        result = m3_LinkWASI((M3Runtime*)m_Runtime);
-        if (result != m3Err_none) {
-            // WASI is optional, continue without it
         }
 
         m_Initialized = true;
@@ -111,7 +105,7 @@ std::shared_ptr<WasmModule> WasmRuntime::LoadModuleFromMemory(const uint8_t* dat
         std::string moduleName = "wasm_module_" + std::to_string(m_Modules.size());
 
         // Create module wrapper
-        auto module = std::make_shared<WasmModule>(moduleName, "");
+        auto module = std::shared_ptr<WasmModule>(new WasmModule(moduleName, ""));
         if (!module) {
             m_LastError = "Failed to create WasmModule";
             return nullptr;
@@ -140,7 +134,10 @@ std::shared_ptr<WasmModule> WasmRuntime::LoadModuleFromMemory(const uint8_t* dat
 
         // Register module with runtime
         if (m_Runtime) {
-            result = m3_LoadModule((M3Runtime*)m_Runtime, (M3Module*)module->m_Module);
+            // Set up WASI compatibility if needed
+            m3_LinkWASI((IM3Module)module->m_Module);
+            
+            result = m3_LoadModule((IM3Runtime)m_Runtime, (IM3Module)module->m_Module);
             if (result != m3Err_none) {
                 m_LastError = std::string("Failed to load module into runtime: ") + result;
                 return nullptr;

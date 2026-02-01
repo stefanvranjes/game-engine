@@ -2,6 +2,7 @@
 
 #include "Math/Vec3.h"
 #include <vector>
+#include <cassert>
 #include <nlohmann/json.hpp>
 
 /**

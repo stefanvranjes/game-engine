@@ -143,7 +143,7 @@ public:
     /**
      * Check if a function exists in the Lua state
      */
-    bool HasFunction(const std::string& functionName) const;
+    bool HasFunction(const std::string& functionName) const override;
 
     /**
      * Set a global variable in Lua
@@ -202,9 +202,10 @@ public:
      */
     bool HotReloadScript(const std::string& filepath);
 
-private:
     LuaJitScriptSystem();
     ~LuaJitScriptSystem();
+
+private:
 
     lua_State* m_LuaState = nullptr;
     bool m_JitEnabled = true;

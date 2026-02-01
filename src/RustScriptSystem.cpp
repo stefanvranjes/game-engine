@@ -28,7 +28,7 @@ void RustScriptSystem::Shutdown()
 {
     // Unload all loaded libraries
     for (auto& pair : m_LoadedLibraries) {
-        UnloadLibrary(pair.first);
+        UnloadNativeLibrary(pair.first);
     }
     m_LoadedLibraries.clear();
     std::cout << "RustScriptSystem Shutdown" << std::endl;
@@ -42,21 +42,21 @@ void RustScriptSystem::Update(float deltaTime)
 
 bool RustScriptSystem::RunScript(const std::string& filepath)
 {
-    return LoadLibrary(filepath);
+    return LoadNativeLibrary(filepath);
 }
 
-bool RustScriptSystem::LoadLibrary(const std::string& libPath)
+bool RustScriptSystem::LoadNativeLibrary(const std::string& libPath)
 {
     // Unload previous version if it exists (for hot-reload)
     auto it = m_LoadedLibraries.find(libPath);
     if (it != m_LoadedLibraries.end()) {
-        UnloadLibrary(libPath);
+        UnloadNativeLibrary(libPath);
     }
 
 #ifdef _WIN32
     HMODULE handle = LoadLibraryA(libPath.c_str());
     if (!handle) {
-        DWORD error = GetLastError();
+        DWORD error = ::GetLastError();
         SetError("Failed to load Rust library: " + libPath + " (error: " + std::to_string(error) + ")");
         return false;
     }
@@ -109,7 +109,7 @@ std::any RustScriptSystem::CallFunction(const std::string& functionName,
 void RustScriptSystem::ReloadScript(const std::string& filepath)
 {
     std::cout << "Hot-reloading Rust library: " << filepath << std::endl;
-    LoadLibrary(filepath);
+    LoadNativeLibrary(filepath);
 }
 
 uint64_t RustScriptSystem::GetMemoryUsage() const
@@ -143,7 +143,7 @@ void* RustScriptSystem::GetLibraryHandle(const std::string& libPath) const
     return nullptr;
 }
 
-bool RustScriptSystem::UnloadLibrary(const std::string& libPath)
+bool RustScriptSystem::UnloadNativeLibrary(const std::string& libPath)
 {
     auto it = m_LoadedLibraries.find(libPath);
     if (it == m_LoadedLibraries.end()) {

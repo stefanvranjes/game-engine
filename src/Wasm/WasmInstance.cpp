@@ -5,7 +5,7 @@
 #include <cstring>
 
 // wasm3 includes
-#include <m3.h>
+#include <wasm3.h>
 #include <m3_env.h>
 
 WasmInstance::WasmInstance(std::shared_ptr<WasmModule> module)

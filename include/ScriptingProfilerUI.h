@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <chrono>
 #include <glm/glm.hpp>
+#include "imgui/imgui.h"
 
 // Forward declarations
 class IScriptSystem;
@@ -195,8 +196,8 @@ private:
         bool isAvailable = false;
         bool profilingEnabled = false;
         std::vector<FunctionStats> functionStats;
-        std::vector<double> executionTimeHistory;
-        std::vector<double> memoryHistory;
+        std::vector<float> executionTimeHistory;
+        std::vector<float> memoryHistory;
         std::chrono::high_resolution_clock::time_point lastSampleTime;
     };
 

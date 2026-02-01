@@ -1,5 +1,5 @@
 #include "ScriptLanguageRegistry.h"
-#include "LuaScriptSystem.h"
+#include "ScriptSystem.h"
 #include "LuaJitScriptSystem.h"
 #include "WrenScriptSystem.h"
 #include "PythonScriptSystem.h"
@@ -11,6 +11,7 @@
 #include "GoScriptSystem.h"
 #include "GDScriptSystem.h"
 #include "AngelScriptSystem.h"
+#include "Wasm/WasmScriptSystem.h"
 #include <iostream>
 #include <algorithm>
 
@@ -131,7 +132,7 @@ bool ScriptLanguageRegistry::ExecuteString(const std::string& source, ScriptLang
     }
 }
 
-IScriptSystem* ScriptLanguageRegistry::GetScriptSystem(ScriptLanguage language)
+IScriptSystem* ScriptLanguageRegistry::GetScriptSystem(ScriptLanguage language) const
 {
     auto it = m_Systems.find(language);
     return it != m_Systems.end() ? it->second.get() : nullptr;
@@ -166,7 +167,7 @@ std::any ScriptLanguageRegistry::CallFunction(const std::string& functionName,
 
     for (ScriptLanguage lang : order) {
         IScriptSystem* system = GetScriptSystem(lang);
-        if (system && system->HasType(functionName)) {
+        if (system && system->HasFunction(functionName)) {
             return system->CallFunction(functionName, args);
         }
     }
@@ -234,6 +235,7 @@ std::string ScriptLanguageRegistry::GetLanguageName(ScriptLanguage language) con
         case ScriptLanguage::Squirrel: return "Squirrel";
         case ScriptLanguage::Go: return "Go";
         case ScriptLanguage::GDScript: return "GDScript";
+        case ScriptLanguage::WebAssembly: return "WebAssembly";
         default: return "Unknown";
     }
 }
@@ -343,6 +345,7 @@ void ScriptLanguageRegistry::InitializeExtensionMap()
     m_ExtensionMap[".nut"] = ScriptLanguage::Squirrel;
     m_ExtensionMap[".go"] = ScriptLanguage::Go;
     m_ExtensionMap[".gd"] = ScriptLanguage::GDScript;
+    m_ExtensionMap[".wasm"] = ScriptLanguage::WebAssembly;
     m_ExtensionMap[".asm"] = ScriptLanguage::Custom;
     m_ExtensionMap[".bc"] = ScriptLanguage::Custom;
 }
@@ -390,4 +393,7 @@ void ScriptLanguageRegistry::RegisterDefaultSystems()
     
     RegisterScriptSystem(ScriptLanguage::AngelScript,
                         std::make_shared<AngelScriptSystem>());
+    
+    RegisterScriptSystem(ScriptLanguage::WebAssembly,
+                        std::make_shared<WasmScriptSystem>());
 }

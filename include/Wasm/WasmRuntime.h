@@ -133,7 +133,7 @@ private:
     bool m_ExecutionTimeoutEnabled = true;
 
     std::unordered_map<std::string, std::shared_ptr<WasmModule>> m_Modules;
-    std::string m_LastError;
+    mutable std::string m_LastError;
 
     void* m_Runtime = nullptr;  // Opaque pointer to wasm3::WasmMachine
     void* m_Environment = nullptr;  // Opaque pointer to M3Environment

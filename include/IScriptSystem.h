@@ -25,7 +25,8 @@ enum class ScriptLanguage {
     Kotlin,     // Kotlin - JVM-based with full OOP and null safety
     Mun,        // Mun - Compiled hot-reload scripting language
     GDScript,   // GDScript - Godot engine native language
-    AngelScript // AngelScript - Lightweight, C++-like syntax for games
+    AngelScript, // AngelScript - Lightweight, C++-like syntax for games
+    WebAssembly // WebAssembly - Portable binary format
 };
 
 /**
@@ -36,7 +37,8 @@ enum class ScriptExecutionMode {
     Interpreted,    // Script interpreted at runtime (Lua, Python, Wren)
     JustInTime,     // Script compiled on first run (TypeScript, Rust)
     Bytecode,       // Pre-compiled bytecode execution (Custom VM)
-    NativeCompiled  // Native compiled library (Rust DLLs)
+    NativeCompiled, // Native compiled library (Rust DLLs)
+    Compiled        // Compiled to binary (WebAssembly)
 };
 
 /**
@@ -68,6 +70,7 @@ public:
     // Type registration and interop
     virtual void RegisterTypes() {}
     virtual bool HasType(const std::string& typeName) const { (void)typeName; return false; }
+    virtual bool HasFunction(const std::string& functionName) const { (void)functionName; return false; }
     virtual std::any CallFunction(const std::string& functionName, 
                                    const std::vector<std::any>& args) { (void)functionName; (void)args; return std::any(); }
 

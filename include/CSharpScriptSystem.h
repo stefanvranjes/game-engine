@@ -39,9 +39,10 @@ public:
     MonoDomain* GetDomain() const { return m_Domain; }
 #endif
 
-private:
     CSharpScriptSystem();
     ~CSharpScriptSystem();
+
+private:
 
 #ifdef HAS_MONO
     MonoDomain* m_RootDomain = nullptr;

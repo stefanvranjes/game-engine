@@ -28,9 +28,10 @@ public:
     // Helper to parse assembly text into bytecode
     std::vector<Instruction> Assemble(const std::string& source);
 
-private:
     CustomScriptSystem();
     ~CustomScriptSystem();
+
+private:
 
     VirtualMachine m_VM;
 

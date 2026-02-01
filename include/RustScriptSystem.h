@@ -4,7 +4,11 @@
 #include <string>
 #include <memory>
 #include <map>
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 #include <functional>
 #include <vector>
 
@@ -84,7 +88,7 @@ public:
      * @param libPath Path to .dll/.so file
      * @return true if successful, false on error
      */
-    bool LoadLibrary(const std::string& libPath);
+    bool LoadNativeLibrary(const std::string& libPath);
 
     /**
      * Execute string (not applicable for Rust, returns false)
@@ -149,9 +153,10 @@ public:
         return func;
     }
 
-private:
     RustScriptSystem();
     ~RustScriptSystem();
+
+private:
 
     std::map<std::string, void*> m_LoadedLibraries; // library name -> handle
     std::string m_LastError;
@@ -159,5 +164,5 @@ private:
     uint64_t m_MemoryUsage = 0;
 
     void SetError(const std::string& error);
-    bool UnloadLibrary(const std::string& libPath);
+    bool UnloadNativeLibrary(const std::string& libPath);
 };

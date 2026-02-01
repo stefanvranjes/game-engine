@@ -46,8 +46,9 @@ struct WasmValue {
  * Provides access to module exports and allows instantiation
  * and execution of WASM functions.
  */
-class WasmModule {
+class WasmModule : public std::enable_shared_from_this<WasmModule> {
 public:
+    friend class WasmInstance;
     /**
      * Get module name
      */

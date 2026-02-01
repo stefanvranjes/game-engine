@@ -131,9 +131,10 @@ public:
      */
     JSRuntime* GetRuntime() const { return m_Runtime; }
 
-private:
     TypeScriptScriptSystem();
     ~TypeScriptScriptSystem();
+
+private:
 
     JSRuntime* m_Runtime = nullptr;
     JSContext* m_Context = nullptr;

@@ -5,6 +5,12 @@
 #include <filesystem>
 #include <fstream>
 
+CSharpScriptSystem::CSharpScriptSystem() {}
+
+CSharpScriptSystem::~CSharpScriptSystem() {
+    Shutdown();
+}
+
 #ifdef HAS_MONO
 // Internal Calls
 // void CS_Log(string message)
@@ -16,12 +22,7 @@ static void CS_Log(MonoString* message) {
 
 // Internal Calls for GameObject/Transform would go here
 // ...
-
-CSharpScriptSystem::CSharpScriptSystem() {}
-
-CSharpScriptSystem::~CSharpScriptSystem() {
-    Shutdown();
-}
+#endif
 
 void CSharpScriptSystem::Init() {
 #ifdef HAS_MONO
@@ -142,7 +143,5 @@ MonoObject* CSharpScriptSystem::CreateObject(const std::string& namespaceName, c
     MonoObject* obj = mono_object_new(m_Domain, monoClass);
     mono_runtime_object_init(obj);
     return obj;
-}
-#endif
 }
 #endif

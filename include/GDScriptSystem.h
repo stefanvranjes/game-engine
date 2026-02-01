@@ -169,9 +169,10 @@ public:
     bool HasErrors() const override { return !m_LastError.empty(); }
     std::string GetLastError() const override { return m_LastError; }
 
-private:
     GDScriptSystem();
     ~GDScriptSystem();
+
+private:
 
     // Prevent copying
     GDScriptSystem(const GDScriptSystem&) = delete;

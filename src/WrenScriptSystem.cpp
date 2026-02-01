@@ -242,7 +242,7 @@ void WrenScriptSystem::ReloadAll() {
     }
 }
 
-bool WrenScriptSystem::HasFunction(const std::string& functionName) {
+bool WrenScriptSystem::HasFunction(const std::string& functionName) const {
     if (!m_VM) return false;
     
     std::string code = functionName + " != null && Fiber.isValid";

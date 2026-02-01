@@ -56,4 +56,7 @@ Makefile
 
 # Build error logs
 build_err*
+build_release*
+build_logger*
+build_shader*
 build_config_log*

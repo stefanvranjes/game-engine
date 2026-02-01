@@ -3,7 +3,7 @@
 #include <algorithm>
 
 // wasm3 includes
-#include <m3.h>
+#include <wasm3.h>
 #include <m3_env.h>
 
 WasmValue WasmValue::I32(int32_t v) {
@@ -92,7 +92,7 @@ bool WasmModule::GetFunctionSignature(const std::string& name, FunctionSignature
 }
 
 std::shared_ptr<WasmInstance> WasmModule::CreateInstance() {
-    auto instance = std::make_shared<WasmInstance>(std::make_shared<WasmModule>(*this));
+    auto instance = std::make_shared<WasmInstance>(shared_from_this());
     if (instance && instance->GetMemory()) {
         return instance;
     }

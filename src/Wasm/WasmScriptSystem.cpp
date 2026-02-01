@@ -278,6 +278,10 @@ void WasmScriptSystem::UpdateModuleIfChanged(const std::string& moduleName, cons
     // This would require tracking last load times
 }
 
+WasmRuntime& WasmScriptSystem::GetRuntime() const {
+    return WasmRuntime::GetInstance();
+}
+
 WasmScriptSystem::~WasmScriptSystem() {
     Shutdown();
 }

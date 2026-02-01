@@ -648,6 +648,7 @@ void ScriptDebuggerUI::RenderSourceFile()
             ImGui::SameLine();
 
             // Source code with highlight
+            ImGui::SetNextItemAllowOverlap();
             if (isCurrentLine) {
                 ImGui::TextColored(m_CurrentLineColor, "%s", lines[i].c_str());
             } else {
@@ -655,7 +656,6 @@ void ScriptDebuggerUI::RenderSourceFile()
             }
 
             // Clickable for breakpoints
-            ImGui::SetItemAllowOverlap();
             ImGui::PushID(static_cast<int>(i));
             ImGui::InvisibleButton("##LineClickable", ImVec2(ImGui::GetContentRegionAvail().x, 0));
             if (ImGui::IsItemClicked()) {

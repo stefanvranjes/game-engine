@@ -91,7 +91,7 @@ public:
      * @param language The script language
      * @return Pointer to script system, nullptr if not initialized
      */
-    IScriptSystem* GetScriptSystem(ScriptLanguage language);
+    IScriptSystem* GetScriptSystem(ScriptLanguage language) const;
 
     /**
      * Register a custom script system

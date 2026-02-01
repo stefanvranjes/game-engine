@@ -20,6 +20,9 @@ class GameObject;
  */
 class WasmScriptSystem : public IScriptSystem {
 public:
+    WasmScriptSystem() = default;
+    ~WasmScriptSystem();
+
     static WasmScriptSystem& GetInstance() {
         static WasmScriptSystem instance;
         return instance;
@@ -102,7 +105,7 @@ public:
     /**
      * Get runtime instance for advanced operations
      */
-    WasmRuntime& GetRuntime() const { return WasmRuntime::GetInstance(); }
+    WasmRuntime& GetRuntime() const;
 
     /**
      * Performance monitoring
@@ -130,9 +133,6 @@ public:
     void SetDefaultMemoryLimit(uint32_t sizeInMB) { m_DefaultMemoryLimitMB = sizeInMB; }
 
 private:
-    WasmScriptSystem() = default;
-    ~WasmScriptSystem();
-
     // Prevent copying
     WasmScriptSystem(const WasmScriptSystem&) = delete;
     WasmScriptSystem& operator=(const WasmScriptSystem&) = delete;

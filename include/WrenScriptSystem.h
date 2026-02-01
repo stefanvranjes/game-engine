@@ -169,7 +169,7 @@ public:
      * @param functionName Function name
      * @return true if function exists, false otherwise
      */
-    bool HasFunction(const std::string& functionName);
+    bool HasFunction(const std::string& functionName) const override;
 
     /**
      * Check if a global variable exists in Wren
@@ -181,9 +181,10 @@ public:
     // Internal error handler (Static for use in C callbacks)
     static void HandleError(const std::string& error);
 
-private:
     WrenScriptSystem();
     ~WrenScriptSystem();
+
+private:
 
     WrenVM* m_VM = nullptr;
     std::vector<std::string> m_LoadedScripts;

@@ -2,7 +2,7 @@
 layout (location = 0) out vec4 gPosition;
 layout (location = 1) out vec4 gNormal;
 layout (location = 2) out vec4 gAlbedoSpec;
-layout (location = 3) out vec4 gEmissive;
+layout (location = 3) out vec3 gEmissive;
 // layout (location = 4) out vec2 gVelocity; // Skip for now? or write 0
 
 in vec2 TexCoord;
@@ -106,5 +106,5 @@ void main()
     gNormal = vec4(normalize(Normal), 0.5); // Roughness 0.5 default
     gAlbedoSpec.rgb = color.rgb;
     gAlbedoSpec.a = 0.0; // Metallic
-    gEmissive = vec4(0.0); // No emission
+    gEmissive = vec3(0.0); // No emission
 }

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.10)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
-project(GameEngine VERSION 0.1.0 LANGUAGES CXX C)
+project(GameEngine VERSION 0.1.0 LANGUAGES CXX C ASM_MASM)
 
 if(POLICY CMP0048)
     cmake_policy(SET CMP0048 NEW) 
@@ -294,7 +294,7 @@ if(PHYSICS_BACKEND STREQUAL "BOX2D")
 endif()
 
 # LuaJIT Support - 10x+ performance improvement over standard Lua
-option(ENABLE_LUAJIT "Enable LuaJIT (JIT-compiled Lua) for 10x+ performance" ON)
+set(ENABLE_LUAJIT OFF CACHE BOOL "Enable LuaJIT (JIT-compiled Lua) for 10x+ performance" FORCE)
 
 if(ENABLE_LUAJIT)
     # Fetch LuaJIT - Just-In-Time compiled Lua for significantly better performance
@@ -408,8 +408,8 @@ option(ENABLE_ANGELSCRIPT "Enable AngelScript language support" ON)
 if(ENABLE_ANGELSCRIPT)
     FetchContent_Declare(
         angelscript
-        GIT_REPOSITORY https://github.com/codecat/angelscript-mirror.git
-        GIT_TAG 2.36.0
+        GIT_REPOSITORY https://github.com/anjo76/angelscript.git
+        GIT_TAG v2.38.0
     )
     FetchContent_GetProperties(angelscript)
     if(NOT angelscript_populated)
@@ -417,12 +417,16 @@ if(ENABLE_ANGELSCRIPT)
         
         # Build AngelScript as a static library
         file(GLOB ANGELSCRIPT_SOURCES
-            "${angelscript_SOURCE_DIR}/angelscript/source/*.cpp"
+            "${angelscript_SOURCE_DIR}/sdk/angelscript/source/*.cpp"
         )
+        
+        if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+            list(APPEND ANGELSCRIPT_SOURCES "${angelscript_SOURCE_DIR}/sdk/angelscript/source/as_callfunc_x64_msvc_asm.asm")
+        endif()
         
         add_library(angelscript STATIC ${ANGELSCRIPT_SOURCES})
         target_include_directories(angelscript PUBLIC 
-            "${angelscript_SOURCE_DIR}/angelscript/include"
+            "${angelscript_SOURCE_DIR}/sdk/angelscript/include"
         )
         
         # AngelScript configuration
@@ -443,6 +447,116 @@ else()
     set(ANGELSCRIPT_AVAILABLE FALSE)
 endif()
 
+# Fetch QuickJS - Lightweight JavaScript/TypeScript engine for scripting support
+option(ENABLE_QUICKJS "Enable QuickJS (JavaScript/TypeScript support)" ON)
+if(ENABLE_QUICKJS)
+    FetchContent_Declare(
+        quickjs
+        GIT_REPOSITORY https://github.com/bellard/quickjs.git
+        GIT_TAG master
+    )
+    FetchContent_GetProperties(quickjs)
+    if(NOT quickjs_populated)
+        FetchContent_Populate(quickjs)
+        file(REMOVE "${quickjs_SOURCE_DIR}/version")
+        
+        # Build QuickJS as a static library
+        file(GLOB QUICKJS_SOURCES
+            "${quickjs_SOURCE_DIR}/quickjs.c"
+            "${quickjs_SOURCE_DIR}/libregexp.c"
+            "${quickjs_SOURCE_DIR}/libunicode.c"
+            "${quickjs_SOURCE_DIR}/libbf.c"
+            "${quickjs_SOURCE_DIR}/cutils.c"
+        )
+        
+        add_library(quickjs STATIC ${QUICKJS_SOURCES})
+        target_include_directories(quickjs PUBLIC 
+            "${quickjs_SOURCE_DIR}"
+        )
+        
+        # QuickJS configuration for Windows/MSVC
+        if(MSVC)
+            target_compile_definitions(quickjs PRIVATE 
+                _CRT_SECURE_NO_WARNINGS
+                _WINSOCK_DEPRECATED_NO_WARNINGS
+            )
+            # Fix "error C2099: initializer is not a constant" in Release builds
+            # by disabling math intrinsics for quickjs.c
+            target_compile_options(quickjs PRIVATE /Oi-)
+        endif()
+        
+        # Enable TypeScript support via QuickJS transpiler
+        target_compile_definitions(quickjs PUBLIC 
+            CONFIG_VERSION="2024.01"
+        )
+        
+        set_target_properties(quickjs PROPERTIES
+            CXX_STANDARD 11
+            CXX_STANDARD_REQUIRED ON
+        )
+    endif()
+    file(REMOVE "${quickjs_SOURCE_DIR}/version")
+    set(QUICKJS_AVAILABLE TRUE)
+    add_compile_definitions(HAS_QUICKJS)
+else()
+    set(QUICKJS_AVAILABLE FALSE)
+endif()
+
+# Fetch Squirrel - lightweight, embeddable scripting language
+option(ENABLE_SQUIRREL "Enable Squirrel scripting language support" ON)
+if(ENABLE_SQUIRREL)
+    FetchContent_Declare(
+        squirrel
+        GIT_REPOSITORY https://github.com/albertodemichelis/squirrel.git
+        GIT_TAG master
+    )
+    FetchContent_GetProperties(squirrel)
+    if(NOT squirrel_populated)
+        FetchContent_Populate(squirrel)
+        
+        # Build Squirrel VM library
+        file(GLOB SQUIRREL_VM_SOURCES
+            "${squirrel_SOURCE_DIR}/squirrel/*.cpp"
+        )
+        
+        # Build Squirrel standard library
+        file(GLOB SQUIRREL_STDLIB_SOURCES
+            "${squirrel_SOURCE_DIR}/sqstdlib/*.cpp"
+        )
+        
+        add_library(squirrel STATIC 
+            ${SQUIRREL_VM_SOURCES}
+            ${SQUIRREL_STDLIB_SOURCES}
+        )
+        
+        target_include_directories(squirrel PUBLIC 
+            "${squirrel_SOURCE_DIR}/include"
+            "${squirrel_SOURCE_DIR}/squirrel"
+            "${squirrel_SOURCE_DIR}/sqstdlib"
+        )
+        
+        # Squirrel configuration
+        target_compile_definitions(squirrel PRIVATE 
+            SQUIRREL_VERSION="3.2"
+        )
+        
+        if(MSVC)
+            target_compile_definitions(squirrel PRIVATE 
+                _CRT_SECURE_NO_WARNINGS
+            )
+        endif()
+        
+        set_target_properties(squirrel PROPERTIES
+            CXX_STANDARD 11
+            CXX_STANDARD_REQUIRED ON
+        )
+    endif()
+    set(SQUIRREL_AVAILABLE TRUE)
+    add_compile_definitions(HAS_SQUIRREL)
+else()
+    set(SQUIRREL_AVAILABLE FALSE)
+endif()
+
 # Fetch pybind11
 FetchContent_Declare(
     pybind11
@@ -450,6 +564,17 @@ FetchContent_Declare(
     GIT_TAG v2.11.1
 )
 FetchContent_MakeAvailable(pybind11)
+
+# Find Python3 for DLL copying
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+
+# Fetch WASM3 - WebAssembly interpreter
+FetchContent_Declare(
+    wasm3
+    GIT_REPOSITORY https://github.com/wasm3/wasm3.git
+    GIT_TAG v0.5.0
+)
+FetchContent_MakeAvailable(wasm3)
 
 # Add cmake module path
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
@@ -474,6 +599,7 @@ set(IMGUI_SOURCES
 
 add_executable(GameEngine 
     src/main.cpp
+    src/Logger.cpp
     src/Window.cpp
     src/Application.cpp
     src/Shader.cpp
@@ -607,6 +733,18 @@ set(SOURCES ${SOURCES}
     src/GoRuntime.cpp
     src/GDScriptSystem.cpp
     src/AngelScriptSystem.cpp
+    src/TypeScriptScriptSystem.cpp
+    src/RustScriptSystem.cpp
+    src/SquirrelScriptSystem.cpp
+    src/Wasm/WasmScriptSystem.cpp
+    src/Wasm/WasmRuntime.cpp
+    src/Wasm/WasmModule.cpp
+    src/Wasm/WasmInstance.cpp
+    src/Wasm/WasmHelper.cpp
+    src/Wasm/WasmEngineBindings.cpp
+    src/ScriptDebugger.cpp
+    src/ScriptDebuggerUI.cpp
+    src/ScriptingProfilerUI.cpp
     src/ScriptLanguageRegistry.cpp
     # Asset pipeline - incremental builds, hashing, and conversion
     src/AssetHash.cpp
@@ -879,6 +1017,20 @@ set(COMMON_INCLUDES
     ${enet_SOURCE_DIR}/include
 )
 
+# Add QuickJS includes if enabled
+if(QUICKJS_AVAILABLE)
+    list(APPEND COMMON_INCLUDES ${quickjs_SOURCE_DIR})
+endif()
+
+# Add Squirrel includes if enabled
+if(SQUIRREL_AVAILABLE)
+    list(APPEND COMMON_INCLUDES
+        ${squirrel_SOURCE_DIR}/include
+        ${squirrel_SOURCE_DIR}/squirrel
+        ${squirrel_SOURCE_DIR}/sqstdlib
+    )
+endif()
+
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
     list(APPEND COMMON_INCLUDES
         ${PHYSX_ROOT_DIR}/include
@@ -896,6 +1048,9 @@ endif()
 if(MONO_FOUND)
     list(APPEND COMMON_INCLUDES ${MONO_INCLUDE_DIRS})
 endif()
+
+# Add WASM3 includes
+list(APPEND COMMON_INCLUDES ${wasm3_SOURCE_DIR}/source)
 
 target_include_directories(GameEngine PUBLIC ${COMMON_INCLUDES})
 
@@ -920,6 +1075,11 @@ set(COMMON_LIBS
     wren
     spdlog::spdlog
     $<$<BOOL:${ANGELSCRIPT_AVAILABLE}>:angelscript>
+    $<$<BOOL:${QUICKJS_AVAILABLE}>:quickjs>
+    $<$<BOOL:${SQUIRREL_AVAILABLE}>:squirrel>
+    m3
+    uvwasi_a
+    uv_a
 )
 
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
@@ -992,6 +1152,10 @@ if(HAS_MONO)
 endif()
 
 # Copy assets to build directory
+if(Python3_FOUND)
+    get_filename_component(PYTHON_RUNTIME_DIR "${Python3_EXECUTABLE}" DIRECTORY)
+endif()
+
 add_custom_command(TARGET GameEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/assets
@@ -999,6 +1163,10 @@ add_custom_command(TARGET GameEngine POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/shaders
     $<TARGET_FILE_DIR:GameEngine>/shaders
+    # Copy Python runtime DLL
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${PYTHON_RUNTIME_DIR}/python314.dll"
+    $<TARGET_FILE_DIR:GameEngine>/python314.dll
 )
 
 option(BUILD_TESTS "Build unit tests" OFF)

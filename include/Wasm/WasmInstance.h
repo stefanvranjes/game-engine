@@ -175,12 +175,12 @@ public:
     void SetEngineObject(void* engineObj) { m_EngineObject = engineObj; }
     void* GetEngineObject() const { return m_EngineObject; }
 
+    WasmInstance(std::shared_ptr<WasmModule> module);
+    ~WasmInstance();
+
 private:
     friend class WasmModule;
     friend class WasmRuntime;
-
-    WasmInstance(std::shared_ptr<WasmModule> module);
-    ~WasmInstance();
 
     std::shared_ptr<WasmModule> m_Module;
     
@@ -190,7 +190,7 @@ private:
     void* m_Execution = nullptr;  // Opaque pointer to M3Execution
     
     // Error tracking
-    std::string m_LastError;
+    mutable std::string m_LastError;
     double m_LastCallDuration = 0.0;
     
     // Profiling

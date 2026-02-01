@@ -60,7 +60,6 @@ public:
 
     void RegisterTypes(); // Implemented in cpp to avoid header clutter
 
-private:
     PythonScriptSystem() = default;
     ~PythonScriptSystem() = default;
 };

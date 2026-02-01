@@ -57,6 +57,14 @@ bool LuaScriptSystem::ExecuteString(const std::string& source) {
     return status == LUA_OK;
 }
 
+bool LuaScriptSystem::HasFunction(const std::string& functionName) const {
+    if (!L) return false;
+    lua_getglobal(L, functionName.c_str());
+    bool isFunction = lua_isfunction(L, -1);
+    lua_pop(L, 1);
+    return isFunction;
+}
+
 // ... rest of bindings ...
 
 // Vec3 Bindings

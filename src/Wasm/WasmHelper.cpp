@@ -6,7 +6,7 @@
 
 namespace WasmHelper {
 
-void PrintWasmMemory(std::shared_ptr<WasmInstance> instance, uint32_t offset, uint32_t size) {
+void PrintWasmMemory(std::shared_ptr<::WasmInstance> instance, uint32_t offset, uint32_t size) {
     if (!instance) {
         return;
     }
@@ -26,7 +26,7 @@ void PrintWasmMemory(std::shared_ptr<WasmInstance> instance, uint32_t offset, ui
     std::cout << std::dec << std::endl;
 }
 
-void PrintWasmModule(std::shared_ptr<WasmModule> module) {
+void PrintWasmModule(std::shared_ptr<::WasmModule> module) {
     if (!module) {
         return;
     }
@@ -50,7 +50,32 @@ void PrintWasmModule(std::shared_ptr<WasmModule> module) {
     }
 }
 
-bool ValidateModuleInterface(std::shared_ptr<WasmModule> module) {
+std::vector<uint8_t> InternalReadMemory(std::shared_ptr<::WasmInstance> instance, uint32_t offset, uint32_t size) {
+    if (!instance) return {};
+    return instance->ReadMemory(offset, size);
+}
+
+bool InternalWriteMemory(std::shared_ptr<::WasmInstance> instance, uint32_t offset, const std::vector<uint8_t>& data) {
+    if (!instance) return false;
+    return instance->WriteMemory(offset, data);
+}
+
+uint32_t InternalMalloc(std::shared_ptr<::WasmInstance> instance, uint32_t size) {
+    if (!instance) return 0;
+    return instance->Malloc(size);
+}
+
+uint32_t AllocateVec3(std::shared_ptr<::WasmInstance> instance, float x, float y, float z) {
+    if (!instance) return 0;
+    return instance->Malloc(sizeof(float) * 3);
+}
+
+uint32_t AllocateVec4(std::shared_ptr<::WasmInstance> instance, float x, float y, float z, float w) {
+    if (!instance) return 0;
+    return instance->Malloc(sizeof(float) * 4);
+}
+
+bool ValidateModuleInterface(std::shared_ptr<::WasmModule> module) {
     if (!module) {
         return false;
     }

@@ -39,11 +39,14 @@ public:
     lua_State* GetLuaState() const { return L; }
 
     // Register engine types
-    void RegisterTypes();
+    void RegisterTypes() override;
 
-private:
+    bool HasFunction(const std::string& functionName) const override;
+
     LuaScriptSystem();
     ~LuaScriptSystem();
+
+private:
 
     lua_State* L = nullptr;
 };

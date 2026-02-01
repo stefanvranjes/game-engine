@@ -178,7 +178,7 @@ public:
      * @param functionName Function to check
      * @return true if function exists in active module
      */
-    bool HasFunction(const std::string& functionName) const;
+    bool HasFunction(const std::string& functionName) const override;
 
     /**
      * Hot-reload support
@@ -243,9 +243,10 @@ public:
      */
     void ClearState();
 
-private:
     AngelScriptSystem();
     ~AngelScriptSystem();
+
+private:
 
     // Prevent copy/move
     AngelScriptSystem(const AngelScriptSystem&) = delete;

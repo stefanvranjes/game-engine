@@ -124,9 +124,10 @@ public:
      */
     HSQUIRRELVM GetVM() const { return m_VM; }
 
-private:
     SquirrelScriptSystem();
     ~SquirrelScriptSystem();
+
+private:
 
     HSQUIRRELVM m_VM = nullptr;
     std::string m_LastError;

@@ -63,10 +63,10 @@ void AngelScriptSystem::Init() {
     }
 
     // Set engine properties
-    m_Engine->SetEngineProperty(asEP_SCRIPT_RECURSION_LEVEL, 100);
+    m_Engine->SetEngineProperty(asEP_MAX_NESTED_CALLS, 100);
     m_Engine->SetEngineProperty(asEP_BUILD_WITHOUT_LINE_CUES, false);
     m_Engine->SetEngineProperty(asEP_OPTIMIZE_BYTECODE, m_OptimizeScripts ? 1 : 0);
-    m_Engine->SetEngineProperty(asEP_INIT_GLOBAL_VARS, true);
+    m_Engine->SetEngineProperty(asEP_INIT_GLOBAL_VARS_AFTER_BUILD, true);
 
     // Set message callback
     m_Engine->SetMessageCallback(asFUNCTION(MessageCallback), this, asCALL_CDECL);
