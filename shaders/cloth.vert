@@ -71,10 +71,9 @@ void main()
         // Use normals from ClothMeshSynchronizer (already calculated from PhysX)
         worldNormal = normalize(mat3(transpose(inverse(u_Model))) * aNormal);
     } else {
-        // Compute normals from position derivatives (fallback)
-        vec3 dPdx = dFdx(worldPos.xyz);
-        vec3 dPdy = dFdy(worldPos.xyz);
-        worldNormal = normalize(cross(dPdx, dPdy));
+        // Fallback: standard normal transformation
+        // We cannot use dFdx/dFdy in vertex shader, so we rely on attributes
+        worldNormal = normalize(mat3(transpose(inverse(u_Model))) * aNormal);
     }
     
     // Apply wind deformation
@@ -88,16 +87,17 @@ void main()
         T = normalize(mat3(u_Model) * aTangent);
         B = normalize(mat3(u_Model) * aBitangent);
     } else {
-        // Compute tangent space from derivatives
-        vec3 dPdx = dFdx(worldPos.xyz);
-        vec3 dPdy = dFdy(worldPos.xyz);
-        vec2 dUVdx = dFdx(aTexCoord);
-        vec2 dUVdy = dFdy(aTexCoord);
+        // Fallback: Generate orthogonal basis from normal
+        vec3 c1 = cross(worldNormal, vec3(0.0, 0.0, 1.0));
+        vec3 c2 = cross(worldNormal, vec3(0.0, 1.0, 0.0));
         
-        // Calculate tangent and bitangent
-        float r = 1.0 / (dUVdx.x * dUVdy.y - dUVdx.y * dUVdy.x);
-        T = normalize((dPdx * dUVdy.y - dPdy * dUVdx.y) * r);
-        B = normalize((dPdy * dUVdx.x - dPdx * dUVdy.x) * r);
+        if (length(c1) > length(c2)) {
+            T = normalize(c1);
+        } else {
+            T = normalize(c2);
+        }
+        
+        B = normalize(cross(worldNormal, T));
     }
     
     // Construct TBN matrix for normal mapping

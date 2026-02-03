@@ -290,13 +290,13 @@ DivideAndConquerHull::SubHull* DivideAndConquerHull::ComputeHullFromPoints(const
     
     ConvexHull res = qh.ComputeHull(v3points.data(), (int)v3points.size());
     
-    SubHull* sh = new SubHull();
+    DivideAndConquerHull::SubHull* sh = new DivideAndConquerHull::SubHull();
     // Convert back to HE structure
     
     // Create vertices
     // We need to map new indices to new HE_Verts
     for (const auto& v : res.vertices) {
-        HE_Vert* heV = new HE_Vert(0, v.x, v.y, v.z);
+        DivideAndConquerHull::HE_Vert* heV = new DivideAndConquerHull::HE_Vert(0, v.x, v.y, v.z);
         sh->verts.push_back(heV);
     }
     
@@ -308,16 +308,16 @@ DivideAndConquerHull::SubHull* DivideAndConquerHull::ComputeHullFromPoints(const
             continue; // Should not happen
         }
 
-        HE_Vert* v0 = sh->verts[res.indices[i]];
-        HE_Vert* v1 = sh->verts[res.indices[i+1]];
-        HE_Vert* v2 = sh->verts[res.indices[i+2]];
+        DivideAndConquerHull::HE_Vert* v0 = sh->verts[res.indices[i]];
+        DivideAndConquerHull::HE_Vert* v1 = sh->verts[res.indices[i+1]];
+        DivideAndConquerHull::HE_Vert* v2 = sh->verts[res.indices[i+2]];
         
-        HE_Face* f = new HE_Face();
+        DivideAndConquerHull::HE_Face* f = new DivideAndConquerHull::HE_Face();
         sh->faces.push_back(f);
         
-        HE_Edge* e0 = new HE_Edge(); e0->vert = v0; e0->face = f;
-        HE_Edge* e1 = new HE_Edge(); e1->vert = v1; e1->face = f;
-        HE_Edge* e2 = new HE_Edge(); e2->vert = v2; e2->face = f;
+        DivideAndConquerHull::HE_Edge* e0 = new DivideAndConquerHull::HE_Edge(); e0->vert = v0; e0->face = f;
+        DivideAndConquerHull::HE_Edge* e1 = new DivideAndConquerHull::HE_Edge(); e1->vert = v1; e1->face = f;
+        DivideAndConquerHull::HE_Edge* e2 = new DivideAndConquerHull::HE_Edge(); e2->vert = v2; e2->face = f;
         
         sh->edges.push_back(e0); sh->edges.push_back(e1); sh->edges.push_back(e2);
         
@@ -331,9 +331,9 @@ DivideAndConquerHull::SubHull* DivideAndConquerHull::ComputeHullFromPoints(const
     }
     
     // Link edges
-    for (auto* e1 : sh->edges) {
+    for (DivideAndConquerHull::HE_Edge* e1 : sh->edges) {
         if (e1->pair) continue;
-        for (auto* e2 : sh->edges) {
+        for (DivideAndConquerHull::HE_Edge* e2 : sh->edges) {
             if (e1 == e2) continue;
             if (e1->vert == e2->next->vert && e1->next->vert == e2->vert) {
                 e1->pair = e2;
@@ -350,14 +350,14 @@ ConvexHull DivideAndConquerHull::BuildResult(SubHull* hull, const Vec3* original
     ConvexHull result;
     // ... extract data
     
-    std::vector<HE_Face*> validFaces = hull->faces; // all are valid in this approach
+    std::vector<DivideAndConquerHull::HE_Face*> validFaces = hull->faces; // all are valid in this approach
     
     result.faceCount = (int)validFaces.size();
     result.surfaceArea = 0.0f;
     
     // Reconstruct vertex list to match original or just use hull verts
     // For now use hull verts
-    for(auto* v : hull->verts) {
+    for(DivideAndConquerHull::HE_Vert* v : hull->verts) {
         result.vertices.push_back(Vec3((float)v->x, (float)v->y, (float)v->z));
     }
     

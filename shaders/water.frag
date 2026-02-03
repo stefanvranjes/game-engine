@@ -180,8 +180,8 @@ void main()
     float F = fresnelSchlick(max(dot(halfwayDir, viewDir), 0.0), f0);
     
     float NdotL = max(dot(normal, lightDir), 0.0);
-    vec3 specular = (NDF * G * F) / max(4.0 * NdotV * NdotL, 0.001);
-    specular *= u_LightColor * u_SpecularIntensity * NdotL;
+    float specularFactor = (NDF * G * F) / max(4.0 * NdotV * NdotL, 0.001);
+    vec3 specular = specularFactor * u_LightColor * u_SpecularIntensity * NdotL;
     
     // ----- FOAM -----
     vec3 foamContribution = vec3(0.0);

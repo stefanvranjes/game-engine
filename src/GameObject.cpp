@@ -23,6 +23,7 @@ const int MIN_QUERY_INTERVAL = 1;     // Min frames (always test unstable object
 GameObject::GameObject(const std::string& name) 
     : m_Name(name)
     , m_WorldMatrix(Mat4::Identity())
+    , m_PreviousWorldMatrix(Mat4::Identity())
     , m_QueryID(0)
     , m_Visible(true)
     , m_QueryIssued(false)
@@ -77,6 +78,7 @@ std::shared_ptr<GameObject> GameObject::Clone() {
 
 void GameObject::Update(const Mat4& parentMatrix, float deltaTime) {
     // Calculate world matrix based on parent and local transform
+    m_PreviousWorldMatrix = m_WorldMatrix;
     m_WorldMatrix = parentMatrix * m_Transform.GetModelMatrix();
     
     // Velocity Calculation

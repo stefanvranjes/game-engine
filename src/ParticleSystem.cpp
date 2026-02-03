@@ -29,7 +29,7 @@ bool ParticleSystem::Init() {
     
     // Load trail shader
     m_TrailShader = std::make_unique<Shader>();
-    if (!m_TrailShader->LoadFromFiles("shaders/trail.vert", "shaders/trail.frag")) {
+    if (!m_TrailShader->LoadFromFiles("shaders/trail_gpu.vert", "shaders/trail_gpu.frag")) {
         std::cerr << "Failed to load trail shader" << std::endl;
         return false;
     }

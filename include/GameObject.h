@@ -59,6 +59,7 @@ public:
     Transform& GetTransform() { return m_Transform; }
     void SetTransform(const Transform& transform) { m_Transform = transform; }
     const Mat4& GetWorldMatrix() const { return m_WorldMatrix; }
+    const Mat4& GetPreviousWorldMatrix() const { return m_PreviousWorldMatrix; }
     const std::string& GetName() const { return m_Name; }
     std::shared_ptr<Material> GetMaterial() { return m_Material; }
     std::shared_ptr<Mesh> GetActiveMesh(const Mat4& view) const;
@@ -188,6 +189,7 @@ private:
     bool m_IsActive = true;
     Transform m_Transform;
     Mat4 m_WorldMatrix;
+    Mat4 m_PreviousWorldMatrix;
     
     std::shared_ptr<Mesh> m_Mesh;
     std::shared_ptr<Material> m_Material;

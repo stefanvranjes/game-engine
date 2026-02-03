@@ -79,6 +79,7 @@ private:
     SubHull* Recurse(int start, int end);
     SubHull* ConstructBaseHull(int start, int end);
     SubHull* Merge(SubHull* left, SubHull* right);
+    SubHull* ComputeHullFromPoints(const std::vector<Point>& points);
     
     ConvexHull BuildResult(SubHull* hull, const Vec3* originalPoints);
 };

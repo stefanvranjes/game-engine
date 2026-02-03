@@ -3169,13 +3169,14 @@ void Renderer::RenderCloth(GameObject* obj, const Mat4& view, const Mat4& projec
     m_ClothShader->Use();
     
     // Set Transforms
-    Mat4 model = obj->GetTransform().GetMatrix();
+    // Set Transforms
+    Mat4 model = obj->GetWorldMatrix();
     Mat4 mvp = projection * view * model;
     
-    // Calculate previous MVP for motion vectors (approximation if no history)
-    // For proper TAA, we should store previous matrices, but Renderer architecture might need updates
-    // For now, assume previous = current (no motion blur for now, or minimal TAA history)
-    Mat4 prevMvp = mvp; 
+    // Calculate previous MVP for motion vectors (TAA)
+    Mat4 prevModel = obj->GetPreviousWorldMatrix();
+    Mat4 prevViewProj = m_Camera->GetPreviousViewProjection();
+    Mat4 prevMvp = prevViewProj * prevModel; 
     
     m_ClothShader->SetMat4("u_Model", model.m);
     m_ClothShader->SetMat4("u_View", view.m);

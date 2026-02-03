@@ -597,8 +597,8 @@ set(IMGUI_SOURCES
     src/imgui/imgui_impl_opengl3.cpp
 )
 
-add_executable(GameEngine 
-    src/main.cpp
+# Engine Library
+add_library(GameEngineLib STATIC
     src/Logger.cpp
     src/Window.cpp
     src/Application.cpp
@@ -659,7 +659,15 @@ add_executable(GameEngine
     src/IK.cpp
     src/FileWatcher.cpp
     src/BlendTreeEditor.cpp
+    # Geometry & Hull Algorithms
+    src/QuickHull.cpp
+    src/GiftWrapping.cpp
+    src/IncrementalHull.cpp
+    src/DivideAndConquerHull.cpp
 )
+
+# Main Executable
+add_executable(GameEngine src/main.cpp)
 
 # Force tinygltf to not include STB implementation again
 if(TARGET tinygltf)
@@ -804,11 +812,11 @@ set(SOURCES ${SOURCES}
     ${ADDITIONAL_SOURCES}  # Includes generated protobuf sources
 )
 
-# Add ImGui sources to GameEngine target
-target_sources(GameEngine PRIVATE ${IMGUI_SOURCES})
+# Add ImGui sources to GameEngineLib target
+target_sources(GameEngineLib PRIVATE ${IMGUI_SOURCES})
 
 # Add the rest of the engine sources
-target_sources(GameEngine PRIVATE ${SOURCES})
+target_sources(GameEngineLib PRIVATE ${SOURCES})
 
 # Force tinygltf to not include STB implementation again again
 if(TARGET tinygltf)
@@ -894,7 +902,7 @@ if(ENABLE_VULKAN)
         message(STATUS "Found Vulkan: ${Vulkan_VERSION}")
         set(HAS_VULKAN TRUE)
         add_compile_definitions(ENABLE_VULKAN)
-        target_sources(GameEngine PRIVATE
+        target_sources(GameEngineLib PRIVATE
             src/VulkanBackend.cpp
             src/VulkanShaderCompiler.cpp
             src/VulkanDebugUtils.cpp
@@ -912,7 +920,7 @@ endif()
 # OpenGL
 # Add PhysX backend sources if using PhysX
 if(PHYSICS_BACKEND STREQUAL "PHYSX")
-    target_sources(GameEngine PRIVATE
+    target_sources(GameEngineLib PRIVATE
         src/PhysXBackend.cpp
         src/PhysXRigidBody.cpp
         src/PhysXFluidVolume.cpp
@@ -947,7 +955,6 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         src/ClothLODManager.cpp
         src/ClothTearPattern.cpp
         src/ClothTearPatternLibrary.cpp
-        src/QuickHull.cpp
         src/AnisotropicMaterial.cpp
         src/SoftBodySerializer.cpp
         src/SoftBodyDeformationRecorder.cpp
@@ -989,14 +996,14 @@ if(PHYSICS_BACKEND STREQUAL "PHYSX")
         set_source_files_properties(src/PBDFluidSolverGPU.cu PROPERTIES LANGUAGE CUDA)
     endif()
 elseif(PHYSICS_BACKEND STREQUAL "BOX2D")
-    target_sources(GameEngine PRIVATE
+    target_sources(GameEngineLib PRIVATE
         src/Box2DBackend.cpp
         src/Box2DShape.cpp
         src/Box2DRigidBody.cpp
     )
 else()
     # Add Bullet backend wrapper
-    target_sources(GameEngine PRIVATE
+    target_sources(GameEngineLib PRIVATE
         src/BulletBackend.cpp
     )
 endif()
@@ -1052,7 +1059,7 @@ endif()
 # Add WASM3 includes
 list(APPEND COMMON_INCLUDES ${wasm3_SOURCE_DIR}/source)
 
-target_include_directories(GameEngine PUBLIC ${COMMON_INCLUDES})
+target_include_directories(GameEngineLib PUBLIC ${COMMON_INCLUDES})
 
 # Configure link libraries based on physics backend
 # Common link libraries for all build configurations
@@ -1102,53 +1109,56 @@ if(HAS_VULKAN)
     target_compile_definitions(GameEngine PRIVATE VULKAN_ENABLED)
 endif()
 
-target_link_libraries(GameEngine PRIVATE ${COMMON_LIBS})
+target_link_libraries(GameEngineLib PUBLIC ${COMMON_LIBS})
+
+# Link GameEngine executable to GameEngineLib
+target_link_libraries(GameEngine PRIVATE GameEngineLib)
 
 # Global library configurations (CUDA, LZ4, Protobuf, ASIO)
 # These should be applied regardless of the physics backend
 
 # Link CUDA runtime if available
 if(CUDAToolkit_FOUND)
-    target_compile_definitions(GameEngine PRIVATE HAS_CUDA_TOOLKIT)
-    target_include_directories(GameEngine PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
-    target_link_libraries(GameEngine PRIVATE CUDA::cudart)
+    target_compile_definitions(GameEngineLib PUBLIC HAS_CUDA_TOOLKIT)
+    target_include_directories(GameEngineLib PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
+    target_link_libraries(GameEngineLib PUBLIC CUDA::cudart)
 endif()
 
 # Link LZ4 if available
 if(HAS_LZ4)
-    target_compile_definitions(GameEngine PRIVATE HAS_LZ4)
-    target_include_directories(GameEngine PRIVATE ${LZ4_INCLUDE_DIRS})
-    target_link_libraries(GameEngine PRIVATE ${LZ4_LIBRARIES})
+    target_compile_definitions(GameEngineLib PUBLIC HAS_LZ4)
+    target_include_directories(GameEngineLib PUBLIC ${LZ4_INCLUDE_DIRS})
+    target_link_libraries(GameEngineLib PUBLIC ${LZ4_LIBRARIES})
 endif()
 
 # Link Protocol Buffers if available
 if(HAS_PROTOBUF)
-    target_compile_definitions(GameEngine PRIVATE HAS_PROTOBUF)
-    target_include_directories(GameEngine PRIVATE ${Protobuf_INCLUDE_DIRS})
-    target_include_directories(GameEngine PRIVATE ${CMAKE_CURRENT_BINARY_DIR})  # For generated headers
-    target_link_libraries(GameEngine PRIVATE ${Protobuf_LIBRARIES})
+    target_compile_definitions(GameEngineLib PUBLIC HAS_PROTOBUF)
+    target_include_directories(GameEngineLib PUBLIC ${Protobuf_INCLUDE_DIRS})
+    target_include_directories(GameEngineLib PUBLIC ${CMAKE_CURRENT_BINARY_DIR})  # For generated headers
+    target_link_libraries(GameEngineLib PUBLIC ${Protobuf_LIBRARIES})
 endif()
 
 # Link ASIO if available
 if(HAS_ASIO)
-    target_compile_definitions(GameEngine PRIVATE HAS_ASIO)
+    target_compile_definitions(GameEngineLib PUBLIC HAS_ASIO)
     if(ASIO_STANDALONE)
-        target_compile_definitions(GameEngine PRIVATE ASIO_STANDALONE)
-        target_include_directories(GameEngine PRIVATE ${ASIO_INCLUDE_DIR})
+        target_compile_definitions(GameEngineLib PUBLIC ASIO_STANDALONE)
+        target_include_directories(GameEngineLib PUBLIC ${ASIO_INCLUDE_DIR})
     else()
-        target_include_directories(GameEngine PRIVATE ${Boost_INCLUDE_DIRS})
-        target_link_libraries(GameEngine PRIVATE ${Boost_LIBRARIES})
+        target_include_directories(GameEngineLib PUBLIC ${Boost_INCLUDE_DIRS})
+        target_link_libraries(GameEngineLib PUBLIC ${Boost_LIBRARIES})
     endif()
     # Disable deprecated warnings for ASIO
     if(MSVC)
-        target_compile_definitions(GameEngine PRIVATE _WIN32_WINNT=0x0601)  # Windows 7+
+        target_compile_definitions(GameEngineLib PUBLIC _WIN32_WINNT=0x0601)  # Windows 7+
     endif()
 endif()
 
 # Optional Mono support
 if(HAS_MONO)
-    target_compile_definitions(GameEngine PRIVATE HAS_MONO)
-    target_link_libraries(GameEngine PRIVATE ${MONO_LIBRARIES})
+    target_compile_definitions(GameEngineLib PUBLIC HAS_MONO)
+    target_link_libraries(GameEngineLib PUBLIC ${MONO_LIBRARIES})
 endif()
 
 # Copy assets to build directory
@@ -1195,20 +1205,15 @@ if(BUILD_TESTS)
         tests/test_material.cpp
         tests/test_shader.cpp
         tests/game-engine-multiplayer/test_message.cpp
-        tests/game-engine-multiplayer/test_message.cpp
         tests/game-engine-multiplayer/test_serializer.cpp
         tests/test_scripting.cpp
         tests/test_python_scripting.cpp
         tests/test_csharp_scripting.cpp
         tests/test_vm.cpp
         tests/test_quickhull.cpp
-        src/QuickHull.cpp
         tests/test_giftwrapping.cpp
-        src/GiftWrapping.cpp
         tests/test_incremental.cpp
-        src/IncrementalHull.cpp
         tests/test_divideandconquer.cpp
-        src/DivideAndConquerHull.cpp
     )
     
     target_include_directories(tests PRIVATE 
@@ -1216,12 +1221,13 @@ if(BUILD_TESTS)
         include/imgui 
         game-engine-multiplayer/include 
         ${miniaudio_SOURCE_DIR}
+        ${LUA_INCLUDE_DIR}
     )
     
     target_link_libraries(tests PRIVATE 
+        GameEngineLib
         gtest 
         gtest_main 
-        nlohmann_json
     )
     
     # Apply sanitizers to tests
