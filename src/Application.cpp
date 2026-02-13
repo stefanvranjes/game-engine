@@ -221,6 +221,45 @@ bool Application::Init() {
     
     std::cout << "Asset Pipeline initialized" << std::endl;
 
+    // Initialize Editor UI Components (Phase 1 Enhancement)
+    m_EditorMenuBar = std::make_unique<EditorMenuBar>();
+    m_EditorHierarchy = std::make_unique<EditorHierarchy>();
+    m_EditorPropertyPanel = std::make_unique<EditorPropertyPanel>();
+    
+    // Wire up menu bar callbacks
+    m_EditorMenuBar->SetOnNewScene([this]() { 
+        std::cout << "New Scene requested" << std::endl;
+        m_Renderer->ClearScene();
+    });
+    m_EditorMenuBar->SetOnSaveScene([this]() { 
+        m_Renderer->SaveScene("assets/current_scene.json");
+    });
+    m_EditorMenuBar->SetOnOpenScene([this]() { 
+        m_Renderer->LoadScene("assets/current_scene.json");
+    });
+    m_EditorMenuBar->SetOnExit([this]() { 
+        m_Running = false;
+    });
+    m_EditorMenuBar->SetOnDelete([this]() {
+        auto selected = m_EditorHierarchy->GetSelectedObject();
+        if (selected) {
+            m_Renderer->RemoveObject(selected);
+            m_EditorHierarchy->ClearSelection();
+        }
+    });
+    
+    // Wire up hierarchy callbacks
+    m_EditorHierarchy->SetOnObjectSelected([this](std::shared_ptr<GameObject> obj) {
+        if (m_GizmoManager) {
+            m_GizmoManager->SetSelectedObject(obj);
+        }
+    });
+    m_EditorHierarchy->SetOnObjectDeleted([this](std::shared_ptr<GameObject> obj) {
+        m_Renderer->RemoveObject(obj);
+    });
+    
+    std::cout << "Editor UI Components initialized" << std::endl;
+
     m_Running = true;
     return true;
 }
@@ -623,511 +662,183 @@ void Application::Render() {
 }
 
 void Application::RenderEditorUI() {
-    // Main Menu Bar
-    if (ImGui::BeginMainMenuBar()) {
-        if (ImGui::BeginMenu("Tools")) {
-            if (ImGui::MenuItem("Script Debugger", "Ctrl+Shift+D")) {
+    // PHASE 1: CORE MENU & NAVIGATION
+    
+    // Main Menu Bar with File, Edit, View, Window, Help menus
+    if (m_EditorMenuBar) {
+        m_EditorMenuBar->Render();
+    }
+
+    // Scene Hierarchy Panel
+    if (m_EditorMenuBar->IsHierarchyVisible()) {
+        if (m_EditorHierarchy && m_Renderer) {
+            m_EditorHierarchy->Render(m_Renderer->GetRoot());
+            
+            // Get selected object from hierarchy
+            auto selected = m_EditorHierarchy->GetSelectedObject();
+            if (selected && m_GizmoManager) {
+                m_GizmoManager->SetSelectedObject(selected);
+            }
+        }
+    }
+
+    // Property Inspector Panel
+    if (m_EditorMenuBar->IsInspectorVisible()) {
+        if (m_EditorPropertyPanel) {
+            auto selectedObj = m_EditorHierarchy->GetSelectedObject();
+            m_EditorPropertyPanel->Render(selectedObj);
+        }
+    }
+
+    // Asset Browser Panel (when visible)
+    if (m_EditorMenuBar->IsAssetBrowserVisible()) {
+        ImGui::Begin("Asset Browser");
+        ImGui::TextDisabled("Asset Browser - Phase 2");
+        ImGui::End();
+    }
+
+    // Profiler Panel (when visible)
+    if (m_EditorMenuBar->IsProfilerVisible()) {
+        ImGui::Begin("Performance Profiler");
+        
+        // Display FPS and frame time
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui::Text("FPS: %.1f", io.Framerate);
+        ImGui::Text("Frame Time: %.2f ms", 1000.0f / io.Framerate);
+        
+        ImGui::Separator();
+        
+        // Display profiler stats if available
+        auto& profiler = Profiler::Instance();
+        ImGui::Text("Profiler Statistics:");
+        ImGui::TextDisabled("(Add profiler panel rendering here)");
+        
+        ImGui::End();
+    }
+
+    // Tools Menu - Script Debugger and Profiler UI
+    if (ImGui::Begin("Tools")) {
+        ImGui::SetWindowPos(ImVec2(10, 100), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
+        
+        if (ImGui::CollapsingHeader("Debug Tools", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Script Debugger##ToolsBtn", ImVec2(-1, 0))) {
                 if (m_ScriptDebuggerUI) {
                     m_ScriptDebuggerUI->Toggle();
                 }
             }
-            if (ImGui::MenuItem("Scripting Profiler", "Ctrl+Shift+P")) {
+            
+            if (ImGui::Button("Scripting Profiler##ToolsBtn", ImVec2(-1, 0))) {
                 if (m_ScriptingProfilerUI) {
                     m_ScriptingProfilerUI->Toggle();
                 }
             }
-            ImGui::EndMenu();
-        }
-        ImGui::EndMainMenuBar();
-    }
-
-    // Scene Hierarchy Panel
-    ImGui::Begin("Scene Hierarchy");
-    
-    auto root = m_Renderer->GetRoot();
-    if (root) {
-        auto& children = root->GetChildren();
-        for (size_t i = 0; i < children.size(); ++i) {
-            std::string label = children[i]->GetName() + " ##" + std::to_string(i);
-            if (ImGui::Selectable(label.c_str(), m_SelectedObjectIndex == static_cast<int>(i))) {
-                m_SelectedObjectIndex = static_cast<int>(i);
-                
-                // Update Gizmo Selection
-                if (m_GizmoManager) {
-                    m_GizmoManager->SetSelectedObject(children[i]);
-                }
-            }
         }
         
         ImGui::Separator();
         
-        if (ImGui::Button("Add Cube")) {
-            m_Renderer->AddCube(Transform(Vec3(0, 0, 0)));
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Add Pyramid")) {
-            m_Renderer->AddPyramid(Transform(Vec3(0, 0, 0)));
-        }
-        
-        if (m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(children.size())) {
-            if (ImGui::Button("Delete Selected")) {
-                m_Renderer->RemoveObject(m_SelectedObjectIndex);
-                m_SelectedObjectIndex = -1;
-            }
-        }
-    }
-    
-    ImGui::Separator();
-    
-    if (ImGui::Button("Save Scene (F5)")) {
-        m_Renderer->SaveScene("assets/scene.txt");
-    }
-    if (ImGui::Button("Load Scene (F9)")) {
-        m_Renderer->LoadScene("assets/scene.txt");
-        m_SelectedObjectIndex = -1;
-    }
-    
-    ImGui::Separator();
-    if (ImGui::Button("Load Cornell Box")) {
-        LoadCornellBox();
-    }
-    
-    ImGui::End();
-    
-    // Object Inspector Panel
-    if (root && m_SelectedObjectIndex >= 0 && m_SelectedObjectIndex < static_cast<int>(root->GetChildren().size())) {
-        ImGui::Begin("Object Inspector");
-        
-        auto object = root->GetChildren()[m_SelectedObjectIndex];
-        Transform& transform = object->GetTransform();
-        
-        ImGui::Text("Object: %s", object->GetName().c_str());
-        ImGui::Separator();
-        
-        // Position
-        ImGui::Text("Position");
-        ImGui::DragFloat("X##pos", &transform.position.x, 0.1f);
-        ImGui::DragFloat("Y##pos", &transform.position.y, 0.1f);
-        ImGui::DragFloat("Z##pos", &transform.position.z, 0.1f);
-        
-        ImGui::Separator();
-        
-        // Rotation
-        ImGui::Text("Rotation");
-        ImGui::DragFloat("X##rot", &transform.rotation.x, 1.0f);
-        ImGui::DragFloat("Y##rot", &transform.rotation.y, 1.0f);
-        ImGui::DragFloat("Z##rot", &transform.rotation.z, 1.0f);
-        
-        ImGui::Separator();
-        
-        // Scale
-        ImGui::Text("Scale");
-        ImGui::DragFloat("X##scl", &transform.scale.x, 0.1f, 0.1f, 10.0f);
-        ImGui::DragFloat("Y##scl", &transform.scale.y, 0.1f, 0.1f, 10.0f);
-        ImGui::DragFloat("Z##scl", &transform.scale.z, 0.1f, 0.1f, 10.0f);
-        
-        ImGui::Separator();
-
-            // Audio System Global Settings (Reverb)
-            if (ImGui::CollapsingHeader("Audio Environment")) {
-                static float roomSize = 0.5f;
-                static float damping = 0.5f;
-                static float wet = 0.3f;
-                static float dry = 1.0f;
-                
-                bool changed = false;
-                changed |= ImGui::SliderFloat("Reverb Room Size", &roomSize, 0.0f, 1.0f);
-                changed |= ImGui::SliderFloat("Reverb Damping", &damping, 0.0f, 1.0f);
-                changed |= ImGui::SliderFloat("Reverb Mix (Wet)", &wet, 0.0f, 1.0f);
-                changed |= ImGui::SliderFloat("Dry Level", &dry, 0.0f, 1.0f);
-                
-                if (changed) {
-                    AudioSystem::ReverbProperties props;
-                    props.roomSize = roomSize;
-                    props.damping = damping;
-                    props.wetVolume = wet;
-                    props.dryVolume = dry;
-                    AudioSystem::Get().SetReverbProperties(props);
-                }
-            }
-
-        // Material Inspector
-        auto mat = object->GetMaterial();
-        if (mat) {
-            // Render and display preview
-            if (m_PreviewRenderer) {
-                // Create a simple shader for preview (we'll use a basic approach)
-                // For now, render the preview - the PreviewRenderer will handle shader internally
-                m_PreviewRenderer->RenderPreview(object.get(), nullptr);
-                
-                // Display preview image
-                ImGui::Text("Material Preview");
-                ImVec2 previewSize(256, 256);
-                ImGui::Image(
-                    (void*)(intptr_t)m_PreviewRenderer->GetTextureID(),
-                    previewSize,
-                    ImVec2(0, 1), // UV coordinates flipped for OpenGL
-                    ImVec2(1, 0)
-                );
-                ImGui::Separator();
+        // Quick Scene Actions
+        if (ImGui::CollapsingHeader("Scene Actions", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::Button("Load Cornell Box", ImVec2(-1, 0))) {
+                LoadCornellBox();
             }
             
-            ImGui::Text("Material Properties");
-            ImGui::Separator();
-            
-            // Basic Colors
-            if (ImGui::CollapsingHeader("Colors", ImGuiTreeNodeFlags_DefaultOpen)) {
-                Vec3 ambient = mat->GetAmbient();
-                if (ImGui::ColorEdit3("Ambient", &ambient.x)) {
-                    mat->SetAmbient(ambient);
-                }
-                
-                Vec3 diffuse = mat->GetDiffuse();
-                if (ImGui::ColorEdit3("Diffuse", &diffuse.x)) {
-                    mat->SetDiffuse(diffuse);
-                }
-                
-                Vec3 specular = mat->GetSpecular();
-                if (ImGui::ColorEdit3("Specular", &specular.x)) {
-                    mat->SetSpecular(specular);
-                }
-                
-                Vec3 emissive = mat->GetEmissiveColor();
-                if (ImGui::ColorEdit3("Emissive", &emissive.x)) {
-                    mat->SetEmissiveColor(emissive);
+            if (ImGui::Button("Add Cube", ImVec2(-1, 0))) {
+                if (m_Renderer) {
+                    m_Renderer->AddCube(Transform(Vec3(0, 0, 0)));
                 }
             }
             
-            // PBR Properties
-            if (ImGui::CollapsingHeader("PBR Properties", ImGuiTreeNodeFlags_DefaultOpen)) {
-                float shininess = mat->GetShininess();
-                if (ImGui::SliderFloat("Shininess", &shininess, 1.0f, 256.0f)) {
-                    mat->SetShininess(shininess);
-                }
-                
-                float roughness = mat->GetRoughness();
-                if (ImGui::SliderFloat("Roughness", &roughness, 0.0f, 1.0f)) {
-                    mat->SetRoughness(roughness);
-                }
-                
-                float metallic = mat->GetMetallic();
-                if (ImGui::SliderFloat("Metallic", &metallic, 0.0f, 1.0f)) {
-                    mat->SetMetallic(metallic);
-                }
-                
-                float heightScale = mat->GetHeightScale();
-                if (ImGui::SliderFloat("Height Scale", &heightScale, 0.0f, 1.0f)) {
-                    mat->SetHeightScale(heightScale);
-                }
-                
-                float opacity = mat->GetOpacity();
-                if (ImGui::SliderFloat("Opacity", &opacity, 0.0f, 1.0f)) {
-                    mat->SetOpacity(opacity);
-                }
-                
-                bool isTransparent = mat->IsTransparent();
-                if (ImGui::Checkbox("Transparent", &isTransparent)) {
-                    mat->SetIsTransparent(isTransparent);
-                }
-            }
-            
-            // Texture Maps
-            if (ImGui::CollapsingHeader("Texture Maps")) {
-                auto texManager = m_Renderer->GetTextureManager();
-                if (texManager) {
-                    auto textureNames = texManager->GetTextureNames();
-                    
-                    // Helper lambda for texture selection
-                    auto renderTextureCombo = [&](const char* label, std::shared_ptr<Texture> currentTex, auto setter) {
-                        std::string currentName = currentTex ? "Loaded Texture" : "None";
-                        if (ImGui::BeginCombo(label, currentName.c_str())) {
-                            if (ImGui::Selectable("None", !currentTex)) {
-                                (mat.get()->*setter)(nullptr);
-                            }
-                            for (const auto& name : textureNames) {
-                                bool isSelected = (currentTex && currentTex == texManager->GetTexture(name));
-                                if (ImGui::Selectable(name.c_str(), isSelected)) {
-                                    (mat.get()->*setter)(texManager->GetTexture(name));
-                                }
-                            }
-                            ImGui::EndCombo();
-                        }
-                    };
-                    
-                    renderTextureCombo("Albedo/Diffuse", mat->GetTexture(), &Material::SetTexture);
-                    renderTextureCombo("Normal Map", mat->GetNormalMap(), &Material::SetNormalMap);
-                    renderTextureCombo("Specular Map", mat->GetSpecularMap(), &Material::SetSpecularMap);
-                    renderTextureCombo("Roughness Map", mat->GetRoughnessMap(), &Material::SetRoughnessMap);
-                    renderTextureCombo("Metallic Map", mat->GetMetallicMap(), &Material::SetMetallicMap);
-                    renderTextureCombo("AO Map", mat->GetAOMap(), &Material::SetAOMap);
-                    renderTextureCombo("ORM Map", mat->GetORMMap(), &Material::SetORMMap);
-                    renderTextureCombo("Height Map", mat->GetHeightMap(), &Material::SetHeightMap);
-                    renderTextureCombo("Emissive Map", mat->GetEmissiveMap(), &Material::SetEmissiveMap);
-                }
-            }
-            
-            // Material Presets
-            ImGui::Separator();
-            if (ImGui::CollapsingHeader("Material Presets")) {
-                static char presetName[128] = "my_material";
-                
-                // Save Preset
-                ImGui::InputText("Preset Name", presetName, sizeof(presetName));
-                if (ImGui::Button("Save Preset")) {
-                    std::string filepath = "assets/materials/" + std::string(presetName) + ".mat";
-                    if (mat->SaveToFile(filepath)) {
-                        std::cout << "Preset saved successfully!" << std::endl;
-                    }
-                }
-                
-                ImGui::Separator();
-                
-                // Load Preset - scan for .mat files
-                static std::vector<std::string> presetFiles;
-                static int selectedPreset = -1;
-                
-                if (ImGui::Button("Refresh Presets")) {
-                    presetFiles.clear();
-                    selectedPreset = -1;
-                    
-                    // Simple directory scan (Windows-specific for now)
-                    #ifdef _WIN32
-                    WIN32_FIND_DATAA findData;
-                    HANDLE hFind = FindFirstFileA("assets/materials/*.mat", &findData);
-                    if (hFind != INVALID_HANDLE_VALUE) {
-                        do {
-                            if (!(findData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-                                presetFiles.push_back(findData.cFileName);
-                            }
-                        } while (FindNextFileA(hFind, &findData));
-                        FindClose(hFind);
-                    }
-                    #endif
-                }
-                
-                if (!presetFiles.empty()) {
-                    ImGui::Text("Available Presets:");
-                    for (size_t i = 0; i < presetFiles.size(); ++i) {
-                        if (ImGui::Selectable(presetFiles[i].c_str(), selectedPreset == (int)i)) {
-                            selectedPreset = (int)i;
-                        }
-                    }
-                    
-                    if (selectedPreset >= 0 && ImGui::Button("Load Selected Preset")) {
-                        std::string filepath = "assets/materials/" + presetFiles[selectedPreset];
-                        if (mat->LoadFromFile(filepath, m_Renderer->GetTextureManager())) {
-                            std::cout << "Preset loaded successfully!" << std::endl;
-                        }
-                    }
-                } else {
-                    ImGui::TextDisabled("No presets found. Click 'Refresh Presets'.");
+            if (ImGui::Button("Add Pyramid", ImVec2(-1, 0))) {
+                if (m_Renderer) {
+                    m_Renderer->AddPyramid(Transform(Vec3(0, 0, 0)));
                 }
             }
         }
-
+        
         ImGui::End();
     }
 
-    // Light Inspector Panel
-    ImGui::Begin("Light Inspector");
+    // Legacy panels - kept for compatibility
+    // These can be removed in Phase 2 after full migration
     
-    auto& lights = m_Renderer->GetLights();
-    static int selectedLightIndex = -1;
+    // Light Inspector (legacy - consider moving to component system)
+    if (ImGui::Begin("Light Inspector")) {
+        ImGui::SetWindowPos(ImVec2(1200, 100), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(300, 600), ImGuiCond_FirstUseEver);
+        
+        if (m_Renderer) {
+            auto& lights = m_Renderer->GetLights();
+            static int selectedLightIndex = -1;
 
-    if (ImGui::Button("Add Light")) {
-        m_Renderer->AddLight(Light(Vec3(0, 5, 0)));
-    }
-    
-    bool showCascades = m_Renderer->GetShowCascades();
-    if (ImGui::Checkbox("Show CSM Cascades", &showCascades)) {
-        m_Renderer->SetShowCascades(showCascades);
-    }
-    
-    float fadeStart = m_Renderer->GetShadowFadeStart();
-    if (ImGui::SliderFloat("Shadow Fade Start", &fadeStart, 10.0f, 100.0f)) {
-        m_Renderer->SetShadowFadeStart(fadeStart);
-    }
-    
-    float fadeEnd = m_Renderer->GetShadowFadeEnd();
-    if (ImGui::SliderFloat("Shadow Fade End", &fadeEnd, 10.0f, 100.0f)) {
-        m_Renderer->SetShadowFadeEnd(fadeEnd);
-    }
-    
-    ImGui::Separator();
-
-    for (size_t i = 0; i < lights.size(); ++i) {
-        std::string label = "Light " + std::to_string(i);
-        if (ImGui::Selectable(label.c_str(), selectedLightIndex == static_cast<int>(i))) {
-            selectedLightIndex = static_cast<int>(i);
-        }
-    }
-
-    if (selectedLightIndex >= 0 && selectedLightIndex < static_cast<int>(lights.size())) {
-        ImGui::Separator();
-        Light& light = lights[selectedLightIndex];
-        
-        ImGui::Text("Light Properties");
-        
-        // Light Type
-        const char* lightTypes[] = { "Directional", "Point", "Spot" };
-        int currentType = static_cast<int>(light.type);
-        if (ImGui::Combo("Type", &currentType, lightTypes, IM_ARRAYSIZE(lightTypes))) {
-            light.type = static_cast<LightType>(currentType);
-        }
-
-        bool castsShadows = light.castsShadows;
-        if (ImGui::Checkbox("Cast Shadows", &castsShadows)) {
-            light.castsShadows = castsShadows;
-        }
-        if (light.castsShadows) {
-            if (light.type == LightType::Point) {
-                ImGui::SliderFloat("Shadow Softness", &light.shadowSoftness, 1.0f, 5.0f);
-            } else {
-                ImGui::SliderFloat("Light Size (PCSS)", &light.lightSize, 0.0f, 5.0f);
-            }
-        }
-
-        if (light.type != LightType::Directional) {
-            ImGui::DragFloat("Range", &light.range, 0.5f, 1.0f, 100.0f);
-        }
-        
-        ImGui::DragFloat3("Position", &light.position.x, 0.1f);
-        if (light.type != LightType::Point) {
-            ImGui::DragFloat3("Direction", &light.direction.x, 0.1f);
-        }
-        
-        ImGui::ColorEdit3("Color", &light.color.x);
-        ImGui::DragFloat("Intensity", &light.intensity, 0.1f, 0.0f, 10.0f);
-        
-        if (light.type != LightType::Directional) {
-            ImGui::Text("Attenuation (Advanced)");
-            ImGui::DragFloat("Constant", &light.constant, 0.01f, 0.0f, 1.0f);
-            ImGui::DragFloat("Linear", &light.linear, 0.001f, 0.0f, 1.0f);
-            ImGui::DragFloat("Quadratic", &light.quadratic, 0.001f, 0.0f, 1.0f);
-        }
-        
-        if (light.type == LightType::Spot) {
-            ImGui::Text("Spotlight");
-            ImGui::DragFloat("Cutoff", &light.cutOff, 0.1f, 0.0f, 90.0f);
-            ImGui::DragFloat("Outer Cutoff", &light.outerCutOff, 0.1f, 0.0f, 90.0f);
-        }
-        
-        if (ImGui::Button("Delete Light")) {
-            m_Renderer->RemoveLight(selectedLightIndex);
-            selectedLightIndex = -1;
-        }
-    }
-
-    ImGui::End();
-    
-    // Post-Processing Panel
-    ImGui::Begin("Post-Processing");
-    
-    auto postProcessing = m_Renderer->GetPostProcessing();
-    if (postProcessing) {
-        // Bloom settings
-        ImGui::Text("Bloom");
-        bool bloomEnabled = postProcessing->IsBloomEnabled();
-        if (ImGui::Checkbox("Enable Bloom", &bloomEnabled)) {
-            postProcessing->SetBloomEnabled(bloomEnabled);
-        }
-        
-        if (bloomEnabled) {
-            float bloomIntensity = postProcessing->GetBloomIntensity();
-            if (ImGui::SliderFloat("Bloom Intensity", &bloomIntensity, 0.0f, 2.0f)) {
-                postProcessing->SetBloomIntensity(bloomIntensity);
+            if (ImGui::Button("Add Light")) {
+                m_Renderer->AddLight(Light(Vec3(0, 5, 0)));
             }
             
-            float bloomThreshold = postProcessing->GetBloomThreshold();
-            if (ImGui::SliderFloat("Bloom Threshold", &bloomThreshold, 0.0f, 5.0f)) {
-                postProcessing->SetBloomThreshold(bloomThreshold);
+            bool showCascades = m_Renderer->GetShowCascades();
+            if (ImGui::Checkbox("Show CSM Cascades", &showCascades)) {
+                m_Renderer->SetShowCascades(showCascades);
+            }
+            
+            for (size_t i = 0; i < lights.size(); ++i) {
+                std::string label = "Light " + std::to_string(i);
+                if (ImGui::Selectable(label.c_str(), selectedLightIndex == static_cast<int>(i))) {
+                    selectedLightIndex = static_cast<int>(i);
+                }
             }
         }
         
-        ImGui::Separator();
+        ImGui::End();
+    }
+
+    // Post-Processing Panel (legacy)
+    if (ImGui::Begin("Post-Processing")) {
+        ImGui::SetWindowPos(ImVec2(920, 100), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(280, 300), ImGuiCond_FirstUseEver);
         
-        // Tone mapping settings
-        ImGui::Text("Tone Mapping");
-        const char* toneMappingModes[] = { "Reinhard", "ACES Filmic" };
-        int toneMappingMode = postProcessing->GetToneMappingMode();
-        if (ImGui::Combo("Mode", &toneMappingMode, toneMappingModes, IM_ARRAYSIZE(toneMappingModes))) {
-            postProcessing->SetToneMappingMode(toneMappingMode);
-        }
-        
-        float exposure = postProcessing->GetExposure();
-        if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f)) {
-            postProcessing->SetExposure(exposure);
-        }
-        
-        float gamma = postProcessing->GetGamma();
-        if (ImGui::SliderFloat("Gamma", &gamma, 1.8f, 2.4f)) {
-            postProcessing->SetGamma(gamma);
-        }
-        
-        ImGui::Separator();
-        
-        // SSAO settings
-        ImGui::Text("SSAO (Ambient Occlusion)");
-        bool ssaoEnabled = m_Renderer->GetSSAOEnabled();
-        if (ImGui::Checkbox("Enable SSAO", &ssaoEnabled)) {
-            m_Renderer->SetSSAOEnabled(ssaoEnabled);
-        }
-        
-        if (ssaoEnabled) {
-            auto ssao = m_Renderer->GetSSAO();
-            if (ssao) {
-                float radius = ssao->GetRadius();
-                if (ImGui::SliderFloat("SSAO Radius", &radius, 0.1f, 2.0f)) {
-                    ssao->SetRadius(radius);
+        if (m_Renderer) {
+            auto postProcessing = m_Renderer->GetPostProcessing();
+            if (postProcessing) {
+                bool bloomEnabled = postProcessing->IsBloomEnabled();
+                if (ImGui::Checkbox("Enable Bloom", &bloomEnabled)) {
+                    postProcessing->SetBloomEnabled(bloomEnabled);
                 }
                 
-                float bias = ssao->GetBias();
-                if (ImGui::SliderFloat("SSAO Bias", &bias, 0.001f, 0.1f)) {
-                    ssao->SetBias(bias);
+                if (bloomEnabled) {
+                    float bloomIntensity = postProcessing->GetBloomIntensity();
+                    if (ImGui::SliderFloat("Bloom Intensity", &bloomIntensity, 0.0f, 2.0f)) {
+                        postProcessing->SetBloomIntensity(bloomIntensity);
+                    }
+                }
+                
+                ImGui::Separator();
+                
+                float exposure = postProcessing->GetExposure();
+                if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 10.0f)) {
+                    postProcessing->SetExposure(exposure);
                 }
             }
         }
+        
+        ImGui::End();
     }
-    
-    
-    // Blend Tree Editor
-    // Blend Tree Editor
-    /* if (m_BlendTreeEditor) {
-        // ...
-    } */
-    
-    ImGui::End();
-    
-    // Physics Demos Panel
-    ImGui::Begin("Physics Demos (Advanced)");
-    
-    static int clothWidth = 20;
-    static int clothHeight = 20;
-    static float clothSpacing = 0.2f;
-    static float clothStiffness = 100.0f; // High stiffness for stability
-    static float clothDamping = 0.5f;
-    
-    ImGui::Text("Cloth Simulation");
-    ImGui::SliderInt("Width", &clothWidth, 10, 100);
-    ImGui::SliderInt("Height", &clothHeight, 10, 100);
-    ImGui::SliderFloat("Spacing", &clothSpacing, 0.05f, 0.5f);
-    ImGui::SliderFloat("Stiffness", &clothStiffness, 10.0f, 500.0f);
-    ImGui::SliderFloat("Damping", &clothDamping, 0.0f, 2.0f);
-    
-    if (ImGui::Button("Spawn Cloth")) {
-        // Create emitter at a high position
-        auto emitter = std::make_shared<ParticleEmitter>(Vec3(0, 10, 0), clothWidth * clothHeight);
+
+    // Asset Hot-Reload Panel (legacy)
+    if (ImGui::Begin("Asset Hot-Reload")) {
+        ImGui::SetWindowPos(ImVec2(620, 100), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
         
-        // Use default texture if available
-        auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); // Or some particle tex
-        if (tex) emitter->SetTexture(tex);
+        if (m_HotReloadManager) {
+            bool hotReloadEnabled = m_HotReloadManager->IsEnabled();
+            if (ImGui::Checkbox("Enable Hot-Reload##main", &hotReloadEnabled)) {
+                m_HotReloadManager->SetEnabled(hotReloadEnabled);
+            }
+            
+            ImGui::Text("Status: %s", hotReloadEnabled ? "ACTIVE" : "DISABLED");
+        }
         
-        emitter->SetColorRange(Vec4(1, 1, 1, 1), Vec4(1, 1, 1, 1));
-        emitter->SetSizeRange(0.1f, 0.1f);
-        
-        emitter->InitCloth(clothWidth, clothHeight, clothSpacing, clothStiffness, clothDamping);
-        m_Renderer->GetParticleSystem()->AddEmitter(emitter);
-        std::cout << "Spawned Cloth Emitter" << std::endl;
+        ImGui::End();
+    }
     }
     
     ImGui::Separator();
@@ -1254,9 +965,6 @@ void Application::RenderEditorUI() {
             if (ImGui::InputInt("Max Particles", &maxParticles)) {
                  // Debounce resizing ideally, but for now apply on enter
                  if (maxParticles > 0) emitter->SetMaxParticles(maxParticles);
-            if (ImGui::InputInt("Max Particles", &maxParticles)) {
-                 // Debounce resizing ideally, but for now apply on enter
-                 if (maxParticles > 0) emitter->SetMaxParticles(maxParticles);
             }
             
             // Physics Props
@@ -1270,9 +978,6 @@ void Application::RenderEditorUI() {
             ImGui::InputInt("Burst Count", &burstCount);
             ImGui::SameLine();
             if (ImGui::Button("Burst!")) {
-                emitter->Burst(burstCount);
-            }
-            
                 emitter->Burst(burstCount);
             }
             

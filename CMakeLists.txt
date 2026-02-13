@@ -615,6 +615,9 @@ add_library(GameEngineLib STATIC
     src/Text.cpp
     src/GLExtensions.cpp
     src/ImGuiManager.cpp
+    src/EditorMenuBar.cpp
+    src/EditorHierarchy.cpp
+    src/EditorPropertyPanel.cpp
     src/NVRHIBackend.cpp
     src/Skybox.cpp
     src/ShadowMap.cpp

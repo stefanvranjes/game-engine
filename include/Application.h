@@ -12,6 +12,9 @@
 #include "PhysicsSystem.h"
 #include "ScriptDebuggerUI.h"
 #include "ScriptingProfilerUI.h"
+#include "EditorMenuBar.h"
+#include "EditorHierarchy.h"
+#include "EditorPropertyPanel.h"
 #ifdef USE_PHYSX
 #include "PhysXBackend.h"
 #endif
@@ -79,6 +82,11 @@ private:
     // ECS Architecture
     std::unique_ptr<EntityManager> m_EntityManager;
     std::shared_ptr<class GizmoManager> m_GizmoManager; // Shared with Renderer
+    
+    // Editor UI Components (Phase 1 Enhancement)
+    std::unique_ptr<EditorMenuBar> m_EditorMenuBar;
+    std::unique_ptr<EditorHierarchy> m_EditorHierarchy;
+    std::unique_ptr<EditorPropertyPanel> m_EditorPropertyPanel;
     
     // Editor State
     int m_SelectedObjectIndex;
