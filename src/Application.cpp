@@ -226,6 +226,11 @@ bool Application::Init() {
     m_EditorHierarchy = std::make_unique<EditorHierarchy>();
     m_EditorPropertyPanel = std::make_unique<EditorPropertyPanel>();
     
+    // Initialize Editor Docking Manager (Phase 2 Enhancement)
+    m_DockingManager = std::make_unique<EditorDockingManager>();
+    m_DockingManager->Initialize();
+    std::cout << "Editor Docking Manager initialized" << std::endl;
+    
     // Wire up menu bar callbacks
     m_EditorMenuBar->SetOnNewScene([this]() { 
         std::cout << "New Scene requested" << std::endl;
@@ -662,62 +667,102 @@ void Application::Render() {
 }
 
 void Application::RenderEditorUI() {
-    // PHASE 1: CORE MENU & NAVIGATION
+    // PHASE 2: DOCKABLE LAYOUT SYSTEM
+    
+    // Begin dockspace
+    if (m_DockingManager) {
+        ImGuiID dockspace_id = m_DockingManager->BeginDockspace();
+    }
     
     // Main Menu Bar with File, Edit, View, Window, Help menus
     if (m_EditorMenuBar) {
         m_EditorMenuBar->Render();
-    }
-
-    // Scene Hierarchy Panel
-    if (m_EditorMenuBar->IsHierarchyVisible()) {
-        if (m_EditorHierarchy && m_Renderer) {
-            m_EditorHierarchy->Render(m_Renderer->GetRoot());
-            
-            // Get selected object from hierarchy
-            auto selected = m_EditorHierarchy->GetSelectedObject();
-            if (selected && m_GizmoManager) {
-                m_GizmoManager->SetSelectedObject(selected);
+        
+        // Add layout selector to View menu
+        if (ImGui::BeginMenu("Layout")) {
+            if (m_DockingManager) {
+                m_DockingManager->RenderLayoutSelector();
             }
+            ImGui::EndMenu();
         }
     }
 
-    // Property Inspector Panel
+    // Scene Hierarchy Panel - Docked
+    if (m_EditorMenuBar->IsHierarchyVisible()) {
+        if (ImGui::Begin("Scene Hierarchy", nullptr, ImGuiWindowFlags_None)) {
+            ImGui::SetWindowPos(ImVec2(0, 19), ImGuiCond_FirstUseEver);
+            ImGui::SetWindowSize(ImVec2(250, 400), ImGuiCond_FirstUseEver);
+            
+            if (m_EditorHierarchy && m_Renderer) {
+                m_EditorHierarchy->Render(m_Renderer->GetRoot());
+                
+                // Get selected object from hierarchy
+                auto selected = m_EditorHierarchy->GetSelectedObject();
+                if (selected && m_GizmoManager) {
+                    m_GizmoManager->SetSelectedObject(selected);
+                }
+            }
+            ImGui::End();
+        }
+    }
+
+    // Property Inspector Panel - Docked
     if (m_EditorMenuBar->IsInspectorVisible()) {
-        if (m_EditorPropertyPanel) {
-            auto selectedObj = m_EditorHierarchy->GetSelectedObject();
-            m_EditorPropertyPanel->Render(selectedObj);
+        if (ImGui::Begin("Inspector", nullptr, ImGuiWindowFlags_None)) {
+            ImGui::SetWindowPos(ImVec2(1000, 19), ImGuiCond_FirstUseEver);
+            ImGui::SetWindowSize(ImVec2(250, 400), ImGuiCond_FirstUseEver);
+            
+            if (m_EditorPropertyPanel) {
+                auto selectedObj = m_EditorHierarchy->GetSelectedObject();
+                m_EditorPropertyPanel->Render(selectedObj);
+            }
+            ImGui::End();
         }
     }
 
-    // Asset Browser Panel (when visible)
+    // Asset Browser Panel (when visible) - Docked
     if (m_EditorMenuBar->IsAssetBrowserVisible()) {
-        ImGui::Begin("Asset Browser");
-        ImGui::TextDisabled("Asset Browser - Phase 2");
+        if (ImGui::Begin("Asset Browser", nullptr, ImGuiWindowFlags_None)) {
+            ImGui::SetWindowPos(ImVec2(0, 450), ImGuiCond_FirstUseEver);
+            ImGui::SetWindowSize(ImVec2(500, 150), ImGuiCond_FirstUseEver);
+            ImGui::TextDisabled("Asset Browser - Phase 2");
+            ImGui::End();
+        }
+    }
+
+    // Viewport Window - Docked
+    if (ImGui::Begin("Viewport", nullptr, ImGuiWindowFlags_None)) {
+        ImGui::SetWindowPos(ImVec2(250, 19), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(750, 450), ImGuiCond_FirstUseEver);
+        ImGui::Text("Viewport - Game View");
+        ImGui::TextDisabled("(Render target would go here)");
         ImGui::End();
     }
 
-    // Profiler Panel (when visible)
+    // Profiler Panel (when visible) - Docked
     if (m_EditorMenuBar->IsProfilerVisible()) {
-        ImGui::Begin("Performance Profiler");
-        
-        // Display FPS and frame time
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui::Text("FPS: %.1f", io.Framerate);
-        ImGui::Text("Frame Time: %.2f ms", 1000.0f / io.Framerate);
-        
-        ImGui::Separator();
-        
-        // Display profiler stats if available
-        auto& profiler = Profiler::Instance();
-        ImGui::Text("Profiler Statistics:");
-        ImGui::TextDisabled("(Add profiler panel rendering here)");
-        
-        ImGui::End();
+        if (ImGui::Begin("Performance Profiler", nullptr, ImGuiWindowFlags_None)) {
+            ImGui::SetWindowPos(ImVec2(1000, 450), ImGuiCond_FirstUseEver);
+            ImGui::SetWindowSize(ImVec2(250, 150), ImGuiCond_FirstUseEver);
+            
+            // Display FPS and frame time
+            ImGuiIO& io = ImGui::GetIO();
+            ImGui::Text("FPS: %.1f", io.Framerate);
+            ImGui::Text("Frame Time: %.2f ms", 1000.0f / io.Framerate);
+            
+            ImGui::Separator();
+            
+            // Display profiler stats
+            auto& profiler = Profiler::Instance();
+            ImGui::Text("Profiler Statistics:");
+            ImGui::TextDisabled("(Profiler data)");
+            
+            ImGui::End();
+        }
     }
 
-    // Tools Menu - Script Debugger and Profiler UI
-    if (ImGui::Begin("Tools")) {
+    // Tools Panel - Script Debugger and Profiler UI - Docked
+    if (ImGui::Begin("Tools", nullptr, ImGuiWindowFlags_None)) {
         ImGui::SetWindowPos(ImVec2(10, 100), ImGuiCond_FirstUseEver);
         ImGui::SetWindowSize(ImVec2(300, 400), ImGuiCond_FirstUseEver);
         
@@ -759,11 +804,8 @@ void Application::RenderEditorUI() {
         ImGui::End();
     }
 
-    // Legacy panels - kept for compatibility
-    // These can be removed in Phase 2 after full migration
-    
-    // Light Inspector (legacy - consider moving to component system)
-    if (ImGui::Begin("Light Inspector")) {
+    // Light Inspector Panel - Docked
+    if (ImGui::Begin("Light Inspector", nullptr, ImGuiWindowFlags_None)) {
         ImGui::SetWindowPos(ImVec2(1200, 100), ImGuiCond_FirstUseEver);
         ImGui::SetWindowSize(ImVec2(300, 600), ImGuiCond_FirstUseEver);
         
@@ -791,8 +833,8 @@ void Application::RenderEditorUI() {
         ImGui::End();
     }
 
-    // Post-Processing Panel (legacy)
-    if (ImGui::Begin("Post-Processing")) {
+    // Post-Processing Panel
+    if (ImGui::Begin("Post-Processing", nullptr, ImGuiWindowFlags_None)) {
         ImGui::SetWindowPos(ImVec2(920, 100), ImGuiCond_FirstUseEver);
         ImGui::SetWindowSize(ImVec2(280, 300), ImGuiCond_FirstUseEver);
         
@@ -823,8 +865,8 @@ void Application::RenderEditorUI() {
         ImGui::End();
     }
 
-    // Asset Hot-Reload Panel (legacy)
-    if (ImGui::Begin("Asset Hot-Reload")) {
+    // Asset Hot-Reload Panel
+    if (ImGui::Begin("Asset Hot-Reload", nullptr, ImGuiWindowFlags_None)) {
         ImGui::SetWindowPos(ImVec2(620, 100), ImGuiCond_FirstUseEver);
         ImGui::SetWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
         
@@ -1189,6 +1231,11 @@ void Application::RenderEditorUI() {
     if (m_ScriptingProfilerUI) {
         m_ScriptingProfilerUI->Update(m_LastFrameTime);
         m_ScriptingProfilerUI->Render();
+    }
+    
+    // End dockspace
+    if (m_DockingManager) {
+        m_DockingManager->EndDockspace();
     }
 }
 

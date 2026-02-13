@@ -1,4 +1,7 @@
 #include "EditorHierarchy.h"
+#include "FuzzyMatcher.h"
+#include "IconRegistry.h"
+#include "ColorScheme.h"
 #include <imgui.h>
 #include <algorithm>
 #include <chrono>
@@ -110,9 +113,37 @@ void EditorHierarchy::RenderNode(std::shared_ptr<GameObject> object, int depth) 
     }
     ImGui::SameLine();
 
+    // Get icon type and color for this object
+    IconRegistry::IconType iconType = IconRegistry::DetectIconType(object->GetName());
+    ImVec4 objectColor = ColorScheme::GetObjectTypeColor(object->GetName());
+
+    // Render object type icon if enabled
+    if (m_ShowObjectTypeIcons) {
+        if (m_ColoredIconsEnabled) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ColorScheme::GetObjectTypeColor(object->GetName()));
+        }
+        ImGui::Text("%s", IconRegistry::GetIcon(iconType));
+        if (m_ColoredIconsEnabled) {
+            ImGui::PopStyleColor();
+        }
+        ImGui::SameLine();
+    }
+
     // Tree node with object name
     std::string displayName = GetDisplayName(object);
+
+    // Apply background color if object type coloring is enabled
+    if (m_ObjectTypeColoringEnabled) {
+        ImGui::PushStyleColor(ImGuiCol_Header, objectColor);
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ColorScheme::Brighten(objectColor, 1.2f));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ColorScheme::Brighten(objectColor, 1.35f));
+    }
+
     bool nodeOpen = ImGui::TreeNodeEx(displayName.c_str(), flags);
+
+    if (m_ObjectTypeColoringEnabled) {
+        ImGui::PopStyleColor(3);
+    }
 
     // Handle selection
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
@@ -241,14 +272,38 @@ bool EditorHierarchy::MatchesFilter(const std::string& name) const {
         return true;
     }
 
-    // Simple case-insensitive substring matching
-    std::string lowerName = name;
-    std::string lowerFilter = m_SearchFilter;
-    
-    std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-    std::transform(lowerFilter.begin(), lowerFilter.end(), lowerFilter.begin(), ::tolower);
-    
-    return lowerName.find(lowerFilter) != std::string::npos;
+    switch (m_SearchMode) {
+        case SearchMode::Exact: {
+            // Exact case-insensitive substring matching
+            std::string lowerName = name;
+            std::string lowerFilter = m_SearchFilter;
+            
+            std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+            std::transform(lowerFilter.begin(), lowerFilter.end(), lowerFilter.begin(), ::tolower);
+            
+            return lowerName.find(lowerFilter) != std::string::npos;
+        }
+        
+        case SearchMode::Fuzzy: {
+            // Fuzzy matching with score threshold
+            float score = FuzzyMatcher::GetScore(name, m_SearchFilter, m_CaseSensitive);
+            return score >= m_FuzzyThreshold;
+        }
+        
+        case SearchMode::Regex:
+        default:
+            // For now, fall back to exact matching for regex mode
+            // Production code could use <regex> library
+            {
+                std::string lowerName = name;
+                std::string lowerFilter = m_SearchFilter;
+                
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+                std::transform(lowerFilter.begin(), lowerFilter.end(), lowerFilter.begin(), ::tolower);
+                
+                return lowerName.find(lowerFilter) != std::string::npos;
+            }
+    }
 }
 
 const char* EditorHierarchy::GetObjectTypeIcon(std::shared_ptr<GameObject> obj) const {

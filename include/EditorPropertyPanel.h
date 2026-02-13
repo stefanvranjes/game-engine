@@ -4,6 +4,9 @@
 #include <memory>
 #include <vector>
 #include "GameObject.h"
+#include "InspectorLayout.h"
+#include "IconRegistry.h"
+#include "ColorScheme.h"
 
 /**
  * @brief Enhanced property inspector panel supporting multiple components
@@ -37,6 +40,28 @@ public:
      * @brief Mark all changes as saved
      */
     void ClearChanges() { m_HasChanges = false; }
+
+    /**
+     * @brief Enable/disable icons display in inspector
+     */
+    void SetShowComponentIcons(bool show) { m_ShowComponentIcons = show; }
+    bool IsShowingComponentIcons() const { return m_ShowComponentIcons; }
+
+    /**
+     * @brief Enable/disable colored component sections
+     */
+    void SetColoredSectionsEnabled(bool enabled) { m_ColoredSectionsEnabled = enabled; }
+    bool AreColoredSectionsEnabled() const { return m_ColoredSectionsEnabled; }
+
+    /**
+     * @brief Set the label width for properties
+     */
+    void SetLabelWidth(float width) { InspectorLayout::SetLabelWidth(width); }
+
+    /**
+     * @brief Reset all section expansion states
+     */
+    void ResetLayout() { InspectorLayout::ResetLayout(); }
 
 private:
     // Component rendering functions
@@ -98,4 +123,8 @@ private:
 
     // Helper constant for column width
     static constexpr float LABEL_COLUMN_WIDTH = 120.0f;
+
+    // Visual configuration
+    bool m_ShowComponentIcons = true;
+    bool m_ColoredSectionsEnabled = true;
 };

@@ -7,6 +7,7 @@
 #include <functional>
 #include <filesystem>
 #include "AssetDatabase.h"
+#include "FuzzyMatcher.h"
 
 /**
  * @brief Visual asset browser with thumbnail preview and drag-and-drop support
@@ -167,6 +168,54 @@ public:
     void SetTypeFilter(const std::string& type);
 
     /**
+     * @brief Advanced search filters
+     */
+    struct SearchFilters {
+        std::string namePattern;           // File name pattern (fuzzy)
+        std::string typeFilter;            // Filter by type (texture, model, etc.)
+        size_t minFileSize = 0;            // Minimum file size in bytes
+        size_t maxFileSize = SIZE_MAX;     // Maximum file size in bytes
+        bool labelsEnabled = false;        // Filter by asset labels (if supported)
+        std::vector<std::string> labels;   // Required labels
+        bool fuzzyMatch = true;            // Use fuzzy matching instead of exact
+        float minFuzzyScore = 0.3f;        // Minimum fuzzy match score (0.0-1.0)
+    };
+
+    /**
+     * @brief Set advanced search filters
+     * @param filters Search filter configuration
+     */
+    void SetSearchFilters(const SearchFilters& filters) { m_AdvancedFilters = filters; }
+
+    /**
+     * @brief Get current advanced filters
+     */
+    const SearchFilters& GetSearchFilters() const { return m_AdvancedFilters; }
+
+    /**
+     * @brief Reset all filters to default
+     */
+    void ResetFilters();
+
+    /**
+     * @brief Filter by file size range
+     * @param minBytes Minimum file size in bytes
+     * @param maxBytes Maximum file size in bytes
+     */
+    void SetFileSizeFilter(size_t minBytes, size_t maxBytes);
+
+    /**
+     * @brief Enable/disable fuzzy matching for search
+     */
+    void SetFuzzySearch(bool enabled) { m_AdvancedFilters.fuzzyMatch = enabled; }
+
+    /**
+     * @brief Set minimum score threshold for fuzzy matching
+     * @param score Threshold from 0.0 (loose) to 1.0 (strict)
+     */
+    void SetFuzzyThreshold(float score) { m_AdvancedFilters.minFuzzyScore = score; }
+
+    /**
      * @brief Set asset selection callback
      * @param callback Function called when asset is selected
      */
@@ -209,6 +258,7 @@ private:
     SortOrder m_SortOrder;
     std::string m_SearchFilter;
     std::string m_TypeFilter;
+    SearchFilters m_AdvancedFilters;  // Advanced search configuration
 
     // Asset items
     std::vector<AssetItem> m_CurrentAssets;

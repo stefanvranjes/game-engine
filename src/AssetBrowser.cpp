@@ -1,5 +1,6 @@
 #include "AssetBrowser.h"
 #include "AssetThumbnailGenerator.h"
+#include "FuzzyMatcher.h"
 #include <imgui.h>
 #include <algorithm>
 #include <cstring>
@@ -490,20 +491,51 @@ void AssetBrowser::SortAssets() {
 
 bool AssetBrowser::MatchesFilter(const AssetItem& item) const {
     // Type filter
+    if (!m_AdvancedFilters.typeFilter.empty() && item.type != m_AdvancedFilters.typeFilter) {
+        return false;
+    }
+
+    // Legacy type filter fallback
     if (!m_TypeFilter.empty() && item.type != m_TypeFilter) {
         return false;
     }
 
-    // Search filter
-    if (!m_SearchFilter.empty()) {
-        std::string lowerName = item.name;
-        std::string lowerFilter = m_SearchFilter;
-        std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
-        std::transform(lowerFilter.begin(), lowerFilter.end(), lowerFilter.begin(), ::tolower);
+    // File size filter
+    if (item.fileSize < m_AdvancedFilters.minFileSize || 
+        item.fileSize > m_AdvancedFilters.maxFileSize) {
+        return false;
+    }
+
+    // Name/search filter
+    if (!m_AdvancedFilters.namePattern.empty() || !m_SearchFilter.empty()) {
+        std::string searchPattern = !m_AdvancedFilters.namePattern.empty() ? 
+                                   m_AdvancedFilters.namePattern : m_SearchFilter;
         
-        if (lowerName.find(lowerFilter) == std::string::npos) {
-            return false;
+        if (!searchPattern.empty()) {
+            if (m_AdvancedFilters.fuzzyMatch) {
+                // Fuzzy matching with score threshold
+                float score = FuzzyMatcher::GetScore(item.name, searchPattern, false);
+                if (score < m_AdvancedFilters.minFuzzyScore) {
+                    return false;
+                }
+            } else {
+                // Exact substring matching
+                std::string lowerName = item.name;
+                std::string lowerFilter = searchPattern;
+                std::transform(lowerName.begin(), lowerName.end(), lowerName.begin(), ::tolower);
+                std::transform(lowerFilter.begin(), lowerFilter.end(), lowerFilter.begin(), ::tolower);
+                
+                if (lowerName.find(lowerFilter) == std::string::npos) {
+                    return false;
+                }
+            }
         }
+    }
+
+    // Labels filter (if implemented)
+    if (m_AdvancedFilters.labelsEnabled && !m_AdvancedFilters.labels.empty()) {
+        // TODO: Implement label filtering when label system is available
+        // For now, skip label filtering
     }
 
     return true;
@@ -591,6 +623,19 @@ std::string AssetBrowser::FormatFileSize(size_t bytes) const {
     std::stringstream ss;
     ss << std::fixed << std::setprecision(2) << size << " " << units[unitIndex];
     return ss.str();
+}
+
+void AssetBrowser::ResetFilters() {
+    m_SearchFilter.clear();
+    m_TypeFilter.clear();
+    m_AdvancedFilters = SearchFilters();
+    m_AdvancedFilters.fuzzyMatch = true;
+    m_AdvancedFilters.minFuzzyScore = 0.3f;
+}
+
+void AssetBrowser::SetFileSizeFilter(size_t minBytes, size_t maxBytes) {
+    m_AdvancedFilters.minFileSize = minBytes;
+    m_AdvancedFilters.maxFileSize = maxBytes;
 }
 
 std::string AssetBrowser::GetRelativePath(const std::string& fullPath) const {

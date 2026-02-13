@@ -15,6 +15,7 @@
 #include "EditorMenuBar.h"
 #include "EditorHierarchy.h"
 #include "EditorPropertyPanel.h"
+#include "EditorDockingManager.h"
 #ifdef USE_PHYSX
 #include "PhysXBackend.h"
 #endif
@@ -87,6 +88,9 @@ private:
     std::unique_ptr<EditorMenuBar> m_EditorMenuBar;
     std::unique_ptr<EditorHierarchy> m_EditorHierarchy;
     std::unique_ptr<EditorPropertyPanel> m_EditorPropertyPanel;
+    
+    // Editor Docking (Phase 2 Enhancement)
+    std::unique_ptr<EditorDockingManager> m_DockingManager;
     
     // Editor State
     int m_SelectedObjectIndex;

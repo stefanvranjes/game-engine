@@ -1,4 +1,7 @@
 #include "EditorPropertyPanel.h"
+#include "InspectorLayout.h"
+#include "IconRegistry.h"
+#include "ColorScheme.h"
 #include <imgui.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -382,20 +385,52 @@ void EditorPropertyPanel::RenderCustomComponents(std::shared_ptr<GameObject> obj
 
 void EditorPropertyPanel::RenderComponentHeader(const char* componentName, bool& expanded, bool canRemove) {
     ImGui::Separator();
-    
-    if (ImGui::CollapsingHeader(componentName, nullptr, expanded ? ImGuiTreeNodeFlags_DefaultOpen : 0)) {
-        expanded = true;
-    } else {
-        expanded = false;
+
+    // Get icon and color for component type
+    IconRegistry::IconType iconType = IconRegistry::DetectIconType(componentName);
+    ImVec4 componentColor = ColorScheme::GetComponentTypeColor(componentName);
+
+    // Render header with icon if enabled
+    if (m_ShowComponentIcons) {
+        ImGui::PushStyleColor(ImGuiCol_Text, componentColor);
+        ImGui::Text("%s", IconRegistry::GetIcon(iconType));
+        ImGui::PopStyleColor();
+        ImGui::SameLine();
     }
 
+    // Render collapsible header with color coding
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_AllowItemOverlap;
+    if (expanded) {
+        flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    }
+
+    if (m_ColoredSectionsEnabled) {
+        ImGui::PushStyleColor(ImGuiCol_Header, componentColor);
+        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ColorScheme::Brighten(componentColor, 1.2f));
+        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ColorScheme::Brighten(componentColor, 1.35f));
+    }
+
+    expanded = ImGui::TreeNodeEx(componentName, flags);
+
+    if (m_ColoredSectionsEnabled) {
+        ImGui::PopStyleColor(3);
+    }
+
+    // Render remove button on the right
     if (canRemove) {
         ImGui::SameLine(ImGui::GetContentRegionMax().x - 30);
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.7f, 0.1f, 0.1f, 1.0f));
+        ImGui::PushStyleColor(ImGuiCol_Button, ColorScheme::GetColor(ColorScheme::ColorCategory::Remove));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ColorScheme::Brighten(
+            ColorScheme::GetColor(ColorScheme::ColorCategory::Remove), 1.2f));
+        
         if (ImGui::Button("X##RemoveComponent", ImVec2(20, 20))) {
             // TODO: Remove component
         }
-        ImGui::PopStyleColor();
+        ImGui::PopStyleColor(2);
+    }
+
+    if (expanded) {
+        ImGui::TreePop();
     }
 }
 

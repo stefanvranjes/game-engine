@@ -5,6 +5,9 @@
 #include <memory>
 #include <functional>
 #include "GameObject.h"
+#include "FuzzyMatcher.h"
+#include "IconRegistry.h"
+#include "ColorScheme.h"
 
 /**
  * @brief Enhanced scene hierarchy panel with search, visibility toggles, and tree navigation
@@ -34,9 +37,22 @@ public:
     std::shared_ptr<GameObject> GetSelectedObject() const { return m_SelectedObject; }
 
     /**
-     * @brief Set the selected object
+     * @brief Enable/disable colored icons in hierarchy
      */
-    void SetSelectedObject(std::shared_ptr<GameObject> obj) { m_SelectedObject = obj; }
+    void SetColoredIconsEnabled(bool enabled) { m_ColoredIconsEnabled = enabled; }
+    bool AreColoredIconsEnabled() const { return m_ColoredIconsEnabled; }
+
+    /**
+     * @brief Enable/disable background color-coding for object types
+     */
+    void SetObjectTypeColoringEnabled(bool enabled) { m_ObjectTypeColoringEnabled = enabled; }
+    bool IsObjectTypeColoringEnabled() const { return m_ObjectTypeColoringEnabled; }
+
+    /**
+     * @brief Show/hide object type icons
+     */
+    void SetShowObjectTypeIcons(bool show) { m_ShowObjectTypeIcons = show; }
+    bool IsShowingObjectTypeIcons() const { return m_ShowObjectTypeIcons; }
 
     /**
      * @brief Clear all selections
@@ -72,6 +88,28 @@ public:
     // Search and filtering
     void SetSearchFilter(const std::string& filter);
     const std::string& GetSearchFilter() const { return m_SearchFilter; }
+
+    // Fuzzy search configuration
+    enum class SearchMode {
+        Exact,         // Exact substring match (fastest)
+        Fuzzy,         // Fuzzy matching with scoring (default)
+        Regex          // Regular expression matching (most flexible)
+    };
+    void SetSearchMode(SearchMode mode) { m_SearchMode = mode; }
+    SearchMode GetSearchMode() const { return m_SearchMode; }
+
+    /**
+     * @brief Set minimum match score for fuzzy search (0.0 - 1.0)
+     * Higher values = stricter matching. Default 0.3
+     */
+    void SetFuzzyThreshold(float threshold) { m_FuzzyThreshold = threshold; }
+    float GetFuzzyThreshold() const { return m_FuzzyThreshold; }
+
+    /**
+     * @brief Enable/disable case-sensitive search
+     */
+    void SetCaseSensitive(bool sensitive) { m_CaseSensitive = sensitive; }
+    bool IsCaseSensitive() const { return m_CaseSensitive; }
 
     // Node expansion state
     void ExpandNode(std::shared_ptr<GameObject> obj);
@@ -119,6 +157,16 @@ private:
     std::vector<std::shared_ptr<GameObject>> m_ExpandedNodes;
     std::string m_SearchFilter;
     char m_SearchBuffer[256];
+
+    // Search configuration
+    SearchMode m_SearchMode = SearchMode::Fuzzy;
+    float m_FuzzyThreshold = 0.3f;
+    bool m_CaseSensitive = false;
+
+    // Visual configuration
+    bool m_ColoredIconsEnabled = true;
+    bool m_ObjectTypeColoringEnabled = true;
+    bool m_ShowObjectTypeIcons = true;
     
     // Visibility and lock tracking
     std::vector<std::shared_ptr<GameObject>> m_HiddenObjects;
