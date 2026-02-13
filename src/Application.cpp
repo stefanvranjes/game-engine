@@ -226,6 +226,10 @@ bool Application::Init() {
     m_EditorHierarchy = std::make_unique<EditorHierarchy>();
     m_EditorPropertyPanel = std::make_unique<EditorPropertyPanel>();
     
+    // Initialize Gizmo Tools Panel (Phase 3 Enhancement)
+    m_GizmoToolsPanel = std::make_unique<GizmoToolsPanel>();
+    std::cout << "Gizmo Tools Panel initialized" << std::endl;
+    
     // Initialize Editor Docking Manager (Phase 2 Enhancement)
     m_DockingManager = std::make_unique<EditorDockingManager>();
     m_DockingManager->Initialize();
@@ -718,6 +722,17 @@ void Application::RenderEditorUI() {
             }
             ImGui::End();
         }
+    }
+
+    // Gizmo Tools Panel - Docked (Phase 3 Enhancement)
+    if (ImGui::Begin("Gizmo Tools", nullptr, ImGuiWindowFlags_None)) {
+        ImGui::SetWindowPos(ImVec2(1000, 430), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(250, 300), ImGuiCond_FirstUseEver);
+        
+        if (m_GizmoToolsPanel && m_GizmoManager) {
+            m_GizmoToolsPanel->Render(m_GizmoManager);
+        }
+        ImGui::End();
     }
 
     // Asset Browser Panel (when visible) - Docked

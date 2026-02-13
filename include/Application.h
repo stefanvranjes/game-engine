@@ -16,6 +16,7 @@
 #include "EditorHierarchy.h"
 #include "EditorPropertyPanel.h"
 #include "EditorDockingManager.h"
+#include "GizmoToolsPanel.h"
 #ifdef USE_PHYSX
 #include "PhysXBackend.h"
 #endif
@@ -91,6 +92,9 @@ private:
     
     // Editor Docking (Phase 2 Enhancement)
     std::unique_ptr<EditorDockingManager> m_DockingManager;
+    
+    // Gizmo Tools (Phase 3 Enhancement)
+    std::unique_ptr<GizmoToolsPanel> m_GizmoToolsPanel;
     
     // Editor State
     int m_SelectedObjectIndex;

@@ -55,6 +55,14 @@ public:
         m_SnappingEnabled = enabled;
         m_SnapValue = value;
     }
+    
+    void SetGizmoSize(float size) {
+        m_GizmoSize = size;
+    }
+    float GetGizmoSize() const { return m_GizmoSize; }
+    
+    void SetUseLocalSpace(bool local) { m_UseLocalSpace = local; }
+    bool IsUsingLocalSpace() const { return m_UseLocalSpace; }
 
     static void DrawLine(Shader* shader, const Vec3& from, const Vec3& to, const Vec3& color);
 
@@ -81,6 +89,8 @@ protected:
     
     bool m_SnappingEnabled = false;
     float m_SnapValue = 0.0f;
+    
+    bool m_UseLocalSpace = false;
 
     GizmoType m_Type = GizmoType::None;
     GizmoAxis m_HoverAxis = GizmoAxis::None;

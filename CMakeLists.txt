@@ -624,6 +624,7 @@ add_library(GameEngineLib STATIC
     src/InspectorLayout.cpp
     src/EditorPropertyPanel.cpp
     src/EditorDockingManager.cpp
+    src/GizmoToolsPanel.cpp
     src/NVRHIBackend.cpp
     src/Skybox.cpp
     src/ShadowMap.cpp

@@ -4,6 +4,7 @@
 #include "TranslationGizmo.h"
 #include "RotationGizmo.h"
 #include "ScaleGizmo.h"
+#include <glm/glm.hpp>
 #ifdef USE_PHYSX
 #include "FractureLineGizmo.h"
 #endif
@@ -47,6 +48,22 @@ public:
     
     void SetScaleSnap(float snap) { m_ScaleSnap = snap; }
     float GetScaleSnap() const { return m_ScaleSnap; }
+    
+    // Local/World Space Toggle
+    void SetUseLocalSpace(bool local) { m_UseLocalSpace = local; }
+    bool IsUsingLocalSpace() const { return m_UseLocalSpace; }
+    void ToggleLocalSpace() { m_UseLocalSpace = !m_UseLocalSpace; }
+    
+    // Gizmo Size Control
+    void SetGizmoSize(float size) { m_GizmoSize = glm::clamp(size, 0.1f, 5.0f); }
+    float GetGizmoSize() const { return m_GizmoSize; }
+    
+    // Reset to defaults
+    void ResetGizmoSettings() {
+        m_UseLocalSpace = false;
+        m_GizmoSize = 1.0f;
+        m_SnappingEnabled = false;
+    }
 
 private:
     GizmoType m_CurrentType = GizmoType::Translation;
@@ -60,6 +77,9 @@ private:
     float m_TranslationSnap = 1.0f;
     float m_RotationSnap = 15.0f;
     float m_ScaleSnap = 0.5f;
+    
+    bool m_UseLocalSpace = false;
+    float m_GizmoSize = 1.0f;
     
     Gizmo* GetActiveGizmo();
     

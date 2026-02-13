@@ -1,18 +1,30 @@
 #include "ScaleGizmo.h"
 #include "Camera.h"
 #include "Transform.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 void ScaleGizmo::GetAxes(Vec3& x, Vec3& y, Vec3& z) {
-    x = Vec3(1, 0, 0);
-    y = Vec3(0, 1, 0);
-    z = Vec3(0, 0, 1);
+    if (m_UseLocalSpace && m_Transform) {
+        // Transform world axes by the object's rotation
+        const auto& quat = m_Transform->rotation;
+        glm::mat4 rotMatrix = glm::mat4_cast(quat);
+        x = Vec3(rotMatrix[0][0], rotMatrix[1][0], rotMatrix[2][0]);
+        y = Vec3(rotMatrix[0][1], rotMatrix[1][1], rotMatrix[2][1]);
+        z = Vec3(rotMatrix[0][2], rotMatrix[1][2], rotMatrix[2][2]);
+    } else {
+        // World space (default)
+        x = Vec3(1, 0, 0);
+        y = Vec3(0, 1, 0);
+        z = Vec3(0, 0, 1);
+    }
 }
 
 void ScaleGizmo::Draw(Shader* shader, const Camera& camera) {
     if (!m_Enabled || !m_Transform) return;
     
     Vec3 pos = m_Transform->position;
-    m_Scale = GetScreenScale(pos, camera);
+    m_Scale = GetScreenScale(pos, camera) * m_GizmoSize;
     
     Vec3 x, y, z;
     GetAxes(x, y, z);

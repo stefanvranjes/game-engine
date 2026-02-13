@@ -79,6 +79,15 @@ void GizmoManager::Update(float deltaTime) {
     m_TranslationGizmo->SetSnapping(m_SnappingEnabled, m_TranslationSnap);
     m_RotationGizmo->SetSnapping(m_SnappingEnabled, m_RotationSnap);
     m_ScaleGizmo->SetSnapping(m_SnappingEnabled, m_ScaleSnap);
+    
+    // Propagate gizmo size and local space settings
+    m_TranslationGizmo->SetGizmoSize(m_GizmoSize);
+    m_RotationGizmo->SetGizmoSize(m_GizmoSize);
+    m_ScaleGizmo->SetGizmoSize(m_GizmoSize);
+    
+    m_TranslationGizmo->SetUseLocalSpace(m_UseLocalSpace);
+    m_RotationGizmo->SetUseLocalSpace(m_UseLocalSpace);
+    m_ScaleGizmo->SetUseLocalSpace(m_UseLocalSpace);
 }
 
 void GizmoManager::Render(Shader* shader, const Camera& camera) {
