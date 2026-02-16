@@ -23,7 +23,6 @@ EditorHierarchy::EditorHierarchy()
     , m_LastClickTime(0.0)
 {
     memset(m_SearchBuffer, 0, sizeof(m_SearchBuffer));
-    memset(m_RenameBuffer, 0, sizeof(m_RenameBuffer));
 }
 
 EditorHierarchy::~EditorHierarchy() {
@@ -129,21 +128,38 @@ void EditorHierarchy::RenderNode(std::shared_ptr<GameObject> object, int depth) 
         ImGui::SameLine();
     }
 
-    // Tree node with object name
-    std::string displayName = GetDisplayName(object);
+    // Tree node with object name or rename input
+    bool nodeOpen = false;
+    if (m_IsRenaming && m_RenamingObject == object) {
+        ImGui::SetKeyboardFocusHere();
+        char buf[256];
+        strncpy_s(buf, sizeof(buf), m_RenameBuffer.c_str(), _TRUNCATE);
+        if (ImGui::InputText("##Rename", buf, sizeof(buf), ImGuiInputTextFlags_EnterReturnsTrue)) {
+            object->SetName(buf);
+            m_IsRenaming = false;
+            m_RenamingObject = nullptr;
+        }
+        if (!ImGui::IsItemActive() && (ImGui::IsMouseClicked(0) || ImGui::IsKeyDown(ImGuiKey_Escape))) {
+            m_IsRenaming = false;
+            m_RenamingObject = nullptr;
+        }
+    } else {
+        std::string displayName = GetDisplayName(object);
 
-    // Apply background color if object type coloring is enabled
-    if (m_ObjectTypeColoringEnabled) {
-        ImGui::PushStyleColor(ImGuiCol_Header, objectColor);
-        ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ColorScheme::Brighten(objectColor, 1.2f));
-        ImGui::PushStyleColor(ImGuiCol_HeaderActive, ColorScheme::Brighten(objectColor, 1.35f));
+        // Apply background color if object type coloring is enabled
+        if (m_ObjectTypeColoringEnabled) {
+            ImGui::PushStyleColor(ImGuiCol_Header, objectColor);
+            ImGui::PushStyleColor(ImGuiCol_HeaderHovered, ColorScheme::Brighten(objectColor, 1.2f));
+            ImGui::PushStyleColor(ImGuiCol_HeaderActive, ColorScheme::Brighten(objectColor, 1.35f));
+        }
+
+        nodeOpen = ImGui::TreeNodeEx(displayName.c_str(), flags);
+
+        if (m_ObjectTypeColoringEnabled) {
+            ImGui::PopStyleColor(3);
+        }
     }
 
-    bool nodeOpen = ImGui::TreeNodeEx(displayName.c_str(), flags);
-
-    if (m_ObjectTypeColoringEnabled) {
-        ImGui::PopStyleColor(3);
-    }
 
     // Handle selection
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
@@ -226,7 +242,7 @@ void EditorHierarchy::RenderContextMenu(std::shared_ptr<GameObject> object) {
         if (ImGui::MenuItem("Rename")) {
             m_IsRenaming = true;
             m_RenamingObject = object;
-            strncpy_s(m_RenameBuffer, sizeof(m_RenameBuffer), object->GetName().c_str(), sizeof(m_RenameBuffer) - 1);
+            m_RenameBuffer = object->GetName();
         }
 
         if (ImGui::MenuItem("Duplicate")) {

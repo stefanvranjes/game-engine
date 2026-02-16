@@ -1,0 +1,107 @@
+
+--- Engine Session Started: 2026-02-16 15:54:41 ---
+
+Telemetry Server started on http://localhost:8080/profiler
+RemoteProfiler initialized on port 8080
+Remote Profiler initialized. View at: http://localhost:8080
+CustomScriptSystem Initialized (Bytecode VM)
+Compute shader support detected
+OpenGL extensions loaded successfully
+Render Backend Initialized: OpenGL 3.3+
+Shader program created successfully
+Texture loaded successfully: brick.png (ID: 0)
+Added cube at position (0, 0, 0)
+Added cube at position (2, 0, 0)
+Loaded OBJ: assets/pyramid.obj with 18 vertices
+Added pyramid at position (-2, 0, 0)
+Loaded OBJ: assets/pyramid.obj with 18 vertices
+Added LOD test object with Impostor at position (0, 0, -5)
+Loaded skeleton with 2 bones
+Loaded animation 'Animation_0' with duration 2.08333s
+Attached animator with 1 animations to root
+Loaded animated GLTF model: RiggedSimple.gltf
+  Animator attached with 1 animations
+Shader program created successfully
+Failed to load texture async: assets/water_normal.png
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+GBuffer initialized successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Post-processing initialized
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+SSR initialized successfully
+Shader program created successfully
+TAA initialized successfully
+Shader program created successfully
+PlanarReflection initialized at 400x300
+Initializing IBL...
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+Shader program created successfully
+IBL textures created successfully
+Loading HDR environment map...
+Converting HDR to cubemap...
+Generating irradiance map...
+Generating prefilter map...
+Generating BRDF LUT...
+IBL initialization complete with real HDR environment!
+Shader program created successfully
+Shader program created successfully
+ParticleSystem initialized
+Shader program created successfully
+Text system initialized
+ImGui initialized
+Shader program created successfully
+PreviewRenderer initialized (512x512)
+Script Debugger initialized
+Scripting Profiler UI initialized
+Audio System Initialized (Advanced features disabled).
+[PhysicsSystem] Initialized with gravity: 0, -9.81, 0
+Physics System initialized with Bullet3D
+ECS Manager initialized with core systems
+AssetHotReloadManager: Hot-reload ENABLED
+AssetHotReloadManager: Watching shader directory: shaders/
+TextureManager: Watching directory for hot-reload: assets/
+Asset Hot-Reload Manager initialized
+Asset Pipeline initialized: 4 threads
+Asset Pipeline initialized
+Gizmo Tools Panel initialized
+EditorDockingManager initialized - Docking enabled
+Editor Docking Manager initialized
+Editor UI Components initialized
+Compute shader program created successfully
+Compute shader program created successfully
+Compute shader program created successfully
+Compute shader program created successfully
+Layout preset applied: 0
+[Animation Event] footstep_left triggered!
+[Animation Event] footstep_right triggered!
+[Animation] Loop completed!
+[Animation Event] footstep_left triggered!
+[Animation Event] footstep_right triggered!
+[Animation Event] footstep_left triggered!
+[Animation Event] footstep_right triggered!
+[Transition Test] Starting transition from walk to idle (0.5s)...
+[Transition Test] Starting transition from walk to idle (0.5s)...
+[Transition Test] Starting transition from walk to idle (0.5s)...
+[Animation] Loop completed!
+[Transition Test] Starting transition from idle to walk (0.5s)...
+[Animation Event] footstep_left triggered!
+[Animation] Loop completed!
+[Animation Event] footstep_left triggered!
+[Animation Event] footstep_right triggered!
+[Animation Event] footstep_left triggered!

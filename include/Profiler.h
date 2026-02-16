@@ -70,7 +70,7 @@ public:
     // Data retrieval
     const FrameStats& GetFrameStats(uint32_t frame) const;
     const std::vector<FrameStats>& GetFrameHistory() const { return frame_history_; }
-    json ToJSON() const;
+    json ToJSON(int max_frames = -1) const;
     json GetCurrentFrameJSON() const;
 
     // Statistics
@@ -178,7 +178,7 @@ public:
     // Data retrieval
     const GPUFrameStats& GetFrameStats(uint32_t frame) const;
     const std::vector<GPUFrameStats>& GetFrameHistory() const { return frame_history_; }
-    json ToJSON() const;
+    json ToJSON(int max_frames = -1) const;
     json GetCurrentFrameJSON() const;
 
     // Statistics
@@ -269,7 +269,7 @@ public:
     double GetAverageCPUTime() const;
     double GetAverageGPUTime() const;
 
-    json ToJSON() const;
+    json ToJSON(int max_frames = -1) const;
 
     void SetMaxFrameHistory(size_t max_frames)
     {

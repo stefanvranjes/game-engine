@@ -1,7 +1,8 @@
 #include "ImGuiManager.h"
-#include "imgui/imgui.h"
-#include "imgui/imgui_impl_glfw.h"
-#include "imgui/imgui_impl_opengl3.h"
+#include <imgui.h>
+
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
 #include <iostream>
 
 ImGuiManager::ImGuiManager() : m_Initialized(false) {
@@ -43,6 +44,18 @@ void ImGuiManager::EndFrame() {
 
     ImGui::Render();
     ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+    // Update and Render additional Platform Windows
+    // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+    //  For this specific binding glfwMakeContextCurrent() grabs inside -DCMAKE_CXX_FLAGS so we probably don't need to do it ourselves but it's safer.)
+    ImGuiIO& io = ImGui::GetIO();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        GLFWwindow* backup_current_context = glfwGetCurrentContext();
+        ImGui::UpdatePlatformWindows();
+        ImGui::RenderPlatformWindowsDefault();
+        glfwMakeContextCurrent(backup_current_context);
+    }
 }
 
 void ImGuiManager::Shutdown() {

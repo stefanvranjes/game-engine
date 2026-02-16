@@ -86,7 +86,8 @@ public:
     bool IsInitialized() const { return server_ != nullptr; }
 
     // Update profiling data (call once per frame)
-    void Update();
+    void Update(float deltaTime);
+
 
     // Configuration
     void SetUpdateInterval(float interval_ms) { update_interval_ms_ = interval_ms; }

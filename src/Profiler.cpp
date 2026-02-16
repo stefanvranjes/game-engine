@@ -224,14 +224,20 @@ double Profiler::GetMinMarkerTime(const std::string& name) const
     return found ? min_time : 0.0;
 }
 
-json Profiler::ToJSON() const
+json Profiler::ToJSON(int max_frames) const
 {
     std::lock_guard<std::mutex> lock(mutex_);
     
     json data = json::array();
     
-    for (const auto& frame : frame_history_)
+    size_t start_idx = 0;
+    if (max_frames > 0 && frame_history_.size() > static_cast<size_t>(max_frames)) {
+        start_idx = frame_history_.size() - max_frames;
+    }
+
+    for (size_t i = start_idx; i < frame_history_.size(); ++i)
     {
+        const auto& frame = frame_history_[i];
         json frame_data;
         frame_data["frame"] = frame.frame_number;
         frame_data["time_ms"] = frame.frame_time_ms;
@@ -466,14 +472,20 @@ double GPUProfiler::GetAverageMarkerTime(const std::string& name) const
     return count > 0 ? total / count : 0.0;
 }
 
-json GPUProfiler::ToJSON() const
+json GPUProfiler::ToJSON(int max_frames) const
 {
     std::lock_guard<std::mutex> lock(mutex_);
     
     json data = json::array();
     
-    for (const auto& frame : frame_history_)
+    size_t start_idx = 0;
+    if (max_frames > 0 && frame_history_.size() > static_cast<size_t>(max_frames)) {
+        start_idx = frame_history_.size() - max_frames;
+    }
+
+    for (size_t i = start_idx; i < frame_history_.size(); ++i)
     {
+        const auto& frame = frame_history_[i];
         json frame_data;
         frame_data["frame"] = frame.frame_number;
         frame_data["gpu_time_ms"] = frame.gpu_time_ms;
@@ -618,16 +630,22 @@ double PerformanceMonitor::GetAverageGPUTime() const
     return GPUProfiler::Instance().GetAverageGPUTime();
 }
 
-json PerformanceMonitor::ToJSON() const
+json PerformanceMonitor::ToJSON(int max_frames) const
 {
     json data = json::object();
     
-    data["cpu_profiler"] = Profiler::Instance().ToJSON();
-    data["gpu_profiler"] = GPUProfiler::Instance().ToJSON();
+    data["cpu_profiler"] = Profiler::Instance().ToJSON(max_frames);
+    data["gpu_profiler"] = GPUProfiler::Instance().ToJSON(max_frames);
     
     json metrics = json::array();
-    for (const auto& m : metrics_)
+    size_t start_idx = 0;
+    if (max_frames > 0 && metrics_.size() > static_cast<size_t>(max_frames)) {
+        start_idx = metrics_.size() - max_frames;
+    }
+
+    for (size_t i = start_idx; i < metrics_.size(); ++i)
     {
+        const auto& m = metrics_[i];
         json metric_data;
         metric_data["frame"] = m.frame_number;
         metric_data["cpu_ms"] = m.cpu_time_ms;

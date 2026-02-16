@@ -31,13 +31,14 @@ ImGuiID EditorDockingManager::BeginDockspace() {
     ImGuiID dockspace_id = ImGui::GetID("EditorDockspace");
     ImGui::DockSpace(dockspace_id, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
     
+    m_DockspaceID = dockspace_id;
+    
     // Apply layout on first frame
     if (m_FirstFrame) {
         m_FirstFrame = false;
         ApplyLayoutPreset(m_CurrentPreset);
     }
     
-    m_DockspaceID = dockspace_id;
     return dockspace_id;
 }
 
@@ -165,10 +166,6 @@ void EditorDockingManager::SetupGameDevLayout() {
     if (!m_DockspaceID) return;
     
     ImGuiID dockspace_id = m_DockspaceID;
-    static bool first_time = true;
-    
-    if (!first_time) return;
-    first_time = false;
     
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
@@ -195,10 +192,6 @@ void EditorDockingManager::SetupAnimationLayout() {
     if (!m_DockspaceID) return;
     
     ImGuiID dockspace_id = m_DockspaceID;
-    static bool first_time = true;
-    
-    if (!first_time) return;
-    first_time = false;
     
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
@@ -224,10 +217,6 @@ void EditorDockingManager::SetupRenderingLayout() {
     if (!m_DockspaceID) return;
     
     ImGuiID dockspace_id = m_DockspaceID;
-    static bool first_time = true;
-    
-    if (!first_time) return;
-    first_time = false;
     
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
@@ -253,10 +242,6 @@ void EditorDockingManager::SetupMinimalLayout() {
     if (!m_DockspaceID) return;
     
     ImGuiID dockspace_id = m_DockspaceID;
-    static bool first_time = true;
-    
-    if (!first_time) return;
-    first_time = false;
     
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);
@@ -277,10 +262,6 @@ void EditorDockingManager::SetupTallLeftLayout() {
     if (!m_DockspaceID) return;
     
     ImGuiID dockspace_id = m_DockspaceID;
-    static bool first_time = true;
-    
-    if (!first_time) return;
-    first_time = false;
     
     ImGui::DockBuilderRemoveNode(dockspace_id);
     ImGui::DockBuilderAddNode(dockspace_id, ImGuiDockNodeFlags_DockSpace);

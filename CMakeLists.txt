@@ -150,6 +150,44 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(spdlog)
 
+
+# Fetch ImGui (Docking Branch)
+FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG docking
+)
+FetchContent_GetProperties(imgui)
+if(NOT imgui_populated)
+    FetchContent_Populate(imgui)
+    
+    # Define imgui target
+    add_library(imgui STATIC
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+    )
+    
+    target_include_directories(imgui PUBLIC 
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+    )
+    
+    target_link_libraries(imgui PRIVATE glfw)
+
+    
+    # We want #include "imgui/imgui.h" to work, so we add a symlink or an include alias
+    # Simpler: just add imgui_SOURCE_DIR as a directory named 'imgui' in the include search
+    # But since we can't easily rename FetchContent dirs, we add the parent of the fetched dir
+    # and hope the dir is called 'imgui-src' or we just fix the project-wide includes.
+    # Actually, a better way is to provide a local include/imgui that just forwards if needed,
+    # or just add the source dir directly.
+endif()
+
+
 # Graphics Backend Selection (NVRHI)
 option(GRAPHICS_BACKEND "Graphics backend for NVRHI: D3D12, D3D11, VULKAN" "D3D12")
 message(STATUS "Graphics Backend: ${GRAPHICS_BACKEND}")
@@ -588,14 +626,8 @@ else()
     message(STATUS "Mono not found, C# scripting will be disabled")
     set(HAS_MONO FALSE)
 endif()
-set(IMGUI_SOURCES
-    src/imgui/imgui.cpp
-    src/imgui/imgui_draw.cpp
-    src/imgui/imgui_tables.cpp
-    src/imgui/imgui_widgets.cpp
-    src/imgui/imgui_impl_glfw.cpp
-    src/imgui/imgui_impl_opengl3.cpp
-)
+# ImGui sources are now handled via FetchContent target 'imgui'
+
 
 # Engine Library
 add_library(GameEngineLib STATIC
@@ -817,16 +849,13 @@ if(HAS_RDMA)
     )
 endif()
 
-set(SOURCES ${SOURCES}
-    ${IMGUI_SOURCES}
-    ${ADDITIONAL_SOURCES}  # Includes generated protobuf sources
-)
+list(APPEND SOURCES ${ADDITIONAL_SOURCES}) # Includes generated protobuf sources
 
-# Add ImGui sources to GameEngineLib target
-target_sources(GameEngineLib PRIVATE ${IMGUI_SOURCES})
 
-# Add the rest of the engine sources
+
+# Add the engine sources
 target_sources(GameEngineLib PRIVATE ${SOURCES})
+
 
 # Force tinygltf to not include STB implementation again again
 if(TARGET tinygltf)
@@ -1023,7 +1052,9 @@ endif()
 # Common include directories for all build configurations
 set(COMMON_INCLUDES
     include
-    include/imgui
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+
     game-engine-multiplayer/include
     ${miniaudio_SOURCE_DIR}
     ${assimp_SOURCE_DIR}/include
@@ -1074,7 +1105,9 @@ target_include_directories(GameEngineLib PUBLIC ${COMMON_INCLUDES})
 # Configure link libraries based on physics backend
 # Common link libraries for all build configurations
 set(COMMON_LIBS
+    imgui
     glfw
+
     opengl32
     nlohmann_json
     tinygltf

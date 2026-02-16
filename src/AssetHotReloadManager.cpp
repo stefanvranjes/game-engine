@@ -63,7 +63,8 @@ void AssetHotReloadManager::WatchTextureDirectory(const std::string& textureDire
 void AssetHotReloadManager::Update() {
     if (!m_Enabled || !m_FileWatcher) return;
     
-    m_FileWatcher->Update(100);
+    m_FileWatcher->Update(1000);
+
 }
 
 size_t AssetHotReloadManager::GetWatchedFileCount() const {

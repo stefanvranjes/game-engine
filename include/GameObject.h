@@ -61,6 +61,8 @@ public:
     const Mat4& GetWorldMatrix() const { return m_WorldMatrix; }
     const Mat4& GetPreviousWorldMatrix() const { return m_PreviousWorldMatrix; }
     const std::string& GetName() const { return m_Name; }
+    void SetName(const std::string& name) { m_Name = name; }
+
     std::shared_ptr<Material> GetMaterial() { return m_Material; }
     std::shared_ptr<Mesh> GetActiveMesh(const Mat4& view) const;
     

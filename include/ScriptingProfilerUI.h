@@ -6,7 +6,8 @@
 #include <unordered_map>
 #include <chrono>
 #include <glm/glm.hpp>
-#include "imgui/imgui.h"
+#include <imgui.h>
+
 
 // Forward declarations
 class IScriptSystem;

@@ -409,6 +409,13 @@ void Renderer::RemoveObject(size_t index) {
     }
 }
 
+void Renderer::RemoveObject(std::shared_ptr<GameObject> obj) {
+    if (m_Root && obj) {
+        m_Root->RemoveChild(obj);
+        std::cout << "Removed object: " << obj->GetName() << std::endl;
+    }
+}
+
 void Renderer::UpdateShaders() {
     if (m_Shader) m_Shader->CheckForUpdates();
     if (m_DepthShader) m_DepthShader->CheckForUpdates();

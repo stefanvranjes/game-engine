@@ -1,4 +1,6 @@
 #include "EditorMenuBar.h"
+#include "EditorDockingManager.h"
+#include "Logger.h"
 #include <imgui.h>
 #include <algorithm>
 #include <ctime>
@@ -32,6 +34,12 @@ void EditorMenuBar::Render() {
             RenderWindowMenu();
             ImGui::EndMenu();
         }
+        // Layout Menu
+        if (ImGui::BeginMenu("Layout")) {
+             RenderLayoutMenu();
+             ImGui::EndMenu();
+        }
+
         if (ImGui::BeginMenu("Help")) {
             RenderHelpMenu();
             ImGui::EndMenu();
@@ -139,6 +147,14 @@ void EditorMenuBar::RenderWindowMenu() {
             window.visible = !window.visible;
             window.toggleCallback(window.visible);
         }
+    }
+}
+
+void EditorMenuBar::RenderLayoutMenu() {
+    if (m_DockingManager) {
+        m_DockingManager->RenderLayoutSelector();
+    } else {
+        ImGui::TextDisabled("Layout manager not connected");
     }
 }
 

@@ -4,6 +4,8 @@
 #include <functional>
 #include <vector>
 
+class EditorDockingManager;
+
 /**
  * @brief Main menu bar for the editor with File, Edit, View, Window, and Help menus
  * 
@@ -41,6 +43,9 @@ public:
     void SetOnToggleProfiler(std::function<void(bool)> callback) { m_OnToggleProfiler = callback; }
     void SetOnResetLayout(std::function<void()> callback) { m_OnResetLayout = callback; }
 
+    // Docking Integrations
+    void SetDockingManager(EditorDockingManager* manager) { m_DockingManager = manager; }
+
     // Window Menu - auto-populated with available windows
     void RegisterWindow(const std::string& name, std::function<void(bool)> toggleCallback);
     void UnregisterWindow(const std::string& name);
@@ -71,6 +76,7 @@ private:
     void RenderViewMenu();
     void RenderWindowMenu();
     void RenderHelpMenu();
+    void RenderLayoutMenu();
 
     // File Menu Callbacks
     std::function<void()> m_OnNewScene;
@@ -111,6 +117,9 @@ private:
         bool visible = true;
     };
     std::vector<WindowEntry> m_RegisteredWindows;
+
+    // External Managers
+    EditorDockingManager* m_DockingManager = nullptr;
 
     // Recent scenes (max 10)
     std::vector<std::string> m_RecentScenes;

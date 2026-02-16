@@ -3,16 +3,24 @@
 #include "Transform.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include "Math/Mat4.h"
+
 
 void TranslationGizmo::GetAxes(Vec3& x, Vec3& y, Vec3& z) {
     if (m_UseLocalSpace && m_Transform) {
         // Transform world axes by the object's rotation
-        const auto& quat = m_Transform->rotation;
-        // Convert quaternion to rotation matrix columns
-        glm::mat4 rotMatrix = glm::mat4_cast(quat);
-        x = Vec3(rotMatrix[0][0], rotMatrix[1][0], rotMatrix[2][0]);
-        y = Vec3(rotMatrix[0][1], rotMatrix[1][1], rotMatrix[2][1]);
-        z = Vec3(rotMatrix[0][2], rotMatrix[1][2], rotMatrix[2][2]);
+        // Convert Euler angles to rotation matrix using the same order as Transform::GetModelMatrix
+        float radX = m_Transform->rotation.x * 3.14159f / 180.0f;
+        float radY = m_Transform->rotation.y * 3.14159f / 180.0f;
+        float radZ = m_Transform->rotation.z * 3.14159f / 180.0f;
+
+        Mat4 rotMatrix = Mat4::RotateY(radY) * Mat4::RotateX(radX) * Mat4::RotateZ(radZ);
+
+        // Extract columns for X, Y, Z axes (Column-major storage)
+        x = Vec3(rotMatrix.m[0], rotMatrix.m[1], rotMatrix.m[2]);
+        y = Vec3(rotMatrix.m[4], rotMatrix.m[5], rotMatrix.m[6]);
+        z = Vec3(rotMatrix.m[8], rotMatrix.m[9], rotMatrix.m[10]);
+
     } else {
         // World space (default)
         x = Vec3(1, 0, 0);

@@ -362,7 +362,7 @@ RemoteProfiler& RemoteProfiler::Instance()
 
 RemoteProfiler::RemoteProfiler()
     : port_(8080),
-      update_interval_ms_(16.67f),
+      update_interval_ms_(500.0f),
       time_since_update_(0.0f),
       profiling_enabled_(true)
 {
@@ -396,11 +396,11 @@ void RemoteProfiler::Shutdown()
     }
 }
 
-void RemoteProfiler::Update()
+void RemoteProfiler::Update(float deltaTime)
 {
     if (!server_) return;
     
-    time_since_update_ += 16.67f;  // Approximate 60 FPS
+    time_since_update_ += deltaTime * 1000.0f; // Convert to ms
     
     if (time_since_update_ >= update_interval_ms_)
     {
@@ -419,8 +419,8 @@ void RemoteProfiler::EnableProfiling(bool enable)
 json RemoteProfiler::GetProfileData() const
 {
     json data = json::object({
-        {"cpu_profiler", Profiler::Instance().ToJSON()},
-        {"gpu_profiler", GPUProfiler::Instance().ToJSON()},
+        {"cpu_profiler", Profiler::Instance().ToJSON(60)},
+        {"gpu_profiler", GPUProfiler::Instance().ToJSON(60)},
         {"timestamp", std::time(nullptr)}
     });
     
@@ -449,11 +449,9 @@ RemoteProfileScope::RemoteProfileScope(const std::string& name)
     : name_(name)
 {
     Profiler::Instance().BeginScope(name);
-    RemoteProfiler::Instance().Update();
 }
 
 RemoteProfileScope::~RemoteProfileScope()
 {
     Profiler::Instance().EndScope();
-    RemoteProfiler::Instance().Update();
 }

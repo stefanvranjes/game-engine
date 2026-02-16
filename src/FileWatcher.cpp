@@ -50,10 +50,16 @@ FileWatcher::ChangeHandle FileWatcher::WatchDirectory(const std::string& directo
     
     FileWatch watch;
     watch.path = directory;
-    watch.lastModified = 0;
     watch.callback = callback;
     watch.isDirectory = true;
     watch.extensionFilter = extension;
+
+    // Initialize lastModified to the latest file in the directory to avoid "initial storm" of reloads
+    watch.lastModified = 0;
+    auto files = GetFilesInDirectory(directory, extension);
+    for (const auto& filePath : files) {
+        watch.lastModified = std::max(watch.lastModified, GetFileModifiedTime(filePath));
+    }
     
     m_Watches[handle] = watch;
     return handle;

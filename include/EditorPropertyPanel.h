@@ -7,6 +7,8 @@
 #include "InspectorLayout.h"
 #include "IconRegistry.h"
 #include "ColorScheme.h"
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 /**
  * @brief Enhanced property inspector panel supporting multiple components
@@ -79,7 +81,7 @@ private:
     void RenderQuaternionControl(const char* label, float* value, float resetValue = 0.0f);
     void RenderColorControl(const char* label, float* color);
     void RenderSliderControl(const char* label, float* value, float min, float max);
-    void RenderComponentHeader(const char* componentName, bool& expanded, bool canRemove = true);
+    bool RenderComponentHeader(const char* componentName, bool& expanded, bool canRemove = true);
 
     // Property change callbacks
     void OnTransformChanged();

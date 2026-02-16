@@ -180,7 +180,8 @@ private:
     // Context menu state
     std::shared_ptr<GameObject> m_ContextMenuObject;
     bool m_ShowContextMenu;
-    std::string m_RenameBuffer;
+    std::string m_RenameBuffer;                     ///< Buffer for renaming objects
+
     bool m_IsRenaming;
     std::shared_ptr<GameObject> m_RenamingObject;
 

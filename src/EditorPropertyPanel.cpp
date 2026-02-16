@@ -122,7 +122,7 @@ void EditorPropertyPanel::RenderTransformProperties(std::shared_ptr<GameObject> 
         ImGui::Indent();
         float pos[3] = { transform.position.x, transform.position.y, transform.position.z };
         if (ImGui::DragFloat3("##Position", pos, 0.1f)) {
-            transform.position = glm::vec3(pos[0], pos[1], pos[2]);
+            transform.position = Vec3(pos[0], pos[1], pos[2]);
             m_HasChanges = true;
             OnTransformChanged();
         }
@@ -130,7 +130,7 @@ void EditorPropertyPanel::RenderTransformProperties(std::shared_ptr<GameObject> 
         // Reset position button
         ImGui::SameLine();
         if (ImGui::Button("R##ResetPos")) {
-            transform.position = glm::vec3(0.0f);
+            transform.position = Vec3(0.0f);
             m_HasChanges = true;
             OnTransformChanged();
         }
@@ -138,13 +138,12 @@ void EditorPropertyPanel::RenderTransformProperties(std::shared_ptr<GameObject> 
 
         ImGui::Spacing();
 
-        // Rotation (in degrees for UI)
+        // Rotation (Euler angles in degrees)
         ImGui::Text("Rotation");
         ImGui::Indent();
-        glm::vec3 eulerAngles = glm::degrees(glm::eulerAngles(transform.rotation));
-        float rot[3] = { eulerAngles.x, eulerAngles.y, eulerAngles.z };
+        float rot[3] = { transform.rotation.x, transform.rotation.y, transform.rotation.z };
         if (ImGui::DragFloat3("##Rotation", rot, 0.5f)) {
-            transform.rotation = glm::quat(glm::radians(glm::vec3(rot[0], rot[1], rot[2])));
+            transform.rotation = Vec3(rot[0], rot[1], rot[2]);
             m_HasChanges = true;
             OnTransformChanged();
         }
@@ -152,7 +151,7 @@ void EditorPropertyPanel::RenderTransformProperties(std::shared_ptr<GameObject> 
         // Reset rotation button
         ImGui::SameLine();
         if (ImGui::Button("R##ResetRot")) {
-            transform.rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            transform.rotation = Vec3(0.0f);
             m_HasChanges = true;
             OnTransformChanged();
         }
@@ -165,7 +164,7 @@ void EditorPropertyPanel::RenderTransformProperties(std::shared_ptr<GameObject> 
         ImGui::Indent();
         float scl[3] = { transform.scale.x, transform.scale.y, transform.scale.z };
         if (ImGui::DragFloat3("##Scale", scl, 0.05f, 0.1f, 10.0f)) {
-            transform.scale = glm::vec3(scl[0], scl[1], scl[2]);
+            transform.scale = Vec3(scl[0], scl[1], scl[2]);
             m_HasChanges = true;
             OnTransformChanged();
         }
@@ -173,7 +172,7 @@ void EditorPropertyPanel::RenderTransformProperties(std::shared_ptr<GameObject> 
         // Reset scale button
         ImGui::SameLine();
         if (ImGui::Button("R##ResetScl")) {
-            transform.scale = glm::vec3(1.0f);
+            transform.scale = Vec3(1.0f);
             m_HasChanges = true;
             OnTransformChanged();
         }
@@ -383,7 +382,7 @@ void EditorPropertyPanel::RenderCustomComponents(std::shared_ptr<GameObject> obj
     // TODO: Render custom scripted components
 }
 
-void EditorPropertyPanel::RenderComponentHeader(const char* componentName, bool& expanded, bool canRemove) {
+bool EditorPropertyPanel::RenderComponentHeader(const char* componentName, bool& expanded, bool canRemove) {
     ImGui::Separator();
 
     // Get icon and color for component type
@@ -399,7 +398,7 @@ void EditorPropertyPanel::RenderComponentHeader(const char* componentName, bool&
     }
 
     // Render collapsible header with color coding
-    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_AllowItemOverlap;
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_None; // Changed from AllowItemOverlap which was causing errors
     if (expanded) {
         flags |= ImGuiTreeNodeFlags_DefaultOpen;
     }
@@ -419,19 +418,20 @@ void EditorPropertyPanel::RenderComponentHeader(const char* componentName, bool&
     // Render remove button on the right
     if (canRemove) {
         ImGui::SameLine(ImGui::GetContentRegionMax().x - 30);
-        ImGui::PushStyleColor(ImGuiCol_Button, ColorScheme::GetColor(ColorScheme::ColorCategory::Remove));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ColorScheme::Brighten(
-            ColorScheme::GetColor(ColorScheme::ColorCategory::Remove), 1.2f));
+        // Changed to use a simple color until ColorScheme errors are resolved
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.8f, 0.1f, 0.1f, 1.0f)); 
         
         if (ImGui::Button("X##RemoveComponent", ImVec2(20, 20))) {
             // TODO: Remove component
         }
-        ImGui::PopStyleColor(2);
+        ImGui::PopStyleColor(1);
     }
 
     if (expanded) {
         ImGui::TreePop();
     }
+
+    return expanded;
 }
 
 void EditorPropertyPanel::OnTransformChanged() {

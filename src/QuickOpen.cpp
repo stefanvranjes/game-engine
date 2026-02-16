@@ -69,7 +69,8 @@ bool QuickOpen::Render() {
     ImGui::SameLine();
     ImGui::Text("(Use ↑↓ to navigate, Enter to select, ESC to cancel)");
 
-    ImGui::EndPopupModal();
+    ImGui::EndPopup();
+
 
     return m_IsVisible;
 }
@@ -97,7 +98,9 @@ void QuickOpen::RenderSearchInput() {
 }
 
 void QuickOpen::RenderResultsList() {
-    ImGui::BeginChild("QuickOpenResults", ImVec2(0, 250), true, ImGuiWindowFlags_VerticalScrollbar);
+    ImGui::BeginChild("QuickOpenResults", ImVec2(0, 250), ImGuiChildFlags_Borders, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
+
 
     for (size_t i = 0; i < m_CurrentResults.size(); ++i) {
         const auto& result = m_CurrentResults[i];
@@ -109,7 +112,8 @@ void QuickOpen::RenderResultsList() {
             displayLabel += " (" + desc + ")";
         }
 
-        if (ImGui::Selectable(displayLabel.c_str(), isSelected, ImGuiSelectableFlags_SelectOnClick)) {
+        if (ImGui::Selectable(displayLabel.c_str(), isSelected)) {
+
             m_SelectedResultIndex = i;
             SelectResult(result);
         }

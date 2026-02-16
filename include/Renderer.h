@@ -128,6 +128,7 @@ public:
     void AddPyramid(const Transform& transform);
     void AddLODTestObject(const Transform& transform);
     void RemoveObject(size_t index);
+    void RemoveObject(std::shared_ptr<GameObject> obj);
     
     void AddLight(const Light& light) { m_Lights.push_back(light); }
     void RemoveLight(size_t index) { 

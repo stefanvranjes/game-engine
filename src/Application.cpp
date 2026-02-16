@@ -12,7 +12,8 @@
 #include <iostream>
 #include <algorithm>
 #include <GLFW/glfw3.h>
-#include "imgui/imgui.h"
+#include <imgui.h>
+
 #ifdef USE_PHYSX
 #include "PhysXRigidBody.h"
 #include "PhysXShape.h"
@@ -233,6 +234,12 @@ bool Application::Init() {
     // Initialize Editor Docking Manager (Phase 2 Enhancement)
     m_DockingManager = std::make_unique<EditorDockingManager>();
     m_DockingManager->Initialize();
+    
+    // Link Docking Manager to Menu Bar
+    if (m_EditorMenuBar) {
+        m_EditorMenuBar->SetDockingManager(m_DockingManager.get());
+    }
+    
     std::cout << "Editor Docking Manager initialized" << std::endl;
     
     // Wire up menu bar callbacks
@@ -290,7 +297,7 @@ void Application::Run() {
         // End frame profiling and update telemetry
         Profiler::Instance().EndFrame();
         PerformanceMonitor::Instance().Update();
-        RemoteProfiler::Instance().Update();
+        RemoteProfiler::Instance().Update(deltaTime);
         
         m_Window->SwapBuffers();
         m_Window->PollEvents();
@@ -681,14 +688,6 @@ void Application::RenderEditorUI() {
     // Main Menu Bar with File, Edit, View, Window, Help menus
     if (m_EditorMenuBar) {
         m_EditorMenuBar->Render();
-        
-        // Add layout selector to View menu
-        if (ImGui::BeginMenu("Layout")) {
-            if (m_DockingManager) {
-                m_DockingManager->RenderLayoutSelector();
-            }
-            ImGui::EndMenu();
-        }
     }
 
     // Scene Hierarchy Panel - Docked
@@ -706,8 +705,8 @@ void Application::RenderEditorUI() {
                     m_GizmoManager->SetSelectedObject(selected);
                 }
             }
-            ImGui::End();
         }
+        ImGui::End();
     }
 
     // Property Inspector Panel - Docked
@@ -720,8 +719,8 @@ void Application::RenderEditorUI() {
                 auto selectedObj = m_EditorHierarchy->GetSelectedObject();
                 m_EditorPropertyPanel->Render(selectedObj);
             }
-            ImGui::End();
         }
+        ImGui::End();
     }
 
     // Gizmo Tools Panel - Docked (Phase 3 Enhancement)
@@ -732,8 +731,8 @@ void Application::RenderEditorUI() {
         if (m_GizmoToolsPanel && m_GizmoManager) {
             m_GizmoToolsPanel->Render(m_GizmoManager);
         }
-        ImGui::End();
     }
+    ImGui::End();
 
     // Asset Browser Panel (when visible) - Docked
     if (m_EditorMenuBar->IsAssetBrowserVisible()) {
@@ -741,8 +740,8 @@ void Application::RenderEditorUI() {
             ImGui::SetWindowPos(ImVec2(0, 450), ImGuiCond_FirstUseEver);
             ImGui::SetWindowSize(ImVec2(500, 150), ImGuiCond_FirstUseEver);
             ImGui::TextDisabled("Asset Browser - Phase 2");
-            ImGui::End();
         }
+        ImGui::End();
     }
 
     // Viewport Window - Docked
@@ -751,8 +750,8 @@ void Application::RenderEditorUI() {
         ImGui::SetWindowSize(ImVec2(750, 450), ImGuiCond_FirstUseEver);
         ImGui::Text("Viewport - Game View");
         ImGui::TextDisabled("(Render target would go here)");
-        ImGui::End();
     }
+    ImGui::End();
 
     // Profiler Panel (when visible) - Docked
     if (m_EditorMenuBar->IsProfilerVisible()) {
@@ -771,9 +770,8 @@ void Application::RenderEditorUI() {
             auto& profiler = Profiler::Instance();
             ImGui::Text("Profiler Statistics:");
             ImGui::TextDisabled("(Profiler data)");
-            
-            ImGui::End();
         }
+        ImGui::End();
     }
 
     // Tools Panel - Script Debugger and Profiler UI - Docked
@@ -815,9 +813,8 @@ void Application::RenderEditorUI() {
                 }
             }
         }
-        
-        ImGui::End();
     }
+    ImGui::End();
 
     // Light Inspector Panel - Docked
     if (ImGui::Begin("Light Inspector", nullptr, ImGuiWindowFlags_None)) {
@@ -844,9 +841,8 @@ void Application::RenderEditorUI() {
                 }
             }
         }
-        
-        ImGui::End();
     }
+    ImGui::End();
 
     // Post-Processing Panel
     if (ImGui::Begin("Post-Processing", nullptr, ImGuiWindowFlags_None)) {
@@ -876,76 +872,62 @@ void Application::RenderEditorUI() {
                 }
             }
         }
-        
-        ImGui::End();
     }
+    ImGui::End();
 
-    // Asset Hot-Reload Panel
-    if (ImGui::Begin("Asset Hot-Reload", nullptr, ImGuiWindowFlags_None)) {
-        ImGui::SetWindowPos(ImVec2(620, 100), ImGuiCond_FirstUseEver);
-        ImGui::SetWindowSize(ImVec2(300, 250), ImGuiCond_FirstUseEver);
+    // Simulation Controls Panel
+    if (ImGui::Begin("Simulation Controls", nullptr, ImGuiWindowFlags_None)) {
+        ImGui::SetWindowPos(ImVec2(100, 600), ImGuiCond_FirstUseEver);
+        ImGui::SetWindowSize(ImVec2(400, 300), ImGuiCond_FirstUseEver);
+
+        ImGui::Separator();
+    
+        static int sbWidth = 10;
+        static int sbHeight = 10;
+        static int sbDepth = 10;
         
-        if (m_HotReloadManager) {
-            bool hotReloadEnabled = m_HotReloadManager->IsEnabled();
-            if (ImGui::Checkbox("Enable Hot-Reload##main", &hotReloadEnabled)) {
-                m_HotReloadManager->SetEnabled(hotReloadEnabled);
-            }
+        ImGui::Text("Soft Body Simulation");
+        ImGui::SliderInt("SB Width", &sbWidth, 5, 20);
+        ImGui::SliderInt("SB Height", &sbHeight, 5, 20);
+        ImGui::SliderInt("SB Depth", &sbDepth, 5, 20);
+        
+        if (ImGui::Button("Spawn Soft Body")) {
+            auto emitter = std::make_shared<ParticleEmitter>(Vec3(2, 10, 0), sbWidth * sbHeight * sbDepth);
+            // Use default texture if available
+            auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); 
+            if (tex) emitter->SetTexture(tex);
             
-            ImGui::Text("Status: %s", hotReloadEnabled ? "ACTIVE" : "DISABLED");
+            emitter->SetColorRange(Vec4(0, 1, 0, 1), Vec4(0, 1, 0, 1)); // Green
+            emitter->SetSizeRange(0.1f, 0.1f);
+            
+            emitter->InitSoftBody(sbWidth, sbHeight, sbDepth, 0.2f, 200.0f, 0.5f);
+            m_Renderer->GetParticleSystem()->AddEmitter(emitter);
+            std::cout << "Spawned Soft Body Emitter" << std::endl;
         }
         
-        ImGui::End();
-    }
-    }
-    
-    ImGui::Separator();
-    
-    static int sbWidth = 10;
-    static int sbHeight = 10;
-    static int sbDepth = 10;
-    
-    ImGui::Text("Soft Body Simulation");
-    ImGui::SliderInt("SB Width", &sbWidth, 5, 20);
-    ImGui::SliderInt("SB Height", &sbHeight, 5, 20);
-    ImGui::SliderInt("SB Depth", &sbDepth, 5, 20);
-    
-    if (ImGui::Button("Spawn Soft Body")) {
-        auto emitter = std::make_shared<ParticleEmitter>(Vec3(2, 10, 0), sbWidth * sbHeight * sbDepth);
-         // Use default texture if available
-        auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); 
-        if (tex) emitter->SetTexture(tex);
+        ImGui::Separator();
         
-        emitter->SetColorRange(Vec4(0, 1, 0, 1), Vec4(0, 1, 0, 1)); // Green
-        emitter->SetSizeRange(0.1f, 0.1f);
+        ImGui::Text("Fluid Simulation (SPH)");
+        static int fluidParticles = 4096;
+        ImGui::SliderInt("Particle Count", &fluidParticles, 1024, 65536);
         
-        emitter->InitSoftBody(sbWidth, sbHeight, sbDepth, 0.2f, 200.0f, 0.5f);
-        m_Renderer->GetParticleSystem()->AddEmitter(emitter);
-        std::cout << "Spawned Soft Body Emitter" << std::endl;
+        if (ImGui::Button("Spawn Fluid")) {
+            auto emitter = std::make_shared<ParticleEmitter>(Vec3(-2, 5, 0), fluidParticles);
+            
+            auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); 
+            if (tex) emitter->SetTexture(tex);
+            
+            emitter->SetPhysicsMode(PhysicsMode::SPHFluid);
+            emitter->SetColorRange(Vec4(0, 0.5f, 1.0f, 0.8f), Vec4(0, 0.5f, 1.0f, 0.8f)); // Blue
+            emitter->SetSizeRange(0.1f, 0.1f);
+            emitter->SetSpawnRate(5000.0f); // Dump them fast
+            emitter->SetParticleLifetime(99999.0f);
+            emitter->SetUseGPUCompute(true);
+            
+            m_Renderer->GetParticleSystem()->AddEmitter(emitter);
+            std::cout << "Spawned Fluid Emitter" << std::endl;
+        }
     }
-    
-    ImGui::Separator();
-    
-    ImGui::Text("Fluid Simulation (SPH)");
-    static int fluidParticles = 4096;
-    ImGui::SliderInt("Particle Count", &fluidParticles, 1024, 65536);
-    
-    if (ImGui::Button("Spawn Fluid")) {
-         auto emitter = std::make_shared<ParticleEmitter>(Vec3(-2, 5, 0), fluidParticles);
-         
-         auto tex = m_Renderer->GetTextureManager()->GetTexture("assets/brick.png"); 
-         if (tex) emitter->SetTexture(tex);
-         
-         emitter->SetPhysicsMode(PhysicsMode::SPHFluid);
-         emitter->SetColorRange(Vec4(0, 0.5f, 1.0f, 0.8f), Vec4(0, 0.5f, 1.0f, 0.8f)); // Blue
-         emitter->SetSizeRange(0.1f, 0.1f);
-         emitter->SetSpawnRate(5000.0f); // Dump them fast
-         emitter->SetParticleLifetime(99999.0f);
-         emitter->SetUseGPUCompute(true);
-         
-         m_Renderer->GetParticleSystem()->AddEmitter(emitter);
-         std::cout << "Spawned Fluid Emitter" << std::endl;
-    }
-    
     ImGui::End();
 
     // Particle System Manager
